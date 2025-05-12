@@ -1,0 +1,39 @@
+/**
+ * Script để sửa vấn đề tương thích Java/Kotlin trong các plugin Flutter Android
+ */
+
+// Danh sách các plugin cần được sửa
+def pluginsToFix = [
+    'shared_preferences_android',
+    'audio_waveforms',
+    'app_settings'
+    // Thêm các plugin khác nếu cần
+]
+
+// Áp dụng sửa đổi cho mỗi plugin
+subprojects { subproject ->
+    if (pluginsToFix.contains(subproject.name)) {
+        subproject.afterEvaluate {
+            if (subproject.plugins.hasPlugin('com.android.library') || subproject.plugins.hasPlugin('com.android.application')) {
+                // Thiết lập Java 11 cho plugin này
+                subproject.android {
+                    compileOptions {
+                        sourceCompatibility JavaVersion.VERSION_11
+                        targetCompatibility JavaVersion.VERSION_11
+                    }
+                }
+                
+                // Nếu plugin sử dụng Kotlin, đồng bộ Kotlin với Java 11
+                if (subproject.plugins.hasPlugin('kotlin-android') || subproject.plugins.hasPlugin('org.jetbrains.kotlin.android')) {
+                    subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                        kotlinOptions {
+                            jvmTarget = "11"
+                        }
+                    }
+                }
+                
+                println "✅ Đã sửa cấu hình Java/Kotlin cho plugin: ${subproject.name}"
+            }
+        }
+    }
+} 

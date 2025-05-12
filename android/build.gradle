@@ -1,0 +1,69 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    
+    // Thêm namespace cho các module Android và thiết lập Java/Kotlin target
+    plugins.withId('com.android.library') {
+        android {
+            if (!project.hasProperty('android.namespace') && !hasProperty('namespace')) {
+                namespace project.group ?: project.name
+            }
+            
+            // Thiết lập Java 8 cho tất cả các module
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
+        }
+        
+        // Đảm bảo Kotlin tương thích với Java 8
+        plugins.withId('org.jetbrains.kotlin.android') {
+            tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                kotlinOptions {
+                    jvmTarget = "1.8"
+                }
+            }
+        }
+    }
+    
+    plugins.withId('com.android.application') {
+        android {
+            if (!project.hasProperty('android.namespace') && !hasProperty('namespace')) {
+                namespace project.group ?: project.name
+            }
+            
+            // Thiết lập Java 8 cho tất cả các module
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
+        }
+        
+        // Đảm bảo Kotlin tương thích với Java 8
+        plugins.withId('org.jetbrains.kotlin.android') {
+            tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                kotlinOptions {
+                    jvmTarget = "1.8"
+                }
+            }
+        }
+    }
+}
+
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
+
+// Áp dụng script để sửa tương thích Java/Kotlin trong các plugin Flutter
+apply from: 'fix_plugin_compatibility.gradle'

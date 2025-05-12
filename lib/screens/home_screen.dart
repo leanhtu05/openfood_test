@@ -1,0 +1,831 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:openfood/services/exercise_service.dart';
+import '../widgets/day_selector.dart';
+import '../widgets/bottom_nav_bar.dart';
+import '../utils/constants.dart';
+import '../utils/water_utils.dart';
+import 'package:openfood/models/exercise.dart';
+import 'package:provider/provider.dart';
+import '../providers/exercise_provider.dart';
+import '../providers/water_provider.dart';
+import '../providers/food_provider.dart';
+import '../widgets/home/calorie_progress.dart';
+import '../widgets/home/exercise_section.dart';
+import '../widgets/home/meals_section.dart';
+import '../widgets/home/water_section.dart';
+import '../widgets/home/nutrition_card.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import '../screens/food_logging_screen.dart';
+import '../widgets/draggable_floating_action_button.dart';
+import '../services/onboarding_service.dart';
+import 'tdee_info_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  int _selectedDay = 10;
+  int _selectedNavIndex = 3;
+  Map<String, int> _exerciseCalories = {};
+  List<Exercise> _selectedExercises = [];
+  DateTime? _exerciseTimestamp;
+  String _selectedDate = DateTime.now().toIso8601String().split('T')[0];
+  
+  // Animation controller
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  // Giá trị giả để hiển thị trong giao diện demo
+  int _consumedWater = 12500; // mL đã uống
+  final int _waterGoal = 3700; // mL mục tiêu
+  DateTime? _lastWaterTime = DateTime.now(); // Thời gian lần cuối ghi nhận nước
+  
+  final int _consumedCalories = 1240;
+  final int _caloriesGoal = 2636;
+
+  // Add this offset variable to the _HomeScreenState class
+  Offset _fabPosition = Offset(0, 0);
+  bool _isDragging = false;
+  bool _showMealSuggestion = true;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Khởi tạo animation controller
+    _animationController = AnimationController(
+      vsync: this,
+      duration: AppAnimations.medium,
+    );
+    
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: AppAnimations.standard,
+      ),
+    );
+    
+    _slideAnimation = Tween<Offset>(
+      begin: Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: AppAnimations.standard,
+      ),
+    );
+    
+    // Lấy ngày hiện tại và cập nhật selectedDay
+    final now = DateTime.now();
+    _selectedDay = now.day;
+    _selectedDate = now.toIso8601String().split('T')[0];
+    
+    // Khởi động animation khi build xong
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _animationController.forward();
+      
+      // Đồng bộ ngày đã chọn và tải dữ liệu - sau khi build hoàn tất
+      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      exerciseProvider.setSelectedDate(_selectedDate);
+      waterProvider.setSelectedDate(_selectedDate);
+      foodProvider.setSelectedDate(_selectedDate);
+      
+      // Tải dữ liệu
+      _loadExercisesForSelectedDate();
+      waterProvider.loadData();
+      foodProvider.loadData();
+    });
+  }
+  
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExercisesForSelectedDate() async {
+    try {
+      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+      
+      // Tải lại dữ liệu bài tập mà không gọi setSelectedDate
+      // vì nó sẽ gọi notifyListeners() và có thể gây ra lỗi trong quá trình build
+      await exerciseProvider.loadExercises();
+  
+      if (mounted) {
+        setState(() {
+          // Lấy danh sách bài tập cho ngày đã chọn từ Provider
+          _selectedExercises = exerciseProvider.selectedDateExercises;
+  
+          // Cập nhật Map calories
+          _exerciseCalories.clear();
+          for (var exercise in _selectedExercises) {
+            _exerciseCalories[exercise.name] = exercise.calories;
+          }
+  
+          // Cập nhật timestamp
+          _exerciseTimestamp = DateTime.now();
+        });
+      }
+    } catch (e) {
+      print('Lỗi khi tải dữ liệu bài tập: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tải dữ liệu bài tập: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+  
+  // Phương thức để tải lại tất cả dữ liệu cho ngày đã chọn
+  Future<void> _loadDataForSelectedDate() async {
+    try {
+      // Lấy tất cả provider
+      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Đồng bộ ngày
+      print('Đang đồng bộ ngày đã chọn: $_selectedDate cho tất cả provider');
+      exerciseProvider.setSelectedDate(_selectedDate);
+      waterProvider.setSelectedDate(_selectedDate);
+      foodProvider.setSelectedDate(_selectedDate);
+      
+      // Tải lại dữ liệu
+      await _loadExercisesForSelectedDate();
+      await waterProvider.loadData();
+      await foodProvider.loadData();
+      
+      // Thêm dòng này để đảm bảo cache dinh dưỡng được xóa
+      foodProvider.clearNutritionCache();
+      
+      // Cập nhật UI
+      if (mounted) {
+        setState(() {
+          // Cập nhật biến để hiển thị trạng thái gợi ý bữa ăn
+          _updateMealSuggestionState();
+        });
+      }
+      
+      // In ra log để debug
+      print('Đã tải xong dữ liệu cho ngày: $_selectedDate');
+    } catch (e) {
+      print('Lỗi khi tải dữ liệu cho ngày $_selectedDate: $e');
+    }
+  }
+
+  // Phương thức để cập nhật trạng thái hiển thị gợi ý bữa ăn
+  void _updateMealSuggestionState() {
+    final now = DateTime.now();
+    final selectedDateTime = DateTime.parse(_selectedDate);
+    
+    // Chỉ hiển thị gợi ý bữa ăn cho ngày hiện tại
+    final isSameDay = selectedDateTime.year == now.year && 
+                      selectedDateTime.month == now.month && 
+                      selectedDateTime.day == now.day;
+                      
+    _showMealSuggestion = isSameDay;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Use a post-frame callback to avoid calling setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadExercisesForSelectedDate();
+    });
+  }
+
+  int get totalExerciseCalories {
+    return _exerciseCalories.values.fold(0, (sum, calories) => sum + calories);
+  }
+
+  // Build a modern and attractive app bar
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      elevation: 0,
+      backgroundColor: Colors.white,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.eco,
+              color: AppColors.primary,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'DietAI',
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.heading2.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: Icon(Icons.restart_alt, color: AppColors.primary),
+          onPressed: () {
+            _showResetOnboardingDialog(context);
+          },
+        ),
+        // Notification icon with badge
+        Stack(
+          alignment: Alignment.center,
+          children: [
+        IconButton(
+              icon: Icon(Icons.notifications_outlined, color: AppColors.textPrimary),
+              onPressed: () {
+                // Show notification dialog
+                _showNotificationDialog();
+              },
+            ),
+            Positioned(
+              top: 14,
+              right: 14,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: AppColors.secondary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+        // Premium badge
+        Padding(
+          padding: EdgeInsets.only(right: 16),
+          child: GestureDetector(
+            onTap: () {
+              // Show premium options
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.amber.shade300, Colors.amber.shade700],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.workspace_premium, color: Colors.white, size: 14),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'DÙNG THỬ',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.info_outline),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const TDEEInfoScreen()),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _showNotificationDialog() {
+            showDialog(
+              context: context,
+              builder: (context) => Dialog(
+                shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                        Icons.notifications_active,
+                  color: AppColors.secondary,
+                  size: 30,
+                ),
+                      ),
+              SizedBox(height: 20),
+                      Text(
+                        'Thông báo',
+                style: AppTextStyles.heading3,
+                        ),
+              SizedBox(height: 10),
+                      Text(
+                        'Bạn đã hoàn thành mục tiêu nước uống hôm nay!',
+                        textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium,
+              ),
+              SizedBox(height: 20),
+              Row(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.textSecondary,
+                      ),
+                      child: const Text('Bỏ qua'),
+                    ),
+                  ),
+                  Expanded(
+                    child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.secondary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('Xác nhận'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMealTimeSuggestion() {
+    // Hiển thị gợi ý bữa ăn dựa vào thời gian hiện tại
+    final hour = DateTime.now().hour;
+    String mealType;
+    String mealSuggestion;
+    IconData mealIcon;
+    Color bgColor;
+    
+    if (hour >= 5 && hour < 10) {
+      mealType = 'Bữa sáng';
+      mealSuggestion = 'Protein, ngũ cốc nguyên hạt và trái cây tươi';
+      mealIcon = Icons.wb_sunny_outlined;
+      bgColor = Colors.orange.shade100;
+    } else if (hour >= 11 && hour < 14) {
+      mealType = 'Bữa trưa';
+      mealSuggestion = 'Protein nạc, rau xanh và carbs phức hợp';
+      mealIcon = Icons.cloud_outlined;
+      bgColor = Colors.blue.shade100;
+    } else if (hour >= 17 && hour < 21) {
+      mealType = 'Bữa tối';
+      mealSuggestion = 'Protein nạc, rau xanh và ít tinh bột';
+      mealIcon = Icons.nights_stay_outlined;
+      bgColor = Colors.indigo.shade100;
+    } else {
+      mealType = 'Bữa phụ';
+      mealSuggestion = 'Trái cây, hạt, sữa chua ít đường';
+      mealIcon = Icons.access_time_rounded;
+      bgColor = Colors.purple.shade100;
+    }
+    
+    return Visibility(
+      visible: _showMealSuggestion,
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
+              ).then((_) {
+                // Tải lại dữ liệu khi quay về từ màn hình food logging
+                _loadDataForSelectedDate();
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(mealIcon, size: 24, color: AppColors.food),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Đề xuất $mealType',
+                          style: AppTextStyles.heading3.copyWith(fontSize: 16),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          mealSuggestion,
+                          style: AppTextStyles.bodySmall,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                  color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.close, size: 16),
+                      onPressed: () {
+                        setState(() {
+                          _showMealSuggestion = false;
+                        });
+                      },
+                      constraints: BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: _buildAppBar(),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: AnimationLimiter(
+              child: Column(
+                children: AnimationConfiguration.toStaggeredList(
+                  duration: AppAnimations.medium,
+                  childAnimationBuilder: (widget) => SlideAnimation(
+                    horizontalOffset: 50.0,
+                    child: FadeInAnimation(
+                      child: widget,
+                    ),
+                  ),
+                  children: [
+                    // const UserProfileCircularSummary(),
+                    DaySelector(
+                      selectedDay: _selectedDay,
+                      onDaySelected: (day) {
+                        setState(() {
+                          _selectedDay = day;
+                          
+                          // Cập nhật ngày được chọn dựa trên ngày đã chọn từ DaySelector
+                          final selectedDateTime = DaySelector.getSelectedDateWithDay(day);
+                          _selectedDate = selectedDateTime.toIso8601String().split('T')[0];
+                          
+                          // In ra thông tin debug ngày đã chọn
+                          print('Đã chọn ngày mới: $_selectedDate từ DaySelector');
+                        });
+                        
+                        // Tải lại dữ liệu cho ngày đã chọn
+                        _loadDataForSelectedDate();
+                      },
+                    ),
+                    // Meal suggestion based on time of day
+                    _buildMealTimeSuggestion(),
+                    
+                    // Thêm NutritionCard để hiển thị dữ liệu dinh dưỡng
+                    const NutritionCard(),
+                    
+                    // Food log section - most important part
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.foodLight.withOpacity(0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.restaurant_menu,
+                                    color: AppColors.food,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Nhật ký bữa ăn',
+                                    style: AppTextStyles.heading3.copyWith(fontSize: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          MealsSection(
+                            onMealTap: () {
+                              // Navigate to food logging screen
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => FoodLoggingScreen(),
+                                ),
+                              ).then((_) {
+                                // Tải lại dữ liệu khi quay về từ màn hình food logging
+                                _loadDataForSelectedDate();
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Water tracking
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: WaterSection(),
+                    ),
+                    
+                    // Exercise section
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: ExerciseSection(
+                          exercises: _selectedExercises,
+                          onAddExercise: () {
+                            Navigator.pushNamed(
+                              context,
+                              '/exercise_log',
+                              arguments: _selectedDate,
+                            ).then((_) => _loadExercisesForSelectedDate());
+                          },
+                          onViewHistory: () {
+                            Navigator.pushNamed(
+                              context, 
+                              '/combined_history',
+                              arguments: {'filter': 'exercise'}
+                            ).then((_) => _loadExercisesForSelectedDate());
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: DraggableFloatingActionButton(
+        initialOffset: Offset(MediaQuery.of(context).size.width - 80, MediaQuery.of(context).size.height / 2 - 80),
+        backgroundColor: AppColors.primary,
+        child: Icon(Icons.add_outlined, color: Colors.white),
+        onPressed: () => _showAddOptionsDialog(context),
+      ),
+      bottomNavigationBar: Container(
+        height: 50,
+        child: BottomNavBar(
+          selectedIndex: _selectedNavIndex,
+          onItemSelected: (index) {
+            setState(() {
+              _selectedNavIndex = index;
+            });
+          },
+        ),
+      ),
+    );
+  }
+  
+  // Show options dialog when FAB is clicked
+  void _showAddOptionsDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return Container(
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text(
+                'Thêm mới',
+                style: AppTextStyles.heading2.copyWith(fontSize: 20),
+              ),
+              SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildQuickActionButton(
+                    icon: Icons.restaurant,
+                    label: 'Bữa ăn',
+                    color: AppColors.food,
+                    onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
+                    ).then((_) {
+                      // Tải lại dữ liệu khi quay về từ màn hình food logging
+                      _loadDataForSelectedDate();
+                    });
+                  },
+                ),
+                  _buildQuickActionButton(
+                    icon: Icons.water_drop,
+                    label: 'Nước uống',
+                    color: AppColors.water,
+                    onTap: () {
+                      Navigator.pop(context);
+                      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+                      waterProvider.showWaterInputDialog(context).then((_) {
+                        // Tải lại dữ liệu sau khi thêm nước
+                        _loadDataForSelectedDate();
+                      });
+                    },
+                  ),
+                  _buildQuickActionButton(
+                    icon: Icons.fitness_center,
+                    label: 'Bài tập',
+                    color: AppColors.exercise,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(
+                        context,
+                        '/exercise_log',
+                        arguments: _selectedDate,
+                      ).then((_) => _loadDataForSelectedDate());
+                    },
+                  ),
+                  _buildQuickActionButton(
+                    icon: Icons.camera_alt,
+                    label: 'Chụp ảnh',
+                    color: AppColors.secondary,
+                    onTap: () {
+                    Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
+                      );
+                  },
+                ),
+              ],
+            ),
+              SizedBox(height: 40),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Quick action button for bottom sheet
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          SizedBox(height: 8),
+            Text(
+            label,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Hiển thị dialog xác nhận reset onboarding
+  void _showResetOnboardingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Reset Trạng Thái Onboarding'),
+          content: const Text(
+            'Bạn có muốn quay lại quá trình onboarding ngay bây giờ?'
+            '\n\nLựa chọn này chỉ dành cho mục đích thử nghiệm.'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await OnboardingService.resetOnboardingStatus();
+                
+                if (!context.mounted) return;
+                Navigator.of(context).pop();
+                
+                // Chuyển đến màn hình onboarding ngay lập tức thay vì
+                // chỉ hiển thị SnackBar và yêu cầu khởi động lại ứng dụng
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  '/onboarding',
+                  (route) => false, // Loại bỏ tất cả các màn hình khác khỏi stack
+                );
+              },
+              child: const Text('Reset', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
