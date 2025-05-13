@@ -31,13 +31,16 @@ class MealDetailCard extends StatelessWidget {
     required FoodEntry entry,
     VoidCallback? onTap,
   }) {
+    // Sử dụng calculateNutritionFromAPI để lấy dữ liệu dinh dưỡng chính xác từ API hoặc từ items
+    final nutritionValues = entry.calculateNutritionFromAPI();
+    
     return MealDetailCard(
       mealType: entry.mealType,
       items: entry.items,
-      totalCalories: entry.totalCalories / 100,
-      totalProtein: entry.totalProtein / 100,
-      totalCarbs: entry.totalCarbs / 100,
-      totalFat: entry.totalFat / 100,
+      totalCalories: nutritionValues['calories'] ?? 0,
+      totalProtein: nutritionValues['protein'] ?? 0,
+      totalCarbs: nutritionValues['carbs'] ?? 0,
+      totalFat: nutritionValues['fat'] ?? 0,
       onTap: onTap,
     );
   }
@@ -105,7 +108,7 @@ class MealDetailCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: items.map((item) => _buildFoodItem(item)).toList(),
+              children: _buildFoodItems(items),
             ),
           ),
           
@@ -143,8 +146,48 @@ class MealDetailCard extends StatelessWidget {
     );
   }
 
+  // Widget hiển thị trong MealDetailCard
+  List<Widget> _buildFoodItems(List<FoodItem> items, {FoodEntry? foodEntry}) {
+    return items.map((item) {
+      return _buildFoodItem(item, foodEntry: foodEntry);
+    }).toList();
+  }
+
   // Widget hiển thị thông tin từng món ăn
-  Widget _buildFoodItem(FoodItem item) {
+  Widget _buildFoodItem(FoodItem item, {FoodEntry? foodEntry}) {
+    // Đảm bảo servingSize không nhỏ hơn hoặc bằng 0
+    final effectiveServingSize = item.servingSize <= 0 ? 1.0 : item.servingSize;
+    
+    // Xác định nên sử dụng dữ liệu từ đâu (nutritionInfo hay từ FoodItem)
+    Map<String, dynamic> nutritionValues = {};
+    
+    if (foodEntry != null && foodEntry.nutritionInfo != null) {
+      // Nếu có FoodEntry với nutritionInfo, sử dụng dữ liệu từ API
+      final nutritionInfo = foodEntry.nutritionInfo!;
+      final servingRatio = effectiveServingSize / (nutritionInfo['servingSize'] ?? 1.0);
+      
+      nutritionValues = {
+        'calories': ((nutritionInfo['calories'] as num?)?.toDouble() ?? item.calories) * servingRatio,
+        'protein': ((nutritionInfo['protein'] as num?)?.toDouble() ?? item.protein) * servingRatio,
+        'fat': ((nutritionInfo['fat'] as num?)?.toDouble() ?? item.fat) * servingRatio,
+        'carbs': ((nutritionInfo['carbs'] as num?)?.toDouble() ?? item.carbs) * servingRatio,
+        'totalWeight': (nutritionInfo['totalWeight'] as num?)?.toDouble() ?? (effectiveServingSize * 100),
+      };
+    } else {
+      // Nếu không có nutritionInfo, tính từ FoodItem
+      nutritionValues = {
+        'calories': item.calories * effectiveServingSize,
+        'protein': item.protein * effectiveServingSize,
+        'fat': item.fat * effectiveServingSize,
+        'carbs': item.carbs * effectiveServingSize,
+        'totalWeight': effectiveServingSize * 100, // Hiển thị gram
+      };
+    }
+    
+    // Lấy khối lượng và calo đã tính toán
+    final totalWeight = nutritionValues['totalWeight']?.toInt() ?? 100;
+    final actualCalories = nutritionValues['calories']?.toInt() ?? 0;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -155,7 +198,7 @@ class MealDetailCard extends StatelessWidget {
           ),
           SizedBox(width: 4),
           Text(
-            '${item.servingSize.toInt()}${item.servingUnit}',
+            '${totalWeight}${item.servingUnit}',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey,
@@ -163,7 +206,7 @@ class MealDetailCard extends StatelessWidget {
           ),
           Spacer(),
           Text(
-            '${item.calories.toInt()}kcal',
+            '${actualCalories}kcal',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -213,7 +256,7 @@ class MealFoodDetailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Tính tổng dinh dưỡng của tất cả các entries
+    // Tính tổng dinh dưỡng của tất cả các entries sử dụng calculateNutritionFromAPI
     double totalCalories = 0;
     double totalProtein = 0;
     double totalCarbs = 0;
@@ -223,10 +266,12 @@ class MealFoodDetailCard extends StatelessWidget {
     final allItems = <FoodItem>[];
     
     for (var entry in entries) {
-      totalCalories += entry.totalCalories;
-      totalProtein += entry.totalProtein;
-      totalCarbs += entry.totalCarbs;
-      totalFat += entry.totalFat;
+      // Sử dụng calculateNutritionFromAPI để lấy dữ liệu dinh dưỡng chính xác
+      final nutritionValues = entry.calculateNutritionFromAPI();
+      totalCalories += nutritionValues['calories'] ?? 0;
+      totalProtein += nutritionValues['protein'] ?? 0;
+      totalCarbs += nutritionValues['carbs'] ?? 0;
+      totalFat += nutritionValues['fat'] ?? 0;
       
       allItems.addAll(entry.items);
     }
@@ -393,7 +438,19 @@ class MealFoodDetailCard extends StatelessWidget {
                   endIndent: 8,
                 ),
                 itemBuilder: (context, index) {
-                  return _buildSimpleFoodItemRow(allItems[index]);
+                  // Tìm foodEntry tương ứng cho item này
+                  final item = allItems[index];
+                  FoodEntry? foundEntry;
+                  
+                  // Tìm trong danh sách các entries để xác định item thuộc entry nào
+                  for (var entry in entries) {
+                    if (entry.items.any((entryItem) => entryItem.id == item.id)) {
+                      foundEntry = entry;
+                      break;
+                    }
+                  }
+                  
+                  return _buildSimpleFoodItemRow(item, foodEntry: foundEntry);
                 },
               ),
             ),
@@ -435,7 +492,40 @@ class MealFoodDetailCard extends StatelessWidget {
   }
   
   // Widget hiển thị thông tin món ăn đơn giản khi không có food_item_row.dart
-  Widget _buildSimpleFoodItemRow(FoodItem item) {
+  Widget _buildSimpleFoodItemRow(FoodItem item, {FoodEntry? foodEntry}) {
+    // Đảm bảo servingSize không nhỏ hơn hoặc bằng 0
+    final effectiveServingSize = item.servingSize <= 0 ? 1.0 : item.servingSize;
+    
+    // Xác định nên sử dụng dữ liệu từ đâu (nutritionInfo hay từ FoodItem)
+    Map<String, dynamic> nutritionValues = {};
+    
+    if (foodEntry != null && foodEntry.nutritionInfo != null) {
+      // Nếu có FoodEntry với nutritionInfo, sử dụng dữ liệu từ API
+      final nutritionInfo = foodEntry.nutritionInfo!;
+      final servingRatio = effectiveServingSize / (nutritionInfo['servingSize'] ?? 1.0);
+      
+      nutritionValues = {
+        'calories': ((nutritionInfo['calories'] as num?)?.toDouble() ?? item.calories) * servingRatio,
+        'protein': ((nutritionInfo['protein'] as num?)?.toDouble() ?? item.protein) * servingRatio,
+        'fat': ((nutritionInfo['fat'] as num?)?.toDouble() ?? item.fat) * servingRatio,
+        'carbs': ((nutritionInfo['carbs'] as num?)?.toDouble() ?? item.carbs) * servingRatio,
+        'totalWeight': (nutritionInfo['totalWeight'] as num?)?.toDouble() ?? (effectiveServingSize * 100),
+      };
+    } else {
+      // Nếu không có nutritionInfo, tính từ FoodItem
+      nutritionValues = {
+        'calories': item.calories * effectiveServingSize,
+        'protein': item.protein * effectiveServingSize,
+        'fat': item.fat * effectiveServingSize,
+        'carbs': item.carbs * effectiveServingSize,
+        'totalWeight': effectiveServingSize * 100, // Hiển thị gram
+      };
+    }
+    
+    // Lấy khối lượng và calo đã tính toán
+    final totalWeight = nutritionValues['totalWeight']?.toInt() ?? 100;
+    final actualCalories = nutritionValues['calories']?.toInt() ?? 0;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
       child: Row(
@@ -453,24 +543,18 @@ class MealFoodDetailCard extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   item.name,
-                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
+                SizedBox(height: 2),
                 Text(
-                  '${item.servingSize.toInt()}${item.servingUnit}',
+                  '${totalWeight}${item.servingUnit} • ${actualCalories}kcal',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
-            ),
-          ),
-          Text(
-            '${item.calories.toInt()} kcal',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: Colors.grey[800],
             ),
           ),
         ],

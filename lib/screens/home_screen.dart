@@ -278,41 +278,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ],
         ),
-        // Premium badge
-        Padding(
-          padding: EdgeInsets.only(right: 16),
-          child: GestureDetector(
-            onTap: () {
-              // Show premium options
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.amber.shade300, Colors.amber.shade700],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.workspace_premium, color: Colors.white, size: 14),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'DÙNG THỬ',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
         IconButton(
           icon: const Icon(Icons.info_outline),
           onPressed: () {
@@ -564,23 +529,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.foodLight.withOpacity(0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Icons.restaurant_menu,
-                                    color: AppColors.food,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
+                                Icon(Icons.list_alt, size: 20, color: AppColors.textPrimary),
+                                SizedBox(width: 8),
+                                Flexible(
                                   child: Text(
-                                    'Nhật ký bữa ăn',
-                                    style: AppTextStyles.heading3.copyWith(fontSize: 16),
+                                    'Nhật ký ăn uống',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.heading3,
                                   ),
                                 ),
                               ],

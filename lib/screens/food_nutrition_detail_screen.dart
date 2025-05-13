@@ -34,7 +34,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   late FoodEntry _foodEntry;
   late String _mealName;
   String _selectedTime = "17:00";
-  double _servingSize = 100.0;
+  double _servingSize = 1.0;
   String _foodDescription = "Bữa ăn với thịt";
 
   // Mục tiêu dinh dưỡng
@@ -75,7 +75,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     super.initState();
     _foodEntry = widget.foodEntry;
     _mealName = _foodEntry.mealType;
-    _servingSize = 100.0;
+    
+    // Đảm bảo khẩu phần luôn bằng 1 mặc định
+    _servingSize = 1.0;
+    
+    // Cập nhật thông tin dinh dưỡng dựa trên khẩu phần mặc định
+    _updateDefaultServingSize();
 
     // Đồng bộ hóa thông tin dinh dưỡng từ các nguồn khác nhau
     _synchronizeNutritionData();
@@ -144,7 +149,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     final dateFormat = DateFormat('dd/MM/yyyy');
     final dateString = dateFormat.format(_foodEntry.dateTime);
     
-    // Tính toán giá trị dinh dưỡng
+    // Tính toán giá trị dinh dưỡng một lần duy nhất cho toàn bộ build
     final nutritionValues = _foodEntry.calculateNutritionFromAPI();
     final calories = nutritionValues['calories']?.toInt() ?? 0;
     final protein = nutritionValues['protein']?.toInt() ?? 0;
@@ -180,62 +185,61 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
             ),
           ),
           title: Padding(
-            padding: EdgeInsets.only(left: 0), // Không cần padding trái vì đã có leadingWidth
+            padding: EdgeInsets.only(left: 40), // Không cần padding trái vì đã có leadingWidth
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.nightlight_round, color: Color(0xFF212121), size: 20),
-                SizedBox(width: 6),
-                InkWell(
-                  onTap: () {
-                    // Show meal type selection dialog
-                    showModalBottomSheet(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return Container(
-                          padding: EdgeInsets.all(16),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildMealTypeOption('Bữa sáng'),
-                              _buildMealTypeOption('Bữa trưa'),
-                              _buildMealTypeOption('Bữa tối'),
-                              _buildMealTypeOption('Bữa phụ'),
-                            ],
+                SizedBox(width: 4),
+                Flexible(
+                  child: InkWell(
+                    onTap: () {
+                      // Show meal type selection dialog
+                      showModalBottomSheet(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return Container(
+                            padding: EdgeInsets.all(12),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildMealTypeOption('Bữa sáng'),
+                                _buildMealTypeOption('Bữa trưa'),
+                                _buildMealTypeOption('Bữa tối'),
+                                _buildMealTypeOption('Bữa phụ'),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    child: Container(
+                      constraints: BoxConstraints(maxWidth: 150),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _mealName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xFF212121), 
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
                           ),
-                        );
-                      },
-                    );
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _mealName,
-                        style: TextStyle(
-                          color: Color(0xFF212121), 
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_drop_down, color: Color(0xFF212121), size: 20),
+                        ],
                       ),
-                      Icon(Icons.arrow_drop_down, color: Color(0xFF212121), size: 20),
-                    ],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           actions: [
-            // Biểu tượng đồng hồ cát - Thời gian
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: IconButton(
-                icon: Icon(Icons.access_time, color: Color(0xFF42A5F5), size: 22),
-                onPressed: () {
-                  // Show time picker
-                  _showTimePicker();
-                },
-              ),
-            ),
             // Biểu tượng dấu sao - Yêu thích
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 4),
@@ -447,33 +451,62 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                 
                 // Nutrition illustration as a separate sliver
                 SliverToBoxAdapter(
-                  child: NutritionIllustration(
-                    key: ValueKey('nutrition_illustration_${_foodEntry.id}_${_servingSize}'), // Add key for forced rebuild
-                    totalCalories: _foodEntry.totalCalories,
-                    totalProtein: _foodEntry.totalProtein,
-                    totalFat: _foodEntry.totalFat,
-                    totalCarbs: _foodEntry.totalCarbs,
-                    caloriesGoal: caloriesGoal,
-                    proteinGoal: proteinGoal,
-                    fatGoal: fatGoal,
-                    carbsGoal: carbsGoal,
-                    nutritionInfo: _foodEntry.nutritionInfo ?? {},
-                    cholesterolGoal: cholesterolGoal,
-                    omega3Goal: omega3Goal,
-                    fiberGoal: fiberGoal,
-                    waterGoal: waterGoal,
-                    sugarGoal: sugarGoal,
-                    saturatedFatGoal: saturatedFatGoal,
-                    caffeineGoal: caffeineGoal,
-                    alcoholGoal: alcoholGoal,
-                    vitaminDGoal: vitaminDGoal,
-                    vitaminB12Goal: vitaminB12Goal,
-                    vitaminCGoal: vitaminCGoal,
-                    vitaminBGoal: vitaminBGoal,
-                    ironGoal: ironGoal,
-                    calciumGoal: calciumGoal,
-                    magnesiumGoal: magnesiumGoal,
-                    potassiumGoal: potassiumGoal,
+                  child: Container(
+                    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      // Thêm hiệu ứng gradient nhẹ cho nền
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white,
+                          Colors.grey.shade50,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      // Thêm viền và shadow nhẹ
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: NutritionIllustration(
+                      key: ValueKey('nutrition_illustration_${_foodEntry.id}_${_servingSize}_${DateTime.now().millisecondsSinceEpoch}'), // Add unique key for forced rebuild
+                      totalCalories: nutritionValues['calories'] ?? _foodEntry.totalCalories,
+                      totalProtein: nutritionValues['protein'] ?? _foodEntry.totalProtein,
+                      totalFat: nutritionValues['fat'] ?? _foodEntry.totalFat,
+                      totalCarbs: nutritionValues['carbs'] ?? _foodEntry.totalCarbs,
+                      caloriesGoal: caloriesGoal,
+                      proteinGoal: proteinGoal,
+                      fatGoal: fatGoal,
+                      carbsGoal: carbsGoal,
+                      nutritionInfo: _foodEntry.nutritionInfo ?? {},
+                      cholesterolGoal: cholesterolGoal,
+                      omega3Goal: omega3Goal,
+                      fiberGoal: fiberGoal,
+                      waterGoal: waterGoal,
+                      sugarGoal: sugarGoal,
+                      saturatedFatGoal: saturatedFatGoal,
+                      caffeineGoal: caffeineGoal,
+                      alcoholGoal: alcoholGoal,
+                      vitaminDGoal: vitaminDGoal,
+                      vitaminB12Goal: vitaminB12Goal,
+                      vitaminCGoal: vitaminCGoal,
+                      vitaminBGoal: vitaminBGoal,
+                      ironGoal: ironGoal,
+                      calciumGoal: calciumGoal,
+                      magnesiumGoal: magnesiumGoal,
+                      potassiumGoal: potassiumGoal,
+                      // Thêm tham số để sử dụng layout nhỏ gọn hơn
+                      useRadialGradient: true, // Thêm hiệu ứng gradient cho vòng tròn dinh dưỡng
+                      backgroundColor: Colors.grey.shade50, // Màu nền nhạt cho vòng tròn
+                      showDetailedLabels: true, // Hiển thị nhãn chi tiết
+                    ),
                   ),
                 ),
                 
@@ -488,97 +521,136 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           // Bottom nutrition summary and save button
           Container(
             width: double.infinity,
-            height: 70,
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
             color: Colors.white,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Left side with nutrition summary - sử dụng Expanded và layout đơn giản
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Row 1: Total weight - đơn giản, không thêm container
-                          Row(
-                            children: [
-                              Icon(Icons.menu, size: 16, color: Colors.grey.shade800),
-                              SizedBox(width: 4),
-                              Text(
-                                "Tổng Cộng: ${totalWeight}g",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade800,
-                                ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Left side with nutrition summary - sử dụng Expanded và layout đơn giản
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Row 1: Total weight - đơn giản, không thêm container
+                        Row(
+                          children: [
+                            Icon(Icons.menu, size: 14, color: Colors.grey.shade800),
+                            SizedBox(width: 4),
+                            Text(
+                              "Tổng Cộng: ${totalWeight}g",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade800,
                               ),
+                            ),
+                          ],
+                        ),
+                        
+                        SizedBox(height: 4),
+                        
+                        // Row 2: Nutrition values - giảm khoảng cách và kích thước
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _buildSimpleNutrientIndicator("${calories}kcal", Colors.red),
+                              SizedBox(width: 8),
+                              _buildSimpleNutrientIndicator("${protein}g", Colors.blue),
+                              SizedBox(width: 8),
+                              _buildSimpleNutrientIndicator("${fat}g", Colors.amber),
+                              SizedBox(width: 8),
+                              _buildSimpleNutrientIndicator("${carbs}g", Colors.green),
                             ],
                           ),
-                          
-                          SizedBox(height: 4),
-                          
-                          // Row 2: Nutrition values - giảm khoảng cách và kích thước
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                _buildSimpleNutrientIndicator("${calories}kcal", Colors.red),
-                                SizedBox(width: 8),
-                                _buildSimpleNutrientIndicator("${protein}g", Colors.blue),
-                                SizedBox(width: 8),
-                                _buildSimpleNutrientIndicator("${fat}g", Colors.amber),
-                                SizedBox(width: 8),
-                                _buildSimpleNutrientIndicator("${carbs}g", Colors.green),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Right side with compact save button
-                    ElevatedButton(
-                      onPressed: () {
-                        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-                        foodProvider.updateFoodEntry(_foodEntry);
-                        foodProvider.clearNutritionCache();
-                        
-                        // Quay về màn hình trước với kết quả thành công
-                        Navigator.of(context).pop({
-                          'foodEntriesUpdated': true,
-                          'selectedDate': _foodEntry.dateTime.toIso8601String().split('T')[0],
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF4CD964),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        minimumSize: Size(0, 0), // Giảm kích thước tối thiểu
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check, size: 14),
-                          SizedBox(width: 4),
-                          Text(
-                            'Đồng ý',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      ],
+                    ),
+                  ),
+                  
+                  SizedBox(width: 8),
+                  
+                  // Right side with compact save button
+                  ElevatedButton(
+                    onPressed: () {
+                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                      
+                      // Đảm bảo dữ liệu dinh dưỡng được cập nhật đúng cách
+                      final nutritionValues = _foodEntry.calculateNutritionFromAPI();
+                      
+                      // Cập nhật lại nutritionInfo nếu cần thiết
+                      if (_foodEntry.nutritionInfo == null || _foodEntry.nutritionInfo!.isEmpty) {
+                        _foodEntry = _foodEntry.copyWith(
+                          nutritionInfo: {
+                            'calories': nutritionValues['calories'],
+                            'protein': nutritionValues['protein'],
+                            'fat': nutritionValues['fat'],
+                            'carbs': nutritionValues['carbs'],
+                            'fiber': nutritionValues['fiber'],
+                            'sugar': nutritionValues['sugar'],
+                            'sodium': nutritionValues['sodium'],
+                            'servingSize': _servingSize,
+                            'totalWeight': nutritionValues['totalWeight'] ?? (_servingSize * 100),
+                          }
+                        );
+                      } else {
+                        // Đảm bảo totalWeight luôn được cập nhật trong nutritionInfo
+                        final updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
+                        updatedNutritionInfo['totalWeight'] = nutritionValues['totalWeight'] ?? (_servingSize * 100);
+                        _foodEntry = _foodEntry.copyWith(nutritionInfo: updatedNutritionInfo);
+                      }
+                      
+                      // Cập nhật entry trong provider
+                      foodProvider.updateFoodEntry(_foodEntry);
+                      
+                      // Đồng bộ dữ liệu dinh dưỡng nếu có items
+                      if (_foodEntry.items.isNotEmpty) {
+                        foodProvider.synchronizeNutrition(
+                          entryId: _foodEntry.id,
+                          servingSize: _foodEntry.items.first.servingSize,
+                        );
+                      }
+                      
+                      // Xóa cache để đảm bảo dữ liệu được tính toán lại
+                      foodProvider.refreshNutrition();
+                      
+                      print('Đã lưu thay đổi với dữ liệu dinh dưỡng: calories=${nutritionValues['calories']}, protein=${nutritionValues['protein']}, totalWeight=${nutritionValues['totalWeight']}');
+                      
+                      // Quay về màn hình trước với kết quả thành công
+                      Navigator.of(context).pop({
+                        'foodEntriesUpdated': true,
+                        'selectedDate': _foodEntry.dateTime.toIso8601String().split('T')[0],
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF4CD964),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      minimumSize: Size(0, 0), // Giảm kích thước tối thiểu
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check, size: 12),
+                        SizedBox(width: 2),
+                        Text(
+                          'Đồng ý',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -661,13 +733,13 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           content: Text('Bạn có chắc chắn muốn xoá món ăn này?'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.pop(context),
               child: Text('Huỷ'),
             ),
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(); // Quay lại màn hình trước
+                Navigator.pop(context);
+                Navigator.pop(context); // Quay lại màn hình trước
               },
               child: Text('Xoá', style: TextStyle(color: Colors.red)),
             ),
@@ -731,6 +803,19 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           mealType: _foodEntry.mealType,
           items: _foodEntry.items,
         );
+        
+        // Cập nhật provider để đồng bộ dữ liệu
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        
+        // Cập nhật entry trong provider
+        foodProvider.updateFoodEntry(_foodEntry);
+        
+        // Cập nhật ngày được chọn trong provider
+        final selectedDate = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+        foodProvider.setSelectedDate(selectedDate);
+        
+        // Xóa cache để đảm bảo dữ liệu được tính toán lại
+        foodProvider.clearNutritionCache();
         
         // In log để debug
         final dateFormatter = DateFormat('dd/MM/yyyy');
@@ -818,24 +903,47 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   void _synchronizeNutritionData() {
     // Kiểm tra nếu có thông tin từ phân tích AI hoặc mã vạch
     if (_foodEntry.nutritionInfo != null && _foodEntry.nutritionInfo!.isNotEmpty) {
-      // Cập nhật FoodEntry từ dữ liệu dinh dưỡng
-      setState(() {
-        _foodEntry = FoodDataAdapter.updateWithNutritionInfo(
-          entry: _foodEntry, 
-          nutritionInfo: _foodEntry.nutritionInfo!
-        );
-      });
+      // Đảm bảo có totalWeight trong nutritionInfo
+      if (!_foodEntry.nutritionInfo!.containsKey('totalWeight') && _foodEntry.items.isNotEmpty) {
+        final updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
+        updatedNutritionInfo['totalWeight'] = 100.0; // 1 khẩu phần = 100g
+        updatedNutritionInfo['servingSize'] = 1.0;
+        
+        // Cập nhật FoodEntry từ dữ liệu dinh dưỡng
+        setState(() {
+          _foodEntry = FoodDataAdapter.updateWithNutritionInfo(
+            entry: _foodEntry.copyWith(nutritionInfo: updatedNutritionInfo), 
+            nutritionInfo: updatedNutritionInfo
+          );
+        });
+      } else {
+        // Đảm bảo servingSize trong nutritionInfo là 1.0
+        final updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
+        updatedNutritionInfo['servingSize'] = 1.0;
+        
+        // Cập nhật FoodEntry từ dữ liệu dinh dưỡng
+        setState(() {
+          _foodEntry = FoodDataAdapter.updateWithNutritionInfo(
+            entry: _foodEntry.copyWith(nutritionInfo: updatedNutritionInfo), 
+            nutritionInfo: updatedNutritionInfo
+          );
+        });
+      }
+      
+      // Đồng bộ dữ liệu với provider
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      foodProvider.updateFoodEntry(_foodEntry);
+      foodProvider.clearNutritionCache();
+      
     } else if (_foodEntry.items.isNotEmpty) {
       // Nếu không có dữ liệu dinh dưỡng nhưng có items, tự động tải từ API
       _fetchNutritionDataFromAPI();
     }
     
-    // Đảm bảo servingSize được khởi tạo đúng cách
-    if (_foodEntry.items.isNotEmpty) {
-      setState(() {
-        _servingSize = _foodEntry.items.first.servingSize;
-      });
-    }
+    // Đảm bảo servingSize được khởi tạo là 1.0
+    setState(() {
+      _servingSize = 1.0;
+    });
   }
   
   // Hàm tải dữ liệu dinh dưỡng từ API
@@ -864,6 +972,23 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           );
           _isLoading = false;
         });
+        
+        // Đồng bộ dữ liệu với provider
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        
+        // Cập nhật entry trong provider
+        foodProvider.updateFoodEntry(_foodEntry);
+        
+        // Đồng bộ dữ liệu dinh dưỡng nếu có items
+        if (_foodEntry.items.isNotEmpty) {
+          foodProvider.synchronizeNutrition(
+            entryId: _foodEntry.id,
+            servingSize: _foodEntry.items.first.servingSize,
+          );
+        }
+        
+        // Xóa cache để đảm bảo dữ liệu được tính toán lại
+        foodProvider.refreshNutrition();
         
         // Hiển thị thông báo nhỏ ở góc dưới màn hình
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1041,13 +1166,19 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
             shape: BoxShape.circle,
           ),
         ),
-        SizedBox(width: 3),
-        Text(
-          text,
-          style: TextStyle(
-            color: color,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
+        SizedBox(width: 2),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
       ],
@@ -1116,6 +1247,10 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   
   // Cập nhật kích thước khẩu phần
   void _updateServingSize(double newServingSize) {
+    if (_servingSize == newServingSize) {
+      return; // Tránh cập nhật không cần thiết nếu giá trị không thay đổi
+    }
+    
     setState(() {
       _servingSize = newServingSize;
       
@@ -1123,7 +1258,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       if (_foodEntry.items.isNotEmpty) {
         // Lấy khẩu phần cũ để tính tỷ lệ
         final oldServingSize = _foodEntry.items.first.servingSize;
-        final ratio = newServingSize / oldServingSize;
+        var ratio = newServingSize / oldServingSize;
         
         // Cập nhật từng item với servingSize mới 
         final updatedItems = _foodEntry.items.map((item) {
@@ -1136,8 +1271,42 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
           // Cập nhật khẩu phần
           updatedNutritionInfo['servingSize'] = newServingSize;
+          
+          // Cập nhật tổng khối lượng - đồng bộ với khẩu phần (100g = 1 khẩu phần)
+          final oldTotalWeight = updatedNutritionInfo['totalWeight'] ?? (oldServingSize * 100);
+          updatedNutritionInfo['totalWeight'] = newServingSize * 100;
+          
+          // Tính lại tỷ lệ dựa trên khối lượng mới
+          ratio = updatedNutritionInfo['totalWeight'] / oldTotalWeight;
+          
+          // Cập nhật các giá trị dinh dưỡng theo tỷ lệ
+          if (updatedNutritionInfo.containsKey('calories')) {
+            updatedNutritionInfo['calories'] = (updatedNutritionInfo['calories'] * ratio).toDouble();
+          }
+          if (updatedNutritionInfo.containsKey('protein')) {
+            updatedNutritionInfo['protein'] = (updatedNutritionInfo['protein'] * ratio).toDouble();
+          }
+          if (updatedNutritionInfo.containsKey('fat')) {
+            updatedNutritionInfo['fat'] = (updatedNutritionInfo['fat'] * ratio).toDouble();
+          }
+          if (updatedNutritionInfo.containsKey('carbs')) {
+            updatedNutritionInfo['carbs'] = (updatedNutritionInfo['carbs'] * ratio).toDouble();
+          }
+          
+          // Cập nhật các vi chất
+          final micronutrients = ['fiber', 'sugar', 'sodium', 'cholesterol', 'vitaminD', 'vitaminC', 
+                                 'vitaminB12', 'calcium', 'iron', 'potassium', 'magnesium'];
+          
+          for (var nutrient in micronutrients) {
+            if (updatedNutritionInfo.containsKey(nutrient)) {
+              updatedNutritionInfo[nutrient] = (updatedNutritionInfo[nutrient] * ratio).toDouble();
+            }
+          }
         } else {
-          updatedNutritionInfo = {'servingSize': newServingSize};
+          updatedNutritionInfo = {
+            'servingSize': newServingSize,
+            'totalWeight': newServingSize * 100,
+          };
         }
         
         _foodEntry = _foodEntry.copyWith(
@@ -1147,33 +1316,25 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
         
         // Cập nhật FoodProvider để đồng bộ dữ liệu trên toàn ứng dụng
         final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        
+        // Đầu tiên cập nhật entry trong provider
+        foodProvider.updateFoodEntry(_foodEntry);
+        
+        // Sau đó đồng bộ lại thông tin dinh dưỡng
         foodProvider.synchronizeNutrition(
           entryId: _foodEntry.id,
           servingSize: newServingSize,
         );
         
-        // Sau khi đồng bộ, refresh lại màn hình để hiển thị giá trị dinh dưỡng mới
-        Future.delayed(Duration(milliseconds: 100), () {
-          if (mounted) {
-            setState(() {
-              // Đảm bảo UI được cập nhật với giá trị mới nhất từ provider
-              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-              final updatedEntries = foodProvider.allFoodEntries;
-              final updatedEntry = updatedEntries.firstWhere(
-                (e) => e.id == _foodEntry.id,
-                orElse: () => _foodEntry,
-              );
-              _foodEntry = updatedEntry;
-            });
-          }
-        });
+        // Xóa cache để đảm bảo dữ liệu được tính toán lại
+        foodProvider.refreshNutrition();
       }
     });
     
     // Hiển thị thông báo
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã cập nhật khẩu phần: ${newServingSize.toStringAsFixed(1)}'),
+        content: Text('Đã cập nhật khẩu phần: ${newServingSize.toStringAsFixed(1)} (${(newServingSize * 100).toInt()}g)'),
         duration: Duration(seconds: 1),
       ),
     );
@@ -1313,69 +1474,174 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   
   // Cập nhật khối lượng thực phẩm
   void _updateFoodWeight(double newWeight) {
+    // Kiểm tra giá trị newWeight, có thể cần điều chỉnh
+    if (newWeight > 1000) { // Giới hạn hợp lý
+      newWeight = 1000;
+    }
+    
+    // Kiểm tra nếu khối lượng không thay đổi
+    double oldWeight = 150;
+    if (_foodEntry.nutritionInfo != null && _foodEntry.nutritionInfo!.containsKey('totalWeight')) {
+      oldWeight = _foodEntry.nutritionInfo!['totalWeight'];
+    }
+    
+    if (newWeight == oldWeight) {
+      return; // Tránh cập nhật không cần thiết
+    }
+    
+    // Tính khẩu phần mới dựa trên gram mới (100g = 1 khẩu phần)
+    double newServingSize = newWeight / 100;
+    
     setState(() {
-      // Giả sử khối lượng cũ là 150g
-      double oldWeight = 150;
-      
-      // Nếu có thông tin từ dữ liệu cũ, sử dụng nó
-      if (_foodEntry.nutritionInfo != null && 
-          _foodEntry.nutritionInfo!.containsKey('totalWeight')) {
-        oldWeight = _foodEntry.nutritionInfo!['totalWeight'];
-      }
+      // Cập nhật khẩu phần
+      _servingSize = newServingSize;
       
       // Tính hệ số thay đổi
       double ratio = newWeight / oldWeight;
       
-      // Cập nhật thông tin dinh dưỡng dựa trên khối lượng mới
+      // Tính toán giá trị dinh dưỡng một lần duy nhất
       final nutritionValues = _foodEntry.calculateNutritionFromAPI();
       final calories = (nutritionValues['calories']! * ratio).toDouble();
       final protein = (nutritionValues['protein']! * ratio).toDouble();
       final fat = (nutritionValues['fat']! * ratio).toDouble();
       final carbs = (nutritionValues['carbs']! * ratio).toDouble();
       
-      // Tạo đối tượng FoodEntry mới với thông tin đã cập nhật
-      _foodEntry = FoodEntry(
-        id: _foodEntry.id,
-        description: _foodEntry.description,
-        imagePath: _foodEntry.imagePath,
-        audioPath: _foodEntry.audioPath,
-        dateTime: _foodEntry.dateTime,
-        isFavorite: _foodEntry.isFavorite,
-        barcode: _foodEntry.barcode,
-        calories: calories,
-        nutritionInfo: {
-          ...(_foodEntry.nutritionInfo ?? {}),
+      // Cập nhật tất cả các giá trị dinh dưỡng theo tỷ lệ
+      Map<String, dynamic> updatedNutritionInfo = {};
+      if (_foodEntry.nutritionInfo != null) {
+        updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
+        
+        // Cập nhật các giá trị dinh dưỡng chính
+        updatedNutritionInfo['calories'] = calories;
+        updatedNutritionInfo['protein'] = protein;
+        updatedNutritionInfo['fat'] = fat;
+        updatedNutritionInfo['carbs'] = carbs;
+        
+        // Xác định nếu oldTotalWeight đã quá lớn
+        if (oldWeight > 1000) {
+          oldWeight = 1000;
+        }
+        updatedNutritionInfo['totalWeight'] = newWeight;
+        
+        // Cập nhật servingSize
+        updatedNutritionInfo['servingSize'] = newServingSize;
+        
+        // Cập nhật items với servingSize mới nếu có
+        if (_foodEntry.items.isNotEmpty) {
+          final updatedItems = _foodEntry.items.map((item) {
+            return item.copyWith(servingSize: newServingSize);
+          }).toList();
+          
+          // Cập nhật FoodEntry với items mới
+          _foodEntry = _foodEntry.copyWith(
+            items: updatedItems,
+            nutritionInfo: updatedNutritionInfo,
+          );
+        } else {
+          // Cập nhật FoodEntry chỉ với nutritionInfo mới
+          _foodEntry = _foodEntry.copyWith(
+            nutritionInfo: updatedNutritionInfo,
+          );
+        }
+        
+        // Cập nhật các vi chất dinh dưỡng theo tỷ lệ
+        final micronutrients = [
+          'fiber', 'sugar', 'sodium', 'cholesterol', 'vitaminD', 'vitaminC', 
+          'vitaminB12', 'calcium', 'iron', 'potassium', 'magnesium'
+        ];
+        
+        for (var nutrient in micronutrients) {
+          if (updatedNutritionInfo.containsKey(nutrient)) {
+            updatedNutritionInfo[nutrient] = (updatedNutritionInfo[nutrient] * ratio).toDouble();
+          }
+        }
+      } else {
+        updatedNutritionInfo = {
           'calories': calories,
           'protein': protein,
           'fat': fat,
           'carbs': carbs,
           'totalWeight': newWeight,
-        },
-        mealType: _foodEntry.mealType,
-        items: _foodEntry.items,
-      );
+          'servingSize': newServingSize,
+        };
+        
+        // Tạo đối tượng FoodEntry mới với thông tin đã cập nhật
+        _foodEntry = _foodEntry.copyWith(
+          nutritionInfo: updatedNutritionInfo,
+        );
+      }
       
-      // Thêm dòng này để cập nhật Provider
+      // Cập nhật Provider
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Cập nhật entry trong provider
       foodProvider.updateFoodEntry(_foodEntry);
-      foodProvider.clearNutritionCache();
+      
+      // Đồng bộ dữ liệu dinh dưỡng nếu có items
+      if (_foodEntry.items.isNotEmpty) {
+        foodProvider.synchronizeNutrition(
+          entryId: _foodEntry.id,
+          servingSize: newServingSize,
+        );
+      }
+      
+      // Xóa cache để đảm bảo dữ liệu được tính toán lại
+      foodProvider.refreshNutrition();
     });
     
     // Hiển thị thông báo
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Đã cập nhật khối lượng: ${newWeight.toInt()}g'),
+        content: Text('Đã cập nhật khối lượng: ${newWeight.toInt()}g (${newServingSize.toStringAsFixed(1)} khẩu phần)'),
         duration: Duration(seconds: 1),
       ),
     );
+  }
+
+  // Thêm phương thức mới để cập nhật khẩu phần mặc định
+  void _updateDefaultServingSize() {
+    // Nếu đã có thông tin dinh dưỡng, cập nhật servingSize trong đó
+    if (_foodEntry.nutritionInfo != null) {
+      final updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
+      updatedNutritionInfo['servingSize'] = 1.0;
+      
+      // Cập nhật totalWeight để tương ứng với khẩu phần 1.0
+      if (!updatedNutritionInfo.containsKey('totalWeight') || updatedNutritionInfo['totalWeight'] <= 0) {
+        updatedNutritionInfo['totalWeight'] = 100.0; // 1 khẩu phần = 100g
+      }
+      
+      _foodEntry = _foodEntry.copyWith(nutritionInfo: updatedNutritionInfo);
+    }
+    
+    // Nếu có các items, cập nhật servingSize cho từng item
+    if (_foodEntry.items.isNotEmpty) {
+      final currentServingSize = _foodEntry.items.first.servingSize;
+      if (currentServingSize != 1.0) {
+        final ratio = 1.0 / currentServingSize;
+        
+        // Cập nhật từng item với servingSize = 1.0
+        final updatedItems = _foodEntry.items.map((item) {
+          return item.copyWith(servingSize: 1.0);
+        }).toList();
+        
+        _foodEntry = _foodEntry.copyWith(items: updatedItems);
+      }
+    }
   }
 
   @override
   void dispose() {
     // Đảm bảo lưu thay đổi trước khi thoát màn hình
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    
+    // Cập nhật entry trong provider
     foodProvider.updateFoodEntry(_foodEntry);
-    foodProvider.clearNutritionCache();
+    
+    // Xóa cache để đảm bảo dữ liệu được tính toán lại khi quay lại màn hình chính
+    foodProvider.refreshNutrition();
+    
+    print('FoodNutritionDetailScreen: Đã lưu và đồng bộ dữ liệu khi thoát màn hình');
+    
     super.dispose();
   }
 } 

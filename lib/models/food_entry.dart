@@ -31,16 +31,15 @@ class FoodEntry {
 
   // Getters for nutrition information based on items
   // servingSize là tỷ lệ theo 100g, ví dụ: servingSize=1.0 tương đương 100g
-  // Chia cho 100 để tính toán chính xác giá trị dinh dưỡng
-  double get totalCalories => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.calories * item.servingSize / 100));
-  double get totalProtein => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.protein * item.servingSize / 100));
-  double get totalFat => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.fat * item.servingSize / 100));
-  double get totalCarbs => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.carbs * item.servingSize / 100));
+  double get totalCalories => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.calories * item.servingSize));
+  double get totalProtein => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.protein * item.servingSize));
+  double get totalFat => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.fat * item.servingSize));
+  double get totalCarbs => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.carbs * item.servingSize));
   
   // Additional nutritional calculations
-  double get totalFiber => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + ((item.fiber ?? 0.0) * item.servingSize / 100));
-  double get totalSugar => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + ((item.sugar ?? 0.0) * item.servingSize / 100));
-  double get totalSodium => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + ((item.sodium ?? 0.0) * item.servingSize / 100));
+  double get totalFiber => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + ((item.fiber ?? 0.0) * item.servingSize));
+  double get totalSugar => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + ((item.sugar ?? 0.0) * item.servingSize));
+  double get totalSodium => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + ((item.sodium ?? 0.0) * item.servingSize));
   
   // Get total weight in grams
   double get totalWeight => items.isEmpty ? 0.0 : items.fold(0.0, (sum, item) => sum + (item.servingSize * 100));
@@ -57,6 +56,7 @@ class FoodEntry {
         'fiber': totalFiber,
         'sugar': totalSugar,
         'sodium': totalSodium,
+        'totalWeight': totalWeight,
       };
     }
     
@@ -69,12 +69,10 @@ class FoodEntry {
     final sugarFromAPI = nutritionInfo!['sugar'] is num ? (nutritionInfo!['sugar'] as num).toDouble() : totalSugar;
     final sodiumFromAPI = nutritionInfo!['sodium'] is num ? (nutritionInfo!['sodium'] as num).toDouble() : totalSodium;
     
-    // In debug log để kiểm tra giá trị
-    print('calculateNutritionFromAPI: calories=$caloriesFromAPI, protein=$proteinFromAPI, fat=$fatFromAPI, carbs=$carbsFromAPI');
-    print('ServingSize from nutritionInfo: ${nutritionInfo!['servingSize']}');
+    // Lấy tổng khối lượng từ API hoặc tính từ items
+    final totalWeightFromAPI = nutritionInfo!['totalWeight'] is num ? 
+        (nutritionInfo!['totalWeight'] as num).toDouble() : totalWeight;
     
-    // Không cần nhân với servingSize nữa vì giá trị đã được tính toán trong các getter methods
-    // hoặc đã được lưu đúng tỷ lệ trong nutritionInfo
     return {
       'calories': caloriesFromAPI,
       'protein': proteinFromAPI,
@@ -83,6 +81,7 @@ class FoodEntry {
       'fiber': fiberFromAPI,
       'sugar': sugarFromAPI,
       'sodium': sodiumFromAPI,
+      'totalWeight': totalWeightFromAPI,
     };
   }
 

@@ -132,6 +132,9 @@ class FoodProvider with ChangeNotifier {
         // Cập nhật danh sách
         _updateEntryInList(updatedEntry);
         
+        // Xóa cache để đảm bảo dữ liệu được tính toán lại
+        _calculationCache.clear();
+        
         _isLoadingNutritionData = false;
         notifyListeners();
         
@@ -155,8 +158,14 @@ class FoodProvider with ChangeNotifier {
         // Lưu vào cache
         _nutritionDataCache[foodName.toLowerCase()] = nutritionData;
         
+        // Xóa cache để đảm bảo dữ liệu được tính toán lại khi hiển thị vòng tròn dinh dưỡng
+        _calculationCache.clear();
+        
         _isLoadingNutritionData = false;
         notifyListeners();
+        
+        // Lưu dữ liệu sau khi cập nhật để đảm bảo dữ liệu mới được lưu
+        await _saveData();
         
         return updatedEntry;
       }
@@ -178,6 +187,13 @@ class FoodProvider with ChangeNotifier {
     final index = _foodEntries.indexWhere((entry) => entry.id == updatedEntry.id);
     if (index != -1) {
       _foodEntries[index] = updatedEntry;
+      // Đảm bảo xóa cache và lưu dữ liệu sau khi cập nhật
+      _calculationCache.clear();
+      _saveData();
+    } else {
+      // Nếu không tìm thấy, thêm mới vào danh sách
+      _foodEntries.add(updatedEntry);
+      _calculationCache.clear();
       _saveData();
     }
   }
@@ -451,63 +467,27 @@ class FoodProvider with ChangeNotifier {
             servingSize: newServingSize,
             notifyChange: false, // Không thông báo ngay vì sẽ thông báo ở cuối hàm
           );
-          
-          // Lấy lại entry đã cập nhật từ danh sách
-          final updatedIndex = _foodEntries.indexWhere((entry) => entry.id == updatedEntry.id);
-          if (updatedIndex != -1) {
-            // Đã cập nhật rồi, không cần thay thế lần nữa
-            print('Đã cập nhật khẩu phần thông qua synchronizeNutrition');
-          } else {
-            // Nếu không tìm thấy, thêm mới
-            _foodEntries.add(updatedEntry);
-          }
         } else {
-          // Nếu khẩu phần không thay đổi, cập nhật bình thường
+          // Nếu không thay đổi khẩu phần, cập nhật trực tiếp
           _foodEntries[index] = updatedEntry;
         }
       } else {
-        // Nếu không có items, cập nhật bình thường
+        // Nếu không có items hoặc có sự thay đổi về cấu trúc, cập nhật trực tiếp
         _foodEntries[index] = updatedEntry;
       }
-      
-      // Thêm dòng này để xóa cache
-      clearNutritionCache();
-      
-      // Cập nhật recent items nếu có items trong entry
-      if (updatedEntry.items.isNotEmpty) {
-        for (var item in updatedEntry.items) {
-          _addToRecentItems(item);
-        }
-      }
-      
-      // In log để debug
-      print('updateFoodEntry: Đã cập nhật food entry ID=${updatedEntry.id}');
-      if (updatedEntry.nutritionInfo != null) {
-        print('updateFoodEntry: Thông tin dinh dưỡng: ${updatedEntry.nutritionInfo}');
-      }
-      
-      // Thông báo cho UI cập nhật
-      notifyListeners();
-      
-      // Lưu dữ liệu
-      await _saveData();
     } else {
-      // Nếu entry không tồn tại, thêm mới
+      // Nếu không tìm thấy, thêm mới
       _foodEntries.add(updatedEntry);
-      
-      // Cập nhật recent items
-      if (updatedEntry.items.isNotEmpty) {
-        for (var item in updatedEntry.items) {
-          _addToRecentItems(item);
-        }
-      }
-      
-      // Thông báo cho UI cập nhật
-      notifyListeners();
-      
-      // Lưu dữ liệu
-      await _saveData();
     }
+    
+    // Xóa cache để đảm bảo dữ liệu được tính toán lại
+    _calculationCache.clear();
+    
+    // Thông báo cho UI cập nhật
+    notifyListeners();
+    
+    // Lưu dữ liệu
+    await _saveData();
   }
   
   // Delete food entry
@@ -569,14 +549,26 @@ class FoodProvider with ChangeNotifier {
     double totalProtein = 0.0;
     double totalFat = 0.0;
     double totalCarbs = 0.0;
+    double totalWeight = 0.0;
     
     for (var entry in entries) {
-      // Sử dụng calculateNutritionFromAPI để lấy giá trị chính xác nhất
+      // Ưu tiên sử dụng dữ liệu từ API nếu có
       final nutrition = entry.calculateNutritionFromAPI();
+      
       totalCalories += nutrition['calories'] ?? 0.0;
       totalProtein += nutrition['protein'] ?? 0.0;
       totalFat += nutrition['fat'] ?? 0.0;
       totalCarbs += nutrition['carbs'] ?? 0.0;
+      
+      // Đảm bảo totalWeight được tính đúng từ mỗi entry
+      if (nutrition.containsKey('totalWeight') && nutrition['totalWeight'] != null) {
+        totalWeight += nutrition['totalWeight']!;
+      } else if (entry.nutritionInfo != null && entry.nutritionInfo!.containsKey('totalWeight')) {
+        totalWeight += entry.nutritionInfo!['totalWeight'] as double;
+      } else if (entry.items.isNotEmpty) {
+        // Nếu không có totalWeight, tính từ servingSize của items
+        totalWeight += entry.totalWeight;
+      }
     }
     
     // Tạo kết quả
@@ -585,6 +577,7 @@ class FoodProvider with ChangeNotifier {
       'protein': totalProtein,
       'fat': totalFat,
       'carbs': totalCarbs,
+      'totalWeight': totalWeight,
     };
     
     // Lưu vào cache
@@ -598,6 +591,12 @@ class FoodProvider with ChangeNotifier {
   
   // Phương thức để xóa cache khi cần
   Future<void> clearNutritionCache() async {
+    _calculationCache.clear();
+    notifyListeners();
+  }
+  
+  // Phương thức để làm mới dữ liệu dinh dưỡng
+  Future<void> refreshNutrition() async {
     _calculationCache.clear();
     notifyListeners();
   }
@@ -884,7 +883,9 @@ class FoodProvider with ChangeNotifier {
   }) async {
     // Tìm và cập nhật FoodEntry theo ID
     final entryIndex = _foodEntries.indexWhere((entry) => entry.id == entryId);
-    if (entryIndex == -1) return;
+    if (entryIndex == -1) {
+      return;
+    }
     
     // Lấy entry cần cập nhật
     final entry = _foodEntries[entryIndex];
@@ -900,63 +901,76 @@ class FoodProvider with ChangeNotifier {
         return item.copyWith(servingSize: servingSize);
       }).toList();
       
-      // Cập nhật giá trị dinh dưỡng trong nutritionInfo dựa trên tỷ lệ khẩu phần
-      Map<String, dynamic> updatedNutritionInfo = {};
+      // Cập nhật thông tin dinh dưỡng trong nutritionInfo nếu có
+      Map<String, dynamic>? updatedNutritionInfo;
+      
       if (entry.nutritionInfo != null) {
-        // Sao chép thông tin dinh dưỡng cũ
         updatedNutritionInfo = Map<String, dynamic>.from(entry.nutritionInfo!);
         
-        // Cập nhật các giá trị dinh dưỡng chính dựa trên tỷ lệ
-        if (updatedNutritionInfo.containsKey('calories')) {
-          updatedNutritionInfo['calories'] = (updatedNutritionInfo['calories'] as double) * ratio;
-        }
-        if (updatedNutritionInfo.containsKey('protein')) {
-          updatedNutritionInfo['protein'] = (updatedNutritionInfo['protein'] as double) * ratio;
-        }
-        if (updatedNutritionInfo.containsKey('fat')) {
-          updatedNutritionInfo['fat'] = (updatedNutritionInfo['fat'] as double) * ratio;
-        }
-        if (updatedNutritionInfo.containsKey('carbs')) {
-          updatedNutritionInfo['carbs'] = (updatedNutritionInfo['carbs'] as double) * ratio;
-        }
-        if (updatedNutritionInfo.containsKey('fiber')) {
-          updatedNutritionInfo['fiber'] = (updatedNutritionInfo['fiber'] as double?) != null
-              ? (updatedNutritionInfo['fiber'] as double) * ratio
-              : null;
-        }
-        if (updatedNutritionInfo.containsKey('sugar')) {
-          updatedNutritionInfo['sugar'] = (updatedNutritionInfo['sugar'] as double?) != null
-              ? (updatedNutritionInfo['sugar'] as double) * ratio
-              : null;
+        // Cập nhật khẩu phần
+        updatedNutritionInfo['servingSize'] = servingSize;
+        
+        // Cập nhật tổng khối lượng - đảm bảo luôn có totalWeight
+        final oldTotalWeight = updatedNutritionInfo['totalWeight'] ?? (oldServingSize * 100);
+        updatedNutritionInfo['totalWeight'] = (oldTotalWeight * ratio).toDouble();
+        
+        // Cập nhật các giá trị dinh dưỡng chính theo tỷ lệ
+        for (var nutrient in ['calories', 'protein', 'fat', 'carbs', 'fiber', 'sugar', 'sodium']) {
+          if (updatedNutritionInfo.containsKey(nutrient) && updatedNutritionInfo[nutrient] is num) {
+            updatedNutritionInfo[nutrient] = (updatedNutritionInfo[nutrient] * ratio).toDouble();
+          }
         }
         
-        // Cập nhật khẩu phần mới
-        updatedNutritionInfo['servingSize'] = servingSize;
+        // Cập nhật các vi chất dinh dưỡng theo tỷ lệ
+        final micronutrients = [
+          'cholesterol', 'omega3', 'vitaminD', 'vitaminB12', 'vitaminC', 
+          'calcium', 'iron', 'potassium', 'magnesium'
+        ];
+        
+        for (var nutrient in micronutrients) {
+          if (updatedNutritionInfo.containsKey(nutrient) && updatedNutritionInfo[nutrient] is num) {
+            updatedNutritionInfo[nutrient] = (updatedNutritionInfo[nutrient] * ratio).toDouble();
+          }
+        }
       } else {
-        // Nếu chưa có nutritionInfo, tạo mới với servingSize
-        updatedNutritionInfo = {'servingSize': servingSize};
+        // Nếu không có nutritionInfo, tạo mới với totalWeight
+        updatedNutritionInfo = {
+          'servingSize': servingSize,
+          'totalWeight': servingSize * 100,
+        };
       }
       
-      // Cập nhật FoodEntry với items mới và thông tin dinh dưỡng đã cập nhật
-      _foodEntries[entryIndex] = entry.copyWith(
-        items: updatedItems,
+      // Tạo FoodEntry mới với items và thông tin dinh dưỡng đã cập nhật
+      final updatedEntry = FoodEntry(
+        id: entry.id,
+        description: entry.description,
+        imagePath: entry.imagePath,
+        audioPath: entry.audioPath,
+        dateTime: entry.dateTime,
+        isFavorite: entry.isFavorite,
+        barcode: entry.barcode,
+        calories: entry.calories,
         nutritionInfo: updatedNutritionInfo,
+        mealType: entry.mealType,
+        items: updatedItems,
       );
       
-      // In ra log để debug
-      print('Đã cập nhật khẩu phần từ $oldServingSize thành $servingSize (tỷ lệ: $ratio)');
-      print('Giá trị dinh dưỡng mới: ${updatedNutritionInfo.toString()}');
+      // Cập nhật entry trong danh sách
+      _foodEntries[entryIndex] = updatedEntry;
       
-      // Xóa cache để tính toán lại
+      // Xóa cache để tính toán lại các giá trị dinh dưỡng
       _calculationCache.clear();
       
-      // Lưu dữ liệu vào bộ nhớ
-      await _saveData();
-      
-      // Thông báo cập nhật UI nếu cần
+      // Thông báo cho UI cập nhật
       if (notifyChange) {
         notifyListeners();
       }
+      
+      // Lưu dữ liệu
+      await _saveData();
+      
+      // Làm mới dữ liệu dinh dưỡng để đảm bảo UI được cập nhật
+      refreshNutrition();
     }
   }
   
