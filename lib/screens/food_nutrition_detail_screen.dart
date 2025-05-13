@@ -185,7 +185,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
             ),
           ),
           title: Padding(
-            padding: EdgeInsets.only(left: 40), // Không cần padding trái vì đã có leadingWidth
+            padding: EdgeInsets.only(left: 0), // Không cần padding trái vì đã có leadingWidth
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -506,6 +506,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                       useRadialGradient: true, // Thêm hiệu ứng gradient cho vòng tròn dinh dưỡng
                       backgroundColor: Colors.grey.shade50, // Màu nền nhạt cho vòng tròn
                       showDetailedLabels: true, // Hiển thị nhãn chi tiết
+                      showMacroMainSummary: true, // Hiển thị tóm tắt macros
                     ),
                   ),
                 ),
@@ -1329,15 +1330,15 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
         // Xóa cache để đảm bảo dữ liệu được tính toán lại
         foodProvider.refreshNutrition();
       }
+      
+      // Hiển thị thông báo
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật khẩu phần: ${newServingSize.toStringAsFixed(1)} (${(newServingSize * 100).toInt()}g)'),
+          duration: Duration(seconds: 1),
+        ),
+      );
     });
-    
-    // Hiển thị thông báo
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đã cập nhật khẩu phần: ${newServingSize.toStringAsFixed(1)} (${(newServingSize * 100).toInt()}g)'),
-        duration: Duration(seconds: 1),
-      ),
-    );
   }
   
   // Thêm thực phẩm mới

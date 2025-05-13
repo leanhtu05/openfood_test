@@ -8,10 +8,12 @@ import '../../utils/constants.dart';
 
 class MealsSection extends StatelessWidget {
   final VoidCallback onMealTap;
+  final Function(FoodEntry)? onFoodItemTap;
 
   const MealsSection({
     Key? key,
     required this.onMealTap,
+    this.onFoodItemTap,
   }) : super(key: key);
 
   @override
@@ -104,6 +106,7 @@ class MealsSection extends StatelessWidget {
         mealType: mealType,
         entries: entries,
         onAddPressed: onMealTap,
+        onFoodItemTap: onFoodItemTap,
       );
     } else {
       return MealItemCard(

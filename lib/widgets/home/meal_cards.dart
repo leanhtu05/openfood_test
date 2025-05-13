@@ -245,13 +245,16 @@ class MealDetailCard extends StatelessWidget {
 class MealFoodDetailCard extends StatelessWidget {
   final String mealType;
   final List<FoodEntry> entries;
-  final VoidCallback? onAddPressed;
+  final VoidCallback onAddPressed;
+  // Thêm callback để xử lý khi một món ăn cụ thể được nhấn
+  final Function(FoodEntry)? onFoodItemTap;
 
   const MealFoodDetailCard({
     Key? key,
     required this.mealType,
     required this.entries,
-    this.onAddPressed,
+    required this.onAddPressed,
+    this.onFoodItemTap, // Optional
   }) : super(key: key);
 
   @override
@@ -493,71 +496,79 @@ class MealFoodDetailCard extends StatelessWidget {
   
   // Widget hiển thị thông tin món ăn đơn giản khi không có food_item_row.dart
   Widget _buildSimpleFoodItemRow(FoodItem item, {FoodEntry? foodEntry}) {
-    // Đảm bảo servingSize không nhỏ hơn hoặc bằng 0
-    final effectiveServingSize = item.servingSize <= 0 ? 1.0 : item.servingSize;
-    
-    // Xác định nên sử dụng dữ liệu từ đâu (nutritionInfo hay từ FoodItem)
-    Map<String, dynamic> nutritionValues = {};
-    
-    if (foodEntry != null && foodEntry.nutritionInfo != null) {
-      // Nếu có FoodEntry với nutritionInfo, sử dụng dữ liệu từ API
-      final nutritionInfo = foodEntry.nutritionInfo!;
-      final servingRatio = effectiveServingSize / (nutritionInfo['servingSize'] ?? 1.0);
-      
-      nutritionValues = {
-        'calories': ((nutritionInfo['calories'] as num?)?.toDouble() ?? item.calories) * servingRatio,
-        'protein': ((nutritionInfo['protein'] as num?)?.toDouble() ?? item.protein) * servingRatio,
-        'fat': ((nutritionInfo['fat'] as num?)?.toDouble() ?? item.fat) * servingRatio,
-        'carbs': ((nutritionInfo['carbs'] as num?)?.toDouble() ?? item.carbs) * servingRatio,
-        'totalWeight': (nutritionInfo['totalWeight'] as num?)?.toDouble() ?? (effectiveServingSize * 100),
-      };
-    } else {
-      // Nếu không có nutritionInfo, tính từ FoodItem
-      nutritionValues = {
-        'calories': item.calories * effectiveServingSize,
-        'protein': item.protein * effectiveServingSize,
-        'fat': item.fat * effectiveServingSize,
-        'carbs': item.carbs * effectiveServingSize,
-        'totalWeight': effectiveServingSize * 100, // Hiển thị gram
-      };
-    }
-    
-    // Lấy khối lượng và calo đã tính toán
-    final totalWeight = nutritionValues['totalWeight']?.toInt() ?? 100;
-    final actualCalories = nutritionValues['calories']?.toInt() ?? 0;
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.restaurant, color: Colors.grey, size: 20),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  item.name,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+    return InkWell(
+      // Thêm onTap handler, nếu foodEntry và onFoodItemTap có giá trị
+      onTap: (foodEntry != null && onFoodItemTap != null) 
+          ? () => onFoodItemTap!(foodEntry) 
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            // Food icon
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.fastfood_outlined,
+                  color: Colors.green.shade700,
+                  size: 20,
                 ),
-                SizedBox(height: 2),
-                Text(
-                  '${totalWeight}${item.servingUnit} • ${actualCalories}kcal',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+            SizedBox(width: 12),
+            // Food name and details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    '${item.servingSize} khẩu phần, ${(item.servingSize * 100).toInt()}g',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            // Calories
+            Text(
+              '${item.calories.round()}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.redAccent,
+              ),
+            ),
+            Text(
+              'kcal',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.redAccent,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

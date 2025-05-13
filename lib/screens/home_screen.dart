@@ -20,6 +20,8 @@ import '../screens/food_logging_screen.dart';
 import '../widgets/draggable_floating_action_button.dart';
 import '../services/onboarding_service.dart';
 import 'tdee_info_screen.dart';
+import '../screens/food_nutrition_detail_screen.dart';
+import '../models/food_entry.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -552,6 +554,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 ),
                               ).then((_) {
                                 // Tải lại dữ liệu khi quay về từ màn hình food logging
+                                _loadDataForSelectedDate();
+                              });
+                            },
+                            onFoodItemTap: (FoodEntry foodEntry) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => FoodNutritionDetailScreen(
+                                    foodEntry: foodEntry,
+                                    onSave: (updatedEntry) {
+                                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                                      
+                                      foodProvider.updateFoodEntry(updatedEntry);
+                                      
+                                      foodProvider.clearNutritionCache();
+                                      
+                                      foodProvider.refreshNutrition();
+                                      
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                ),
+                              ).then((_) {
                                 _loadDataForSelectedDate();
                               });
                             },
