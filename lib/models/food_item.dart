@@ -19,10 +19,10 @@ class FoodItem {
     required this.name,
     this.brand,
     this.imageUrl,
-    required this.calories,
-    required this.protein,
-    required this.fat,
-    required this.carbs,
+    this.calories = 0.0,
+    this.protein = 0.0,
+    this.fat = 0.0,
+    this.carbs = 0.0,
     this.fiber,
     this.sugar,
     this.sodium,
@@ -38,10 +38,10 @@ class FoodItem {
       name: json['name'],
       brand: json['brand'],
       imageUrl: json['imageUrl'],
-      calories: (json['calories'] as num).toDouble(), // Calories per 100g
-      protein: (json['protein'] as num).toDouble(), // Protein per 100g
-      fat: (json['fat'] as num).toDouble(), // Fat per 100g
-      carbs: (json['carbs'] as num).toDouble(), // Carbs per 100g
+      calories: json['calories'] != null ? (json['calories'] as num).toDouble() : 0.0,
+      protein: json['protein'] != null ? (json['protein'] as num).toDouble() : 0.0,
+      fat: json['fat'] != null ? (json['fat'] as num).toDouble() : 0.0,
+      carbs: json['carbs'] != null ? (json['carbs'] as num).toDouble() : 0.0,
       fiber: json['fiber'] != null ? (json['fiber'] as num).toDouble() : null,
       sugar: json['sugar'] != null ? (json['sugar'] as num).toDouble() : null,
       sodium: json['sodium'] != null ? (json['sodium'] as num).toDouble() : null,
@@ -90,20 +90,23 @@ class FoodItem {
       name: json['product_name'] ?? 'Unknown Food',
       brand: json['brands'],
       imageUrl: json['image_url'],
-      calories: ((nutrients['energy-kcal'] ?? nutrients['energy'] ?? 0) as num).toDouble(),
-      protein: (nutrients['proteins'] ?? 0).toDouble(),
-      fat: (nutrients['fat'] ?? 0).toDouble(),
-      carbs: (nutrients['carbohydrates'] ?? 0).toDouble(),
-      fiber: (nutrients['fiber'] ?? 0).toDouble(),
-      sugar: (nutrients['sugars'] ?? 0).toDouble(),
-      sodium: (nutrients['sodium'] ?? 0).toDouble(),
-      servingSize: double.tryParse('${json['serving_quantity'] ?? 1}') ?? 1.0,
+      calories: nutrients['energy-kcal'] != null ? 
+              ((nutrients['energy-kcal']) as num).toDouble() : 
+              (nutrients['energy'] != null ? ((nutrients['energy']) as num).toDouble() : 0.0),
+      protein: nutrients['proteins'] != null ? ((nutrients['proteins']) as num).toDouble() : 0.0,
+      fat: nutrients['fat'] != null ? ((nutrients['fat']) as num).toDouble() : 0.0,
+      carbs: nutrients['carbohydrates'] != null ? ((nutrients['carbohydrates']) as num).toDouble() : 0.0,
+      fiber: nutrients['fiber'] != null ? ((nutrients['fiber']) as num).toDouble() : null,
+      sugar: nutrients['sugars'] != null ? ((nutrients['sugars']) as num).toDouble() : null,
+      sodium: nutrients['sodium'] != null ? ((nutrients['sodium']) as num).toDouble() : null,
+      servingSize: json['serving_quantity'] != null ? 
+                 double.tryParse('${json['serving_quantity']}') ?? 1.0 : 1.0,
       servingUnit: json['serving_size'] != null ? 
           json['serving_size'].toString().replaceAll(RegExp(r'[0-9,.]+'), '').trim() : 'g',
     );
   }
 
-  // Create a copy with modified values
+  // Tạo bản sao mới với một số thuộc tính có thể thay đổi
   FoodItem copyWith({
     String? id,
     String? name,
@@ -113,13 +116,21 @@ class FoodItem {
     double? protein,
     double? fat,
     double? carbs,
+    double? servingSize,
+    String? servingUnit,
     double? fiber,
     double? sugar,
     double? sodium,
-    double? servingSize,
-    String? servingUnit,
     Map<String, dynamic>? additionalNutrients,
   }) {
+    // Tạo bản sao hoàn toàn mới của additionalNutrients để tránh chia sẻ tham chiếu
+    Map<String, dynamic>? newAdditionalNutrients;
+    if (additionalNutrients != null) {
+      newAdditionalNutrients = Map<String, dynamic>.from(additionalNutrients);
+    } else if (this.additionalNutrients != null) {
+      newAdditionalNutrients = Map<String, dynamic>.from(this.additionalNutrients!);
+    }
+    
     return FoodItem(
       id: id ?? this.id,
       name: name ?? this.name,
@@ -129,12 +140,12 @@ class FoodItem {
       protein: protein ?? this.protein,
       fat: fat ?? this.fat,
       carbs: carbs ?? this.carbs,
+      servingSize: servingSize ?? this.servingSize,
+      servingUnit: servingUnit ?? this.servingUnit,
       fiber: fiber ?? this.fiber,
       sugar: sugar ?? this.sugar,
       sodium: sodium ?? this.sodium,
-      servingSize: servingSize ?? this.servingSize,
-      servingUnit: servingUnit ?? this.servingUnit,
-      additionalNutrients: additionalNutrients ?? this.additionalNutrients,
+      additionalNutrients: newAdditionalNutrients,
     );
   }
   

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/food_item.dart';
 import '../../models/food_entry.dart';
+import 'package:uuid/uuid.dart';
 
 class FoodItemCard extends StatefulWidget {
   final FoodItem item;
@@ -29,13 +30,12 @@ class _FoodItemCardState extends State<FoodItemCard> {
   @override
   void initState() {
     super.initState();
-    _item = widget.item;
+    // Tạo bản sao hoàn toàn mới của item để tránh ảnh hưởng đến các item khác
+    _item = widget.item.copyWith(
+      id: Uuid().v4(),
+      servingSize: widget.item.servingSize > 0 ? widget.item.servingSize : 1.0,
+    );
     _foodEntry = widget.foodEntry;
-    
-    // Nếu servingSize chưa được thiết lập, đặt giá trị mặc định là 1.0
-    if (_item.servingSize <= 0) {
-      _updateServingSize(1.0);
-    }
   }
 
   @override
@@ -43,8 +43,11 @@ class _FoodItemCardState extends State<FoodItemCard> {
     // Đảm bảo servingSize không nhỏ hơn hoặc bằng 0
     final effectiveServingSize = _item.servingSize <= 0 ? 1.0 : _item.servingSize;
     
-    // Tính toán số gram từ servingSize
+    // Tính toán số gram từ servingSize (1 serving = 100g)
     final gramsDisplay = (effectiveServingSize * 100).toStringAsFixed(0);
+    
+    // Xác định đơn vị hiển thị
+    final displayUnit = _item.servingUnit.isNotEmpty ? _item.servingUnit : 'g';
     
     // Cấu hình tính toán giá trị dinh dưỡng chính xác
     final nutritionInfo = _foodEntry.nutritionInfo;
@@ -140,7 +143,7 @@ class _FoodItemCardState extends State<FoodItemCard> {
                     ),
                     Flexible(
                       child: Text(
-                        '$gramsDisplay${_item.servingUnit}',
+                        '$gramsDisplay$displayUnit',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -288,43 +291,82 @@ class _FoodItemCardState extends State<FoodItemCard> {
       // Giới hạn servingSize trong khoảng từ 0.1 đến 5.0 (tương đương 10g đến 500g)
       final clampedSize = newSize.clamp(0.1, 5.0);
       
+      // Tạo bản sao hoàn toàn mới của item với servingSize mới
       final updatedItem = FoodItem(
         id: _item.id,
         name: _item.name,
         brand: _item.brand,
         imageUrl: _item.imageUrl,
-        calories: _item.calories,  // calories per 100g
-        protein: _item.protein,    // protein per 100g
-        carbs: _item.carbs,        // carbs per 100g
-        fat: _item.fat,            // fat per 100g
+        calories: _item.calories,
+        protein: _item.protein,
+        fat: _item.fat,
+        carbs: _item.carbs,
+        servingSize: clampedSize,
+        servingUnit: _item.servingUnit.isNotEmpty ? _item.servingUnit : 'g',
         fiber: _item.fiber,
         sugar: _item.sugar,
         sodium: _item.sodium,
-        servingSize: clampedSize,  // Hệ số nhân với 100g
-        servingUnit: _item.servingUnit,
-        additionalNutrients: _item.additionalNutrients,
+        additionalNutrients: _item.additionalNutrients != null 
+            ? Map<String, dynamic>.from(_item.additionalNutrients!) 
+            : null,
       );
       
+      // Cập nhật item trong state
       _item = updatedItem;
       
-      List<FoodItem> updatedItems = List.from(_foodEntry.items);
-      updatedItems[widget.index] = updatedItem;
+      // Tạo bản sao mới hoàn toàn của danh sách items
+      final updatedItems = _foodEntry.items.map((item) {
+        if (item.id == _item.id) {
+          return updatedItem; // Sử dụng item đã cập nhật
+        } else {
+          // Tạo bản sao mới cho các item khác
+          return FoodItem(
+            id: item.id,
+            name: item.name,
+            brand: item.brand,
+            imageUrl: item.imageUrl,
+            calories: item.calories,
+            protein: item.protein,
+            fat: item.fat,
+            carbs: item.carbs,
+            servingSize: item.servingSize,
+            servingUnit: item.servingUnit,
+            fiber: item.fiber,
+            sugar: item.sugar,
+            sodium: item.sodium,
+            additionalNutrients: item.additionalNutrients != null 
+                ? Map<String, dynamic>.from(item.additionalNutrients!) 
+                : null,
+          );
+        }
+      }).toList();
       
-      _foodEntry = FoodEntry(
+      // Tạo bản sao mới của nutritionInfo nếu có
+      Map<String, dynamic>? updatedNutritionInfo;
+      if (_foodEntry.nutritionInfo != null) {
+        updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
+      }
+      
+      // Tạo FoodEntry mới với items đã cập nhật
+      final updatedFoodEntry = FoodEntry(
         id: _foodEntry.id,
-        dateTime: _foodEntry.dateTime,
         description: _foodEntry.description,
-        mealType: _foodEntry.mealType,
-        items: updatedItems,
         imagePath: _foodEntry.imagePath,
         audioPath: _foodEntry.audioPath,
+        dateTime: _foodEntry.dateTime,
         isFavorite: _foodEntry.isFavorite,
         barcode: _foodEntry.barcode,
         calories: _foodEntry.calories,
-        nutritionInfo: _foodEntry.nutritionInfo,
+        nutritionInfo: updatedNutritionInfo,
+        mealType: _foodEntry.mealType,
+        items: updatedItems,
       );
       
-      widget.onFoodEntryChanged(_foodEntry);
+      // Cập nhật foodEntry trong state
+      _foodEntry = updatedFoodEntry;
+      
+      // Thông báo thay đổi lên widget cha
+      widget.onFoodEntryChanged(updatedFoodEntry);
     });
   }
 } 

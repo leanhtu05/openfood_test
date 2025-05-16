@@ -22,6 +22,7 @@ import '../services/onboarding_service.dart';
 import 'tdee_info_screen.dart';
 import '../screens/food_nutrition_detail_screen.dart';
 import '../models/food_entry.dart';
+import '../screens/meal_recording_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -53,6 +54,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Offset _fabPosition = Offset(0, 0);
   bool _isDragging = false;
   bool _showMealSuggestion = true;
+  
+  // Thêm biến này để kiểm soát việc refresh
+  DateTime _lastRefresh = DateTime.now();
 
   @override
   void initState() {
@@ -97,12 +101,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       
       exerciseProvider.setSelectedDate(_selectedDate);
       waterProvider.setSelectedDate(_selectedDate);
+      
+      // Xóa cache dinh dưỡng
+      foodProvider.clearNutritionCache();
+      
+      // Đặt ngày cho food provider - điều này sẽ tự động gọi fetchDaily...
       foodProvider.setSelectedDate(_selectedDate);
       
       // Tải dữ liệu
       _loadExercisesForSelectedDate();
       waterProvider.loadData();
       foodProvider.loadData();
+      
+      print('HomeScreen: Đã tải dữ liệu ban đầu cho ngày $_selectedDate');
     });
   }
   
@@ -164,6 +175,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       print('Đang đồng bộ ngày đã chọn: $_selectedDate cho tất cả provider');
       exerciseProvider.setSelectedDate(_selectedDate);
       waterProvider.setSelectedDate(_selectedDate);
+      
+      // Xóa cache dinh dưỡng
+      foodProvider.clearNutritionCache();
+      
+      // Đặt ngày cho food provider - điều này sẽ tự động gọi fetchDaily...
       foodProvider.setSelectedDate(_selectedDate);
       
       // Tải lại dữ liệu
@@ -171,8 +187,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       await waterProvider.loadData();
       await foodProvider.loadData();
       
-      // Thêm dòng này để đảm bảo cache dinh dưỡng được xóa
-      foodProvider.clearNutritionCache();
+      // Làm mới dữ liệu dinh dưỡng
+      await foodProvider.refreshNutrition();
       
       // Cập nhật UI
       if (mounted) {
@@ -205,9 +221,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Use a post-frame callback to avoid calling setState during build
+    
+    // Tránh gọi setState trong lúc build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadExercisesForSelectedDate();
+      // Kiểm tra xem đã quá 2 giây kể từ lần refresh cuối chưa
+      final now = DateTime.now();
+      final difference = now.difference(_lastRefresh).inSeconds;
+      
+      // Nếu đã quá 2 giây, refresh dữ liệu
+      if (difference > 2) {
+        _lastRefresh = now;
+        _loadExercisesForSelectedDate();
+        _loadDataForSelectedDate();
+        print('HomeScreen (didChangeDependencies): Tự động làm mới dữ liệu sau $difference giây');
+      }
     });
   }
 
@@ -249,6 +276,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
       actions: [
+        // Thêm nút Refresh
+        IconButton(
+          icon: Icon(Icons.refresh, color: AppColors.primary),
+          onPressed: () {
+            // Hiển thị thông báo
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.refresh, color: Colors.white, size: 16),
+                    SizedBox(width: 8),
+                    Text('Đang làm mới dữ liệu...'),
+                  ],
+                ),
+                duration: Duration(seconds: 1),
+                backgroundColor: Colors.green,
+              ),
+            );
+            
+            // Làm mới dữ liệu
+            _loadDataForSelectedDate();
+          },
+        ),
         IconButton(
           icon: Icon(Icons.restart_alt, color: AppColors.primary),
           onPressed: () {
@@ -408,13 +458,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
-              ).then((_) {
-                // Tải lại dữ liệu khi quay về từ màn hình food logging
-                _loadDataForSelectedDate();
-              });
+              _navigateToFoodLogging();
             },
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -481,144 +525,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            child: AnimationLimiter(
-              child: Column(
-                children: AnimationConfiguration.toStaggeredList(
-                  duration: AppAnimations.medium,
-                  childAnimationBuilder: (widget) => SlideAnimation(
-                    horizontalOffset: 50.0,
-                    child: FadeInAnimation(
-                      child: widget,
-                    ),
-                  ),
-                  children: [
-                    // const UserProfileCircularSummary(),
-                    DaySelector(
-                      selectedDay: _selectedDay,
-                      onDaySelected: (day) {
-                        setState(() {
-                          _selectedDay = day;
-                          
-                          // Cập nhật ngày được chọn dựa trên ngày đã chọn từ DaySelector
-                          final selectedDateTime = DaySelector.getSelectedDateWithDay(day);
-                          _selectedDate = selectedDateTime.toIso8601String().split('T')[0];
-                          
-                          // In ra thông tin debug ngày đã chọn
-                          print('Đã chọn ngày mới: $_selectedDate từ DaySelector');
-                        });
-                        
-                        // Tải lại dữ liệu cho ngày đã chọn
-                        _loadDataForSelectedDate();
-                      },
-                    ),
-                    // Meal suggestion based on time of day
-                    _buildMealTimeSuggestion(),
-                    
-                    // Thêm NutritionCard để hiển thị dữ liệu dinh dưỡng
-                    const NutritionCard(),
-                    
-                    // Food log section - most important part
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.list_alt, size: 20, color: AppColors.textPrimary),
-                                SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    'Nhật ký ăn uống',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyles.heading3,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          MealsSection(
-                            onMealTap: () {
-                              // Navigate to food logging screen
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => FoodLoggingScreen(),
-                                ),
-                              ).then((_) {
-                                // Tải lại dữ liệu khi quay về từ màn hình food logging
-                                _loadDataForSelectedDate();
-                              });
-                            },
-                            onFoodItemTap: (FoodEntry foodEntry) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => FoodNutritionDetailScreen(
-                                    foodEntry: foodEntry,
-                                    onSave: (updatedEntry) {
-                                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-                                      
-                                      foodProvider.updateFoodEntry(updatedEntry);
-                                      
-                                      foodProvider.clearNutritionCache();
-                                      
-                                      foodProvider.refreshNutrition();
-                                      
-                                      Navigator.of(context).pop();
-                                    },
-                                  ),
-                                ),
-                              ).then((_) {
-                                _loadDataForSelectedDate();
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Water tracking
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: WaterSection(),
-                    ),
-                    
-                    // Exercise section
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: ExerciseSection(
-                          exercises: _selectedExercises,
-                          onAddExercise: () {
-                            Navigator.pushNamed(
-                              context,
-                              '/exercise_log',
-                              arguments: _selectedDate,
-                            ).then((_) => _loadExercisesForSelectedDate());
-                          },
-                          onViewHistory: () {
-                            Navigator.pushNamed(
-                              context, 
-                              '/combined_history',
-                              arguments: {'filter': 'exercise'}
-                            ).then((_) => _loadExercisesForSelectedDate());
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: _buildBody(),
       floatingActionButton: DraggableFloatingActionButton(
         initialOffset: Offset(MediaQuery.of(context).size.width - 80, MediaQuery.of(context).size.height / 2 - 80),
         backgroundColor: AppColors.primary,
@@ -678,13 +585,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     color: AppColors.food,
                     onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
-                    ).then((_) {
-                      // Tải lại dữ liệu khi quay về từ màn hình food logging
-                      _loadDataForSelectedDate();
-                    });
+                    _navigateToFoodLogging();
                   },
                 ),
                   _buildQuickActionButton(
@@ -719,10 +620,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     color: AppColors.secondary,
                     onTap: () {
                     Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
-                      );
+                    _navigateToFoodLogging();
                   },
                 ),
               ],
@@ -806,6 +704,467 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         );
       },
     );
+  }
+
+  void _navigateToFoodLogging() async {
+    // Lưu thời gian hiện tại trước khi chuyển màn hình
+    _lastRefresh = DateTime.now();
+    
+    // Mở màn hình ghi nhận thức ăn và truyền ngày đã chọn
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FoodLoggingScreen(initialDate: _selectedDate),
+      ),
+    );
+    
+    // Sau khi quay lại, xử lý kết quả và làm mới dữ liệu
+    if (mounted) {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Xử lý kết quả trả về nếu có
+      if (result != null && result is Map<String, dynamic>) {
+        if (result.containsKey('selectedDate')) {
+          // Lấy ngày từ kết quả trả về
+          final selectedDate = result['selectedDate'];
+          
+          print('_navigateToFoodLogging: Nhận được ngày từ kết quả trả về: $selectedDate');
+          
+          // Cập nhật UI và FoodProvider
+          setState(() {
+            _selectedDate = selectedDate;
+            // Cập nhật _selectedDay từ _selectedDate
+            final selectedDateTime = DateTime.parse(_selectedDate);
+            _selectedDay = selectedDateTime.day;
+          });
+          
+          // Cập nhật ngày trong provider
+          foodProvider.setSelectedDate(_selectedDate);
+          
+          // Cập nhật dữ liệu Food Provider cho ngày này
+          await _updateFoodDataForDate(_selectedDate);
+          
+          // Load lại các loại dữ liệu khác cho ngày này
+          await _loadDataForSelectedDate();
+          
+          print('_navigateToFoodLogging: Đã cập nhật UI và dữ liệu cho ngày: $_selectedDate');
+        }
+      }
+      
+      // Load lại dữ liệu (trong mọi trường hợp)
+      await foodProvider.loadData();
+      
+      // Load lại các loại dữ liệu khác
+      await _loadDataForSelectedDate();
+      
+      print('Quay lại từ FoodLoggingScreen: Tự động làm mới dữ liệu');
+    }
+  }
+
+  Widget _buildBody() {
+    switch (_selectedNavIndex) {
+      case 0:
+        // Tab 0
+        return Center(child: Text('Tab 0'));
+      case 1:
+        // Tab Nutrition
+        return Center(child: Text('Tính năng dinh dưỡng sẽ sớm có!'));
+      case 2:
+        // Icon ghi lại hiển thị MealRecordingScreen
+        return MealRecordingScreen();
+      case 3:
+
+       return SingleChildScrollView(
+          child: AnimationLimiter(
+            child: Column(
+              children: AnimationConfiguration.toStaggeredList(
+                duration: AppAnimations.medium,
+                childAnimationBuilder: (widget) => SlideAnimation(
+                  horizontalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: widget,
+                  ),
+                ),
+                children: [
+                  // const UserProfileCircularSummary(),
+                  DaySelector.fullDate(
+                    selectedDate: _selectedDate,
+                    onDateChanged: (newDate) {
+                      setState(() {
+                        _selectedDate = newDate;
+                        // Cập nhật _selectedDay để duy trì tương thích với mã hiện tại
+                        final selectedDateTime = DateTime.parse(newDate);
+                        _selectedDay = selectedDateTime.day;
+                        print('Đã chọn ngày mới: $_selectedDate từ DaySelector.fullDate');
+                      });
+                      // Cập nhật dữ liệu Food Provider trước
+                      _updateFoodDataForDate(_selectedDate);
+                      // Sau đó mới load dữ liệu các provider khác
+                      _loadDataForSelectedDate();
+                    },
+                  ),
+                  _buildMealTimeSuggestion(),
+                  const NutritionCard(),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.list_alt, size: 20, color: AppColors.textPrimary),
+                              SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  'Nhật ký ăn uống',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.heading3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        MealsSection(
+                          onMealTap: () {
+                            _navigateToFoodLogging();
+                          },
+                          onFoodItemTap: (FoodEntry foodEntry) {
+                            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                            foodProvider.clearNutritionCache();
+                            foodProvider.refreshNutrition();
+                            final updatedFoodEntry = foodProvider.getFoodEntryById(foodEntry.id) ?? foodEntry;
+                            foodProvider.clearNutritionCache();
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 20, 
+                                      height: 20, 
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2, 
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      )
+                                    ),
+                                    SizedBox(width: 10),
+                                    Text('Đang tải thông tin dinh dưỡng...'),
+                                  ],
+                                ),
+                                duration: Duration(seconds: 1),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FoodNutritionDetailScreen(
+                                  foodEntry: updatedFoodEntry,
+                                  onSave: (updatedEntry) {
+                                    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                                    foodProvider.updateFoodEntry(updatedEntry);
+                                    if (updatedEntry.items.isNotEmpty) {
+                                      for (var item in updatedEntry.items) {
+                                        foodProvider.synchronizeNutritionData(
+                                          item.id, 
+                                          item.servingSize
+                                        );
+                                      }
+                                    }
+                                    if (updatedEntry.items.isNotEmpty) {
+                                      foodProvider.synchronizeNutrition(
+                                        entryId: updatedEntry.id,
+                                        servingSize: updatedEntry.items.first.servingSize,
+                                        notifyChange: true,
+                                      );
+                                    }
+                                    foodProvider.clearNutritionCache();
+                                    foodProvider.refreshNutrition();
+                                    String dateStr = updatedEntry.dateTime.toIso8601String().split('T')[0];
+                                    foodProvider.setSelectedDate(dateStr);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Đã cập nhật thông tin dinh dưỡng: ${updatedEntry.description}'),
+                                        duration: Duration(seconds: 2),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    _loadDataForSelectedDate();
+                                  },
+                                ),
+                              ),
+                            ).then((result) {
+                              if (result != null && result is Map<String, dynamic>) {
+                                if (result.containsKey('selectedDate')) {
+                                  setState(() {
+                                    _selectedDate = result['selectedDate'];
+                                    // Cập nhật _selectedDay từ _selectedDate
+                                    final selectedDateTime = DateTime.parse(_selectedDate);
+                                    _selectedDay = selectedDateTime.day;
+                                  });
+                                  
+                                  // Cập nhật dữ liệu Food Provider
+                                  _updateFoodDataForDate(_selectedDate);
+                                  // Load lại dữ liệu
+                                  _loadDataForSelectedDate();
+                                  
+                                  // In log để debug
+                                  print('Đã nhận selectedDate từ FoodNutritionDetailScreen: $_selectedDate');
+                                }
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: WaterSection(),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: ExerciseSection(
+                      exercises: _selectedExercises,
+                      onAddExercise: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/exercise_log',
+                          arguments: _selectedDate,
+                        ).then((_) => _loadExercisesForSelectedDate());
+                      },
+                      onViewHistory: () {
+                        Navigator.pushNamed(
+                          context, 
+                          '/combined_history',
+                          arguments: {'filter': 'exercise'}
+                        ).then((_) => _loadExercisesForSelectedDate());
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        // Tab 3     
+      case 4:
+      return Center(child: Text('Tab 4'));
+        // Icon hiển thị Home Screen  
+      default:
+        // Tab mặc định là Home
+        return SingleChildScrollView(
+          child: AnimationLimiter(
+            child: Column(
+              children: AnimationConfiguration.toStaggeredList(
+                duration: AppAnimations.medium,
+                childAnimationBuilder: (widget) => SlideAnimation(
+                  horizontalOffset: 50.0,
+                  child: FadeInAnimation(
+                    child: widget,
+                  ),
+                ),
+                children: [
+                  // const UserProfileCircularSummary(),
+                  DaySelector.fullDate(
+                    selectedDate: _selectedDate,
+                    onDateChanged: (newDate) {
+                      setState(() {
+                        _selectedDate = newDate;
+                        // Cập nhật _selectedDay để duy trì tương thích với mã hiện tại
+                        final selectedDateTime = DateTime.parse(newDate);
+                        _selectedDay = selectedDateTime.day;
+                        print('Đã chọn ngày mới: $_selectedDate từ DaySelector.fullDate');
+                      });
+                      // Cập nhật dữ liệu Food Provider trước
+                      _updateFoodDataForDate(_selectedDate);
+                      // Sau đó mới load dữ liệu các provider khác
+                      _loadDataForSelectedDate();
+                    },
+                  ),
+                  _buildMealTimeSuggestion(),
+                  const NutritionCard(),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.list_alt, size: 20, color: AppColors.textPrimary),
+                              SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  'Nhật ký ăn uống',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.heading3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        MealsSection(
+                          onMealTap: () {
+                            _navigateToFoodLogging();
+                          },
+                          onFoodItemTap: (FoodEntry foodEntry) {
+                            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                            foodProvider.clearNutritionCache();
+                            foodProvider.refreshNutrition();
+                            final updatedFoodEntry = foodProvider.getFoodEntryById(foodEntry.id) ?? foodEntry;
+                            foodProvider.clearNutritionCache();
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 20, 
+                                      height: 20, 
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2, 
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      )
+                                    ),
+                                    SizedBox(width: 10),
+                                    Text('Đang tải thông tin dinh dưỡng...'),
+                                  ],
+                                ),
+                                duration: Duration(seconds: 1),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FoodNutritionDetailScreen(
+                                  foodEntry: updatedFoodEntry,
+                                  onSave: (updatedEntry) {
+                                    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                                    foodProvider.updateFoodEntry(updatedEntry);
+                                    if (updatedEntry.items.isNotEmpty) {
+                                      for (var item in updatedEntry.items) {
+                                        foodProvider.synchronizeNutritionData(
+                                          item.id, 
+                                          item.servingSize
+                                        );
+                                      }
+                                    }
+                                    if (updatedEntry.items.isNotEmpty) {
+                                      foodProvider.synchronizeNutrition(
+                                        entryId: updatedEntry.id,
+                                        servingSize: updatedEntry.items.first.servingSize,
+                                        notifyChange: true,
+                                      );
+                                    }
+                                    foodProvider.clearNutritionCache();
+                                    foodProvider.refreshNutrition();
+                                    String dateStr = updatedEntry.dateTime.toIso8601String().split('T')[0];
+                                    foodProvider.setSelectedDate(dateStr);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Đã cập nhật thông tin dinh dưỡng: ${updatedEntry.description}'),
+                                        duration: Duration(seconds: 2),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    _loadDataForSelectedDate();
+                                  },
+                                ),
+                              ),
+                            ).then((result) {
+                              if (result != null && result is Map<String, dynamic>) {
+                                if (result.containsKey('selectedDate')) {
+                                  setState(() {
+                                    _selectedDate = result['selectedDate'];
+                                    // Cập nhật _selectedDay từ _selectedDate
+                                    final selectedDateTime = DateTime.parse(_selectedDate);
+                                    _selectedDay = selectedDateTime.day;
+                                  });
+                                  
+                                  // Cập nhật dữ liệu Food Provider
+                                  _updateFoodDataForDate(_selectedDate);
+                                  // Load lại dữ liệu
+                                  _loadDataForSelectedDate();
+                                  
+                                  // In log để debug
+                                  print('Đã nhận selectedDate từ FoodNutritionDetailScreen: $_selectedDate');
+                                }
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: WaterSection(),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: ExerciseSection(
+                      exercises: _selectedExercises,
+                      onAddExercise: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/exercise_log',
+                          arguments: _selectedDate,
+                        ).then((_) => _loadExercisesForSelectedDate());
+                      },
+                      onViewHistory: () {
+                        Navigator.pushNamed(
+                          context, 
+                          '/combined_history',
+                          arguments: {'filter': 'exercise'}
+                        ).then((_) => _loadExercisesForSelectedDate());
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        // Tab 3 
+    }
+  }
+
+  // Cập nhật dữ liệu món ăn khi ngày thay đổi
+  Future<void> _updateFoodDataForDate(String selectedDate) async {
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Cập nhật ngày đã chọn trong FoodProvider
+      print('HomeScreen: Cập nhật ngày được chọn trong FoodProvider: $selectedDate');
+      foodProvider.setSelectedDate(selectedDate);
+      
+      // Xóa cache và tải lại dữ liệu
+      foodProvider.clearNutritionCache();
+      await foodProvider.loadData();
+      await foodProvider.refreshNutrition();
+      
+      print('HomeScreen: Đã tải lại dữ liệu món ăn cho ngày: $selectedDate');
+      
+      // In log để xác minh các món ăn cho ngày đã chọn
+      final entryCount = foodProvider.todayEntries.length;
+      print('HomeScreen: Số lượng món ăn cho ngày $selectedDate: $entryCount');
+      for (var entry in foodProvider.todayEntries) {
+        final entryDate = entry.dateTime.toIso8601String().split('T')[0];
+        print('HomeScreen: - ${entry.description} (${entry.mealType}) - ngày: $entryDate');
+      }
+      
+    } catch (e) {
+      print('Lỗi khi cập nhật dữ liệu món ăn cho ngày: $e');
+    }
   }
 }
 

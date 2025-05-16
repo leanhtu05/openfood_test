@@ -207,11 +207,12 @@ class AppIcons {
 
 // API Keys
 class ApiKeys {
-  // Edamam Food API - https://developer.edamam.com/
-  // Lấy key tại: https://developer.edamam.com/admin/applications
-  static const String edamamAppId = '5d75d79e'; 
-  static const String edamamAppKey = 'dba31cdcb3194f2ed9e3b611decfb938';
+  // USDA FoodData Central API - https://fdc.nal.usda.gov/api-guide.html
+  // Lấy key tại: https://fdc.nal.usda.gov/api-key-signup.html
+  static const String usdaApiKey = 'GJRAy2mRHxo2FiejluDsPDBhzPvUL3J8xhihsKh2';
+  static const String usdaBaseUrl = 'https://api.nal.usda.gov/fdc/v1';
   
-  // USDA API Keys (nếu còn sử dụng)
-  static const String usdaApiKey = 'YOUR_USDA_API_KEY';
+  // Edamam Food API (không còn sử dụng)
+  // static const String edamamAppId = '5d75d79e'; 
+  // static const String edamamAppKey = 'dba31cdcb3194f2ed9e3b611decfb938';
 }

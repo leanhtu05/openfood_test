@@ -5,7 +5,7 @@ import '../../providers/food_provider.dart';
 
 class ServingSizeEditor extends StatefulWidget {
   final FoodItem foodItem;
-  final Function(FoodItem) onServingSizeChanged;
+  final Function(FoodItem)? onServingSizeChanged;
 
   const ServingSizeEditor({
     Key? key,
@@ -24,7 +24,10 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
   @override
   void initState() {
     super.initState();
-    _servingSizeController = TextEditingController(text: widget.foodItem.servingSize.toString());
+    // Hiển thị số gram (không phải số khẩu phần)
+    _servingSizeController = TextEditingController(
+      text: (widget.foodItem.servingSize * 100).toStringAsFixed(0)
+    );
   }
   
   @override
@@ -34,7 +37,7 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
   }
   
   // Cập nhật khẩu phần và đồng bộ dữ liệu
-  Future<void> _updateServingSize(double newSize) async {
+  Future<void> _updateServingSize(double grams) async {
     if (_isUpdating) return;
     
     setState(() {
@@ -42,11 +45,31 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
     });
     
     try {
-      // Cập nhật item với khẩu phần mới
-      final updatedItem = widget.foodItem.copyWith(servingSize: newSize);
+      // Tính toán servingSize dựa trên số gram (1 khẩu phần = 100g)
+      final servingSize = grams / 100;
       
-      // Thông báo cho widget cha về việc thay đổi
-      widget.onServingSizeChanged(updatedItem);
+      // Tạo bản sao hoàn toàn mới của FoodItem với servingSize mới
+      final updatedItem = FoodItem(
+        id: widget.foodItem.id,
+        name: widget.foodItem.name,
+        brand: widget.foodItem.brand,
+        imageUrl: widget.foodItem.imageUrl,
+        calories: widget.foodItem.calories,
+        protein: widget.foodItem.protein,
+        fat: widget.foodItem.fat,
+        carbs: widget.foodItem.carbs,
+        servingSize: servingSize,
+        servingUnit: widget.foodItem.servingUnit,
+        fiber: widget.foodItem.fiber,
+        sugar: widget.foodItem.sugar,
+        sodium: widget.foodItem.sodium,
+        additionalNutrients: widget.foodItem.additionalNutrients != null 
+            ? Map<String, dynamic>.from(widget.foodItem.additionalNutrients!) 
+            : null,
+      );
+      
+      // Gọi callback với đối tượng FoodItem mới tạo
+      widget.onServingSizeChanged?.call(updatedItem);
     } finally {
       if (mounted) {
         setState(() {
@@ -58,12 +81,13 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
   
   @override
   Widget build(BuildContext context) {
-    // Tính toán giá trị dinh dưỡng dựa trên khẩu phần hiện tại
-    final servingSize = double.tryParse(_servingSizeController.text) ?? widget.foodItem.servingSize;
-    final caloriesPerServing = (widget.foodItem.calories * servingSize / 100).round();
-    final proteinPerServing = ((widget.foodItem.protein * servingSize / 100).toDouble()).toStringAsFixed(1);
-    final carbsPerServing = ((widget.foodItem.carbs * servingSize / 100).toDouble()).toStringAsFixed(1);
-    final fatPerServing = ((widget.foodItem.fat * servingSize / 100).toDouble()).toStringAsFixed(1);
+    // Lấy số gram từ controller, chuyển sang số khẩu phần để tính dinh dưỡng
+    final grams = double.tryParse(_servingSizeController.text) ?? (widget.foodItem.servingSize * 100);
+    final servingSize = grams / 100;
+    final caloriesPerServing = (widget.foodItem.calories * servingSize).round();
+    final proteinPerServing = (widget.foodItem.protein * servingSize).toStringAsFixed(1);
+    final carbsPerServing = (widget.foodItem.carbs * servingSize).toStringAsFixed(1);
+    final fatPerServing = (widget.foodItem.fat * servingSize).toStringAsFixed(1);
     
     return Container(
       padding: EdgeInsets.only(bottom: 16, left: 16, right: 16),
@@ -90,9 +114,9 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
                 IconButton(
                   icon: Icon(Icons.remove, color: Colors.blue),
                   onPressed: () {
-                    final currentValue = double.tryParse(_servingSizeController.text) ?? widget.foodItem.servingSize;
-                    final newValue = (currentValue - 10).clamp(10.0, 1000.0); // Thêm .0 để đảm bảo kết quả là double
-                    _servingSizeController.text = newValue.toString();
+                    final currentValue = double.tryParse(_servingSizeController.text) ?? (widget.foodItem.servingSize * 100);
+                    final newValue = (currentValue - 10).clamp(10.0, 1000.0);
+                    _servingSizeController.text = newValue.toStringAsFixed(0);
                     _updateServingSize(newValue);
                   },
                 ),
@@ -109,7 +133,7 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
                     ),
                     decoration: InputDecoration(
                       border: InputBorder.none,
-                      hintText: 'Khẩu phần',
+                      hintText: 'Gram',
                       contentPadding: EdgeInsets.zero,
                     ),
                     onChanged: (value) {
@@ -121,10 +145,8 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
                       }
                     },
                     onSubmitted: (value) {
-                      final parsedValue = double.tryParse(value);
-                      if (parsedValue != null && parsedValue > 0) {
-                        _updateServingSize(parsedValue.toDouble());
-                      }
+                      final grams = double.tryParse(value) ?? (widget.foodItem.servingSize * 100);
+                      _updateServingSize(grams);
                     },
                   ),
                 ),
@@ -133,9 +155,9 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
                 IconButton(
                   icon: Icon(Icons.add, color: Colors.blue),
                   onPressed: () {
-                    final currentValue = double.tryParse(_servingSizeController.text) ?? widget.foodItem.servingSize;
-                    final newValue = (currentValue + 10).clamp(10.0, 1000.0); // Thêm .0 để đảm bảo kết quả là double
-                    _servingSizeController.text = newValue.toString();
+                    final currentValue = double.tryParse(_servingSizeController.text) ?? (widget.foodItem.servingSize * 100);
+                    final newValue = (currentValue + 10).clamp(10.0, 1000.0);
+                    _servingSizeController.text = newValue.toStringAsFixed(0);
                     _updateServingSize(newValue);
                   },
                 ),
@@ -148,7 +170,7 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
                     borderRadius: BorderRadius.horizontal(right: Radius.circular(12)),
                   ),
                   child: Text(
-                    widget.foodItem.servingUnit,
+                    'g',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                     ),
@@ -179,10 +201,8 @@ class _ServingSizeEditorState extends State<ServingSizeEditor> {
               padding: const EdgeInsets.only(top: 16),
               child: ElevatedButton(
                 onPressed: () {
-                  final parsedValue = double.tryParse(_servingSizeController.text);
-                  if (parsedValue != null && parsedValue > 0) {
-                    _updateServingSize(parsedValue.toDouble());
-                  }
+                  final grams = double.tryParse(_servingSizeController.text) ?? (widget.foodItem.servingSize * 100);
+                  _updateServingSize(grams);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,

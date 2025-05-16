@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:math';
+import '../models/food_entry.dart';
+import '../models/food_item.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
-import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
@@ -11,9 +14,6 @@ import 'package:intl/intl.dart';
 import 'package:openfood/providers/food_provider.dart';
 import 'package:openfood/services/food_database_service.dart';
 import 'package:openfood/utils/food_data_adapter.dart';
-import '../models/food_item.dart';
-
-// Import các widget con đã tách
 import '../widgets/food_logging/food_description_input.dart';
 import '../widgets/food_logging/food_image_preview.dart';
 import '../widgets/food_logging/action_buttons.dart';
@@ -21,10 +21,6 @@ import '../widgets/food_logging/barcode_scanner_button.dart';
 import '../widgets/food_logging/empty_food_button.dart';
 import '../widgets/food_analysis/food_analysis_result.dart';
 import '../widgets/food_analysis/nutrient_progress_indicator.dart';
-
-// Import provider và models
-import '../providers/food_provider.dart';
-import '../models/food_entry.dart';
 import '../screens/food_history_screen.dart';
 import '../screens/food_recognition_screen.dart';
 import '../screens/food_search_screen.dart';
@@ -32,6 +28,7 @@ import '../screens/food_nutrition_detail_screen.dart';
 import '../widgets/food_logging/food_logging_header.dart';
 import '../widgets/food_logging/image_section.dart';
 import '../widgets/custom_loading_indicator.dart';
+import 'package:uuid/uuid.dart';
 
 // Enum cho trạng thái nhận diện thực phẩm
 enum RecognitionStatus {
@@ -92,11 +89,30 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       if (widget.initialDate != null && widget.initialDate != foodProvider.selectedDate) {
         foodProvider.setSelectedDate(widget.initialDate!);
       }
+      
+      // Thêm listener để lắng nghe thay đổi từ provider
+      foodProvider.addListener(_updateSelectedDate);
     });
+  }
+  
+  // Hàm cập nhật selectedDate khi provider thay đổi
+  void _updateSelectedDate() {
+    if(!mounted) return;
+    
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    if (foodProvider.selectedDate != _selectedDate) {
+      setState(() {
+        _selectedDate = foodProvider.selectedDate;
+      });
+      print('FoodLoggingScreen: Đã cập nhật _selectedDate từ provider: $_selectedDate');
+    }
   }
 
   @override
   void dispose() {
+    // Gỡ bỏ listener để tránh memory leak
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    foodProvider.removeListener(_updateSelectedDate);
     _descriptionController.dispose();
     _audioRecorder.dispose();
     super.dispose();
@@ -543,10 +559,12 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     try {
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       
-      // Thay vì sử dụng ngày hiện tại, sử dụng ngày đã chọn (_selectedDate)
-      // This is important to ensure we save entries to the selected date
-      final entry = await foodProvider.addFoodEntryForDate(
-        date: _selectedDate!, // Sử dụng ngày đã chọn
+      if (_selectedDate == null || _selectedDate!.isEmpty) {
+        // Gán giá trị mặc định là ngày hôm nay
+        _selectedDate = DateTime.now().toIso8601String().split('T')[0];
+      }
+      final entry = await foodProvider.addFoodEntryManual(
+        dateTime: DateTime.parse(_selectedDate!),
         description: _descriptionController.text,
         mealType: _selectedMealType,
         image: _foodImage,
@@ -690,27 +708,54 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       final items = await _databaseService.searchFoodByBarcode(barcode);
       
       if (items.isNotEmpty) {
-        // Sử dụng ngày đã chọn thay vì ngày hiện tại
-        final DateTime selectedDateTime = _selectedDate != null 
-            ? DateTime.parse(_selectedDate!)
-            : DateTime.now();
+        // Lấy thời gian hiện tại cho bữa ăn
+        DateTime now = DateTime.now();
         
-        // Sử dụng FoodDataAdapter để tạo FoodEntry từ kết quả barcode
-        final entry = FoodDataAdapter.createFromBarcode(
-          foodItem: items.first,
-          dateTime: selectedDateTime,
+        // Tạo UUID mới
+        final uuid = Uuid();
+        final String entryId = uuid.v4();
+        
+        // Tạo entry từ FoodItem
+        final FoodItem foodItem = items.first;
+        final entry = FoodEntry(
+          id: entryId,
+          description: foodItem.name,
+          items: [foodItem],
+          dateTime: now,
           mealType: _selectedMealType,
-          imagePath: null // Không có hình ảnh cho sản phẩm quét từ mã vạch
+          barcode: barcode,
+          nutritionInfo: {
+            'calories': foodItem.calories,
+            'protein': foodItem.protein,
+            'fat': foodItem.fat,
+            'carbs': foodItem.carbs,
+            'fiber': foodItem.fiber,
+            'sugar': foodItem.sugar,
+            'sodium': foodItem.sodium,
+            'servingSize': foodItem.servingSize,
+            'totalWeight': foodItem.servingSize * 100,
+            'dataSource': 'Database',
+            'barcode': barcode,
+            ...foodItem.additionalNutrients ?? {},
+          },
         );
         
-        // Thêm thông tin barcode vào entry
-        final updatedEntry = entry.copyWith(barcode: barcode);
+        // Thêm entry vào provider
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        foodProvider.addFoodEntry(entry);
         
-        // In log thông tin để debug
-        print('_searchProductByBarcode: Đã tạo entry với ngày: ${updatedEntry.dateTime}');
-        
-        // Hiển thị màn hình chi tiết dinh dưỡng
-        _showEnhancedNutritionAnalysis(updatedEntry);
+        // Ngay lập tức chuyển hướng đến màn hình chi tiết dinh dưỡng
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FoodNutritionDetailScreen(
+              foodEntry: entry,
+              onSave: (updatedEntry) {
+                foodProvider.updateFoodEntry(updatedEntry);
+              },
+            ),
+          ),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -750,7 +795,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
           : DateTime.now();
       
       // Tạo food entry với ngày được chọn
-      final entry = await foodProvider.addFoodEntry(
+      final entry = await foodProvider.addFoodEntryManual(
         description: result.map((item) => item.name).join(", "),
         mealType: _selectedMealType,
         dateTime: selectedDateTime, // Sử dụng ngày đã chọn
@@ -791,7 +836,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
           ? DateTime.parse(_selectedDate!)
           : DateTime.now();
       
-      final entry = await foodProvider.addFoodEntry(
+      final entry = await foodProvider.addFoodEntryManual(
         description: result.name,
         mealType: _selectedMealType,
         dateTime: selectedDateTime, // Sử dụng ngày đã chọn
@@ -1007,9 +1052,10 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
                   onPressed: () async {
                     if (editableItems.isNotEmpty) {
                       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-                      resultEntry = await foodProvider.addFoodEntry(
-                        description: editableItems.map((e) => e.name).join(', '),
+                      resultEntry = await foodProvider.addFoodEntryManual(
+                        description: editableItems.map((i) => i.name).join(", "),
                         mealType: selectedMealType,
+                        dateTime: DateTime.now(),
                         items: editableItems,
                       );
                       Navigator.of(ctx).pop();
@@ -1116,6 +1162,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     return selectedItems;
   }
 
+  // Hiển thị thông báo lỗi
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message))
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Get the latest selected date from the provider
@@ -1215,12 +1268,12 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
                       
                       // Nút quét mã vạch
                       BarcodeScannerButton(
-                        onBarcodeScan: (barcode) {
-                          setState(() {
-                            _barcode = barcode;
-                          });
-                          // Xử lý barcode
-                          _searchProductByBarcode(barcode);
+                        onBarcodeScan: (FoodItem foodItem, String barcode) {
+                          // Tạo và hiển thị FoodEntry trực tiếp từ foodItem từ barcode
+                          _processBarcodeFoodItem(foodItem, barcode);
+                        },
+                        onError: (String error) {
+                          _showErrorMessage("Không thể quét mã vạch: $error");
                         },
                       ),
                     ],
@@ -1448,5 +1501,70 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         ),
       ),
     );
+  }
+
+  // Thêm phương thức mới để xử lý FoodItem từ mã vạch
+  void _processBarcodeFoodItem(FoodItem foodItem, String barcode) {
+    try {
+      // Lấy thời gian hiện tại cho bữa ăn
+      DateTime now = DateTime.now();
+      
+      // Tạo UUID mới
+      final uuid = Uuid();
+      final String entryId = uuid.v4();
+      
+      // Tạo entry từ FoodItem
+      final entry = FoodEntry(
+        id: entryId,
+        description: foodItem.name,
+        items: [foodItem],
+        dateTime: now,
+        mealType: _selectedMealType,
+        barcode: barcode,
+        nutritionInfo: {
+          'calories': foodItem.calories,
+          'protein': foodItem.protein,
+          'fat': foodItem.fat,
+          'carbs': foodItem.carbs,
+          'fiber': foodItem.fiber,
+          'sugar': foodItem.sugar,
+          'sodium': foodItem.sodium,
+          'servingSize': foodItem.servingSize,
+          'totalWeight': foodItem.servingSize * 100,
+          'dataSource': 'Open Food Facts',
+          'barcode': barcode,
+          ...foodItem.additionalNutrients ?? {},
+        },
+      );
+      
+      // Thêm entry vào provider
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      foodProvider.addFoodEntry(entry);
+      
+      // Hiển thị thông báo thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã tìm thấy: ${foodItem.name}'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+        ),
+      );
+      
+      // Ngay lập tức chuyển hướng đến màn hình chi tiết dinh dưỡng
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FoodNutritionDetailScreen(
+            foodEntry: entry,
+            onSave: (updatedEntry) {
+              foodProvider.updateFoodEntry(updatedEntry);
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Lỗi khi xử lý thông tin mã vạch: $e');
+      _showErrorMessage('Không thể xử lý thông tin mã vạch: $e');
+    }
   }
 } 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class UserDataProvider extends ChangeNotifier {
   // Khai báo các key cho SharedPreferences
@@ -10,6 +11,7 @@ class UserDataProvider extends ChangeNotifier {
   static const String _activityLevelKey = 'user_activity_level';
   static const String _goalKey = 'user_goal';
   static const String _paceKey = 'user_pace';
+  static const String _nutritionGoalsKey = 'user_nutrition_goals';
 
   // Thông tin cơ bản
   String _gender = 'male';
@@ -19,6 +21,24 @@ class UserDataProvider extends ChangeNotifier {
   String _activityLevel = 'Hoạt động vừa phải';
   String _goal = 'Tăng cân';
   double _pace = 0.5;
+  
+  // Mục tiêu dinh dưỡng với giá trị mặc định
+  Map<String, double> _nutritionGoals = {
+    'calories': 2000.0,
+    'protein': 50.0,
+    'fat': 70.0,
+    'carbs': 310.0,
+    'cholesterol': 300.0,
+    'fiber': 25.0,
+    'sugar': 50.0,
+    'water': 2000.0,
+    'omega3': 1.6,
+    'saturatedFat': 20.0,
+    'vitaminD': 15.0,
+    'vitaminB12': 2.4,
+    'caffeine': 400.0,
+    'alcohol': 14.0,
+  };
 
   // Constructor - Tải dữ liệu từ SharedPreferences khi khởi tạo
   UserDataProvider() {
@@ -33,6 +53,7 @@ class UserDataProvider extends ChangeNotifier {
   String get activityLevel => _activityLevel;
   String get goal => _goal;
   double get pace => _pace;
+  Map<String, double> get nutritionGoals => _nutritionGoals;
 
   // Setters
   void setGender(String value) {
@@ -69,6 +90,20 @@ class UserDataProvider extends ChangeNotifier {
     _pace = value;
     notifyListeners();
   }
+  
+  // Cập nhật một giá trị dinh dưỡng
+  void updateNutritionGoal(String nutrient, double value) {
+    _nutritionGoals[nutrient] = value;
+    notifyListeners();
+    saveUserData();
+  }
+  
+  // Cập nhật nhiều giá trị dinh dưỡng
+  void updateNutritionGoals(Map<String, double> updates) {
+    _nutritionGoals.addAll(updates);
+    notifyListeners();
+    saveUserData();
+  }
 
   // Cập nhật nhiều giá trị cùng lúc
   void updateUserData({
@@ -79,6 +114,7 @@ class UserDataProvider extends ChangeNotifier {
     String? activityLevel,
     String? goal,
     double? pace,
+    Map<String, double>? nutritionGoals,
   }) {
     if (gender != null) _gender = gender;
     if (age != null) _age = age;
@@ -87,6 +123,7 @@ class UserDataProvider extends ChangeNotifier {
     if (activityLevel != null) _activityLevel = activityLevel;
     if (goal != null) _goal = goal;
     if (pace != null) _pace = pace;
+    if (nutritionGoals != null) _nutritionGoals.addAll(nutritionGoals);
     notifyListeners();
     
     // Tự động lưu dữ liệu khi cập nhật
@@ -102,6 +139,22 @@ class UserDataProvider extends ChangeNotifier {
     _activityLevel = 'Hoạt động vừa phải';
     _goal = 'Tăng cân';
     _pace = 0.5;
+    _nutritionGoals = {
+      'calories': 2000.0,
+      'protein': 50.0,
+      'fat': 70.0,
+      'carbs': 310.0,
+      'cholesterol': 300.0,
+      'fiber': 25.0,
+      'sugar': 50.0,
+      'water': 2000.0,
+      'omega3': 1.6,
+      'saturatedFat': 20.0,
+      'vitaminD': 15.0,
+      'vitaminB12': 2.4,
+      'caffeine': 400.0,
+      'alcohol': 14.0,
+    };
     notifyListeners();
     
     // Lưu lại dữ liệu mặc định
@@ -120,6 +173,7 @@ class UserDataProvider extends ChangeNotifier {
       await prefs.setString(_activityLevelKey, _activityLevel);
       await prefs.setString(_goalKey, _goal);
       await prefs.setDouble(_paceKey, _pace);
+      await prefs.setString(_nutritionGoalsKey, jsonEncode(_nutritionGoals));
     } catch (e) {
       debugPrint('Lỗi khi lưu dữ liệu người dùng: $e');
     }
@@ -137,6 +191,15 @@ class UserDataProvider extends ChangeNotifier {
       _activityLevel = prefs.getString(_activityLevelKey) ?? _activityLevel;
       _goal = prefs.getString(_goalKey) ?? _goal;
       _pace = prefs.getDouble(_paceKey) ?? _pace;
+      
+      final goalsString = prefs.getString(_nutritionGoalsKey);
+      if (goalsString != null) {
+        final Map<String, dynamic> goalsJson = jsonDecode(goalsString);
+        // Chuyển đổi lại thành Map<String, double>
+        goalsJson.forEach((key, value) {
+          _nutritionGoals[key] = (value is num) ? value.toDouble() : 0.0;
+        });
+      }
       
       notifyListeners();
     } catch (e) {

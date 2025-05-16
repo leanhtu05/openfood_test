@@ -21,11 +21,31 @@ class VietnameseFoodData {
         servingSize: 1,
         servingUnit: 'tô',
         additionalNutrients: {
+          // Sức khỏe Tim mạch
           'cholesterol': 85,
+          'omega3': 0.2,
+          'water': 350,
+          
+          // Tiêu thụ Kiểm soát
+          'saturated_fat': 4.5,
+          'caffeine': 0,
+          'alcohol': 0,
+          
+          // Vitamin Chính
+          'vitamin_d': 0.2,
+          'vitamin_b12': 1.5,
+          'vitamin_c': 8,
+          'vitamin_b9': 12,
+          
+          // Khoáng chất Quan trọng
           'iron': 3.2,
           'calcium': 42,
+          'magnesium': 35,
+          'zinc': 2.1,
+          
+          // Dinh dưỡng bổ sung khác
           'vitamin_a': 110,
-          'vitamin_c': 8,
+          'potassium': 320,
         },
       ),
       FoodItem(
@@ -42,11 +62,31 @@ class VietnameseFoodData {
         servingSize: 1,
         servingUnit: 'ổ',
         additionalNutrients: {
+          // Sức khỏe Tim mạch
           'cholesterol': 45,
+          'omega3': 0.1,
+          'water': 120,
+          
+          // Tiêu thụ Kiểm soát
+          'saturated_fat': 3.8,
+          'caffeine': 0,
+          'alcohol': 0,
+          
+          // Vitamin Chính
+          'vitamin_d': 0.1,
+          'vitamin_b12': 0.8,
+          'vitamin_c': 12,
+          'vitamin_b9': 20,
+          
+          // Khoáng chất Quan trọng
           'iron': 2.4,
           'calcium': 30,
+          'magnesium': 28,
+          'zinc': 1.2,
+          
+          // Dinh dưỡng bổ sung khác
           'vitamin_a': 55,
-          'vitamin_c': 12,
+          'potassium': 240,
         },
       ),
       FoodItem(

@@ -64,6 +64,7 @@ class MyApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (context) => UserDataProvider(),
       child: MaterialApp(
+        debugShowCheckedModeBanner: false,
         title: 'DietAI',
         theme: ThemeData(
           primarySwatch: Colors.green,

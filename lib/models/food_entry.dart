@@ -97,8 +97,9 @@ class FoodEntry {
     };
   }
 
-  // Tạo một bản sao của đối tượng với các giá trị mới
+  // Tạo bản sao mới của FoodEntry với một số thuộc tính mới
   FoodEntry copyWith({
+    String? id,
     String? description,
     String? imagePath,
     String? audioPath,
@@ -111,7 +112,7 @@ class FoodEntry {
     List<FoodItem>? items,
   }) {
     return FoodEntry(
-      id: this.id,
+      id: id ?? this.id,
       description: description ?? this.description,
       imagePath: imagePath ?? this.imagePath,
       audioPath: audioPath ?? this.audioPath,

@@ -18,6 +18,8 @@ import 'screens/onboarding/weight_page.dart';
 import 'screens/onboarding/activity_level_page.dart';
 import 'screens/onboarding/goal_page.dart';
 import 'screens/onboarding/weight_gain_pace_page.dart';
+import '../screens/meal_recording_screen.dart';
+
 
 Map<String, WidgetBuilder> routes = {
   '/home': (context) => HomeScreen(),
@@ -39,6 +41,7 @@ Map<String, WidgetBuilder> routes = {
   '/goal': (context) => const GoalPage(),
   '/weight-gain-pace': (context) => const WeightGainPacePage(),
   '/tdee-calculator': (context) => const TDEECalculatorScreen(),
+  '/meal-recording': (context) => const MealRecordingScreen(initialDate: null),
 };
 
 Route<dynamic>? generateRoute(RouteSettings settings) {
@@ -50,5 +53,18 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
       builder: (context) => FoodDetailScreen(id: foodId),
     );
   }
+  
+  if (settings.name == '/food-recognition') {
+    return MaterialPageRoute(
+      builder: (context) => FoodRecognitionScreen(),
+    );
+  }
+  
+  if (settings.name == '/food-search') {
+    return MaterialPageRoute(
+      builder: (context) => FoodSearchScreen(),
+    );
+  }
+  
   return null;
 }

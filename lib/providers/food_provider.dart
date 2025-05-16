@@ -11,6 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../adapters/food_data_adapter.dart';
+import 'dart:async'; // Added for Timer
+import '../providers/user_data_provider.dart';
+import '../utils/tdee_calculator.dart';
+import 'package:provider/provider.dart';
 
 class FoodProvider with ChangeNotifier {
   final FoodDatabaseService _databaseService = FoodDatabaseService();
@@ -23,10 +27,42 @@ class FoodProvider with ChangeNotifier {
   List<FoodItem> _recentItems = [];
   String _selectedDate = DateTime.now().toIso8601String().split('T')[0];
   
+  Map<String, dynamic>? _dailyNutritionSummary;
+  List<FoodEntry> _dailyMeals = [];
+  bool _isLoadingSummary = false;
+  bool _isLoadingMeals = false;
+
+  // Cache for daily summary and meals
+  final Map<String, Map<String, dynamic>> _dailySummaryCache = {};
+  final Map<String, List<FoodEntry>> _dailyMealsCache = {};
+  
   // Getters
   List<FoodEntry> get allFoodEntries => _foodEntries;
-  List<FoodEntry> get todayEntries => _foodEntries.where((entry) => 
-    entry.dateTime.toIso8601String().split('T')[0] == _selectedDate).toList();
+  List<FoodEntry> get todayEntries {
+    final entries = _foodEntries.where((entry) {
+      // Lấy ngày từ entry
+      final entryDate = entry.dateTime.toIso8601String().split('T')[0];
+      
+      // So sánh với ngày đã chọn
+      final match = entryDate == _selectedDate;
+      
+      // Debug log để theo dõi
+      if (match) {
+        print('DEBUG PROVIDER: Entry khớp với ngày $_selectedDate: ${entry.description}');
+      }
+      
+      return match;
+    }).toList();
+    
+    // Thêm debug log
+    print('DEBUG PROVIDER: todayEntries gọi với ngày $_selectedDate, tìm thấy ${entries.length} mục');
+    for (var entry in entries) {
+      final entryDate = entry.dateTime.toIso8601String().split('T')[0]; 
+      print('DEBUG PROVIDER: - ${entry.description} (${entry.mealType}) - ngày: $entryDate');
+    }
+    
+    return entries;
+  }
   List<FoodItem> get favoriteItems => _favoriteItems;
   List<FoodItem> get recentItems => _recentItems;
   String get selectedDate => _selectedDate;
@@ -35,570 +71,132 @@ class FoodProvider with ChangeNotifier {
   List<FoodEntry> get entries => _foodEntries;
   List<FoodEntry> get favoriteEntries => _foodEntries.where((entry) => entry.isFavorite).toList();
   
-  // Load food entries (for compatibility)
-  Future<void> loadFoodEntries() async {
-    await loadData();
-  }
-  
-  // Load favorite food entries (for compatibility)
-  Future<void> loadFavoriteFoodEntries() async {
-    await loadData();
-  }
-  
-  // Toggle favorite status (for compatibility)
-  Future<bool> toggleFavorite(String id, bool isFavorite) async {
-    final index = _foodEntries.indexWhere((entry) => entry.id == id);
-    if (index != -1) {
-      final updatedEntry = _foodEntries[index].copyWith(isFavorite: isFavorite);
-      _foodEntries[index] = updatedEntry;
-      notifyListeners();
-      _saveData();
-      return true;
-    }
-    return false;
-  }
-  
-  // Update food entry in list (for compatibility)
-  void updateFoodEntryInList(FoodEntry updatedEntry) {
-    updateFoodEntry(updatedEntry);
-  }
-  
-  // Remove food entry (for compatibility)
-  void removeFoodEntry(String id) {
-    deleteFoodEntry(id);
-  }
-  
-  // Đặt ngày đã chọn
-  void setSelectedDate(String date) {
-    _selectedDate = date;
-    print('FoodProvider: Đã cập nhật ngày được chọn thành: $_selectedDate');
-    notifyListeners();
-  }
-  
-  // Lấy thông tin dinh dưỡng từ API
-  Future<Map<String, dynamic>?> fetchNutritionDataFromAPI(String foodName) async {
-    try {
-      // Đánh dấu đang tải dữ liệu
-      _isLoadingNutritionData = true;
-      notifyListeners();
-      
-      // Gọi API thông qua adapter
-      final nutritionData = await FoodDataAdapter.fetchNutritionInfo(foodName);
-      
-      // Cập nhật trạng thái
-      _isLoadingNutritionData = false;
-      
-      if (nutritionData != null) {
-        // Lưu vào cache nếu cần
-        _nutritionDataCache[foodName.toLowerCase()] = nutritionData;
-      }
-      
-      notifyListeners();
-      return nutritionData;
-      
-    } catch (e) {
-      print('Lỗi khi lấy dữ liệu dinh dưỡng từ API: $e');
-      _isLoadingNutritionData = false;
-      notifyListeners();
-      return null;
-    }
-  }
-  
-  // Cập nhật thông tin dinh dưỡng cho một FoodEntry từ API
-  Future<FoodEntry?> updateFoodEntryWithAPIData(FoodEntry entry) async {
-    if (entry.items.isEmpty) {
-      return entry;
-    }
-    
-    try {
-      // Đánh dấu đang tải dữ liệu
-      _isLoadingNutritionData = true;
-      notifyListeners();
-      
-      // Lấy tên thực phẩm từ item đầu tiên
-      final foodName = entry.items.first.name;
-      
-      // Kiểm tra cache trước
-      if (_nutritionDataCache.containsKey(foodName.toLowerCase())) {
-        final cachedData = _nutritionDataCache[foodName.toLowerCase()];
-        
-        // Cập nhật entry với dữ liệu cache
-        final updatedEntry = FoodDataAdapter.updateWithNutritionInfo(
-          entry: entry,
-          nutritionInfo: cachedData!,
-          fromAPI: true,
-        );
-        
-        // Cập nhật danh sách
-        _updateEntryInList(updatedEntry);
-        
-        // Xóa cache để đảm bảo dữ liệu được tính toán lại
-        _calculationCache.clear();
-        
-        _isLoadingNutritionData = false;
-        notifyListeners();
-        
-        return updatedEntry;
-      }
-      
-      // Gọi API nếu không có trong cache
-      final nutritionData = await FoodDataAdapter.fetchNutritionInfo(foodName);
-      
-      if (nutritionData != null) {
-        // Cập nhật entry với dữ liệu từ API
-        final updatedEntry = FoodDataAdapter.updateWithNutritionInfo(
-          entry: entry,
-          nutritionInfo: nutritionData,
-          fromAPI: true,
-        );
-        
-        // Cập nhật danh sách
-        _updateEntryInList(updatedEntry);
-        
-        // Lưu vào cache
-        _nutritionDataCache[foodName.toLowerCase()] = nutritionData;
-        
-        // Xóa cache để đảm bảo dữ liệu được tính toán lại khi hiển thị vòng tròn dinh dưỡng
-        _calculationCache.clear();
-        
-        _isLoadingNutritionData = false;
-        notifyListeners();
-        
-        // Lưu dữ liệu sau khi cập nhật để đảm bảo dữ liệu mới được lưu
-        await _saveData();
-        
-        return updatedEntry;
-      }
-      
-      _isLoadingNutritionData = false;
-      notifyListeners();
-      return entry;
-      
-    } catch (e) {
-      print('Lỗi khi cập nhật thông tin dinh dưỡng từ API: $e');
-      _isLoadingNutritionData = false;
-      notifyListeners();
-      return entry;
-    }
-  }
-  
-  // Cập nhật entry trong danh sách
-  void _updateEntryInList(FoodEntry updatedEntry) {
-    final index = _foodEntries.indexWhere((entry) => entry.id == updatedEntry.id);
-    if (index != -1) {
-      _foodEntries[index] = updatedEntry;
-      // Đảm bảo xóa cache và lưu dữ liệu sau khi cập nhật
-      _calculationCache.clear();
-      _saveData();
-    } else {
-      // Nếu không tìm thấy, thêm mới vào danh sách
-      _foodEntries.add(updatedEntry);
-      _calculationCache.clear();
-      _saveData();
-    }
-  }
-  
-  // Trạng thái đang tải dữ liệu dinh dưỡng
-  bool _isLoadingNutritionData = false;
-  bool get isLoadingNutritionData => _isLoadingNutritionData;
-  
-  // Cache dữ liệu dinh dưỡng
-  final Map<String, Map<String, dynamic>> _nutritionDataCache = {};
-  
-  // Load data from local storage
-  Future<void> loadData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Load food entries
-      final entriesJson = prefs.getStringList('food_entries') ?? [];
-      _foodEntries = entriesJson
-          .map((json) => FoodEntry.fromJson(jsonDecode(json)))
-          .toList();
-      
-      // Load favorite items
-      final favoritesJson = prefs.getStringList('favorite_foods') ?? [];
-      _favoriteItems = favoritesJson
-          .map((json) => FoodItem.fromJson(jsonDecode(json)))
-          .toList();
-      
-      // Load recent items
-      final recentJson = prefs.getStringList('recent_foods') ?? [];
-      _recentItems = recentJson
-          .map((json) => FoodItem.fromJson(jsonDecode(json)))
-          .toList();
-          
-      notifyListeners();
-    } catch (e) {
-      print('Error loading food data: $e');
-    }
-  }
-  
-  // Save data to local storage
-  Future<void> _saveData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Save food entries
-      final entriesJson = _foodEntries
-          .map((entry) => jsonEncode(entry.toJson()))
-          .toList();
-      await prefs.setStringList('food_entries', entriesJson);
-      
-      // Save favorite items
-      final favoritesJson = _favoriteItems
-          .map((item) => jsonEncode(item.toJson()))
-          .toList();
-      await prefs.setStringList('favorite_foods', favoritesJson);
-      
-      // Save recent items
-      final recentJson = _recentItems
-          .map((item) => jsonEncode(item.toJson()))
-          .toList();
-      await prefs.setStringList('recent_foods', recentJson);
-    } catch (e) {
-      print('Error saving food data: $e');
-    }
-  }
-  
-  // Add food entry with manual description
-  Future<FoodEntry> addFoodEntry({
-    required String description,
-    File? image,
-    String? mealType,
-    DateTime? dateTime,
-    List<FoodItem>? items,
-  }) async {
-    final now = dateTime ?? DateTime.now();
-    final entry = FoodEntry(
-      id: _uuid.v4(),
-      description: description,
-      imagePath: image?.path,
-      mealType: mealType ?? 'Meal',
-      dateTime: now,
-      items: items ?? [],
-    );
-    
-    _foodEntries.add(entry);
-    
-    // If there are items, add them to recent items
-    if (items != null && items.isNotEmpty) {
-      for (var item in items) {
-        _addToRecentItems(item);
-      }
-    }
-    
-    notifyListeners();
-    _saveData();
-    
-    return entry;
-  }
-  
-  // Add food entry with AI recognition
-  Future<FoodEntry?> addFoodEntryWithAI({
-    required File image,
-    required String description,
-    required String mealType,
-    String? date,
-  }) async {
-    try {
-      // Lấy danh sách các món ăn từ mô hình AI
-      final List<String> recognizedItems = await _recognitionService.recognizeFoodFromImage(image);
-      
-      // Chuyển đổi các tên món ăn được nhận diện thành đối tượng FoodItem
-      List<FoodItem> foodItems = [];
-      
-      // Nếu có các món ăn được nhận diện, tìm kiếm dữ liệu dinh dưỡng tương ứng
-      if (recognizedItems.isNotEmpty) {
-        for (var itemName in recognizedItems) {
-          // Tìm thông tin dinh dưỡng từ cơ sở dữ liệu
-          final items = await _databaseService.searchFoodByNameOrBarcode(itemName);
-          if (items.isNotEmpty) {
-            foodItems.add(items.first);
-          }
-        }
-      }
-      
-      // Nếu không nhận diện được món ăn nào hoặc không tìm thấy dữ liệu dinh dưỡng,
-      // vẫn tạo một mục trống để người dùng có thể thêm sau
-      if (foodItems.isEmpty) {
-        foodItems.add(FoodItem(
-          id: _uuid.v4(),
-          name: description,
-          calories: 0,
-          protein: 0,
-          fat: 0,
-          carbs: 0,
-          servingSize: 1.0,
-          servingUnit: 'serving',
-        ));
-      }
-      
-      // Sử dụng ngày được chọn hoặc lấy ngày từ _selectedDate
-      if (date != null) {
-        final dateParts = date.split('-');
-        final year = int.parse(dateParts[0]);
-        final month = int.parse(dateParts[1]);
-        final day = int.parse(dateParts[2]);
-        
-        // Lấy thời gian hiện tại để thêm vào ngày được chọn
-        final now = DateTime.now();
-        final timestamp = DateTime(
-          year, 
-          month, 
-          day,
-          now.hour,  // Thêm giờ hiện tại
-          now.minute, // Thêm phút hiện tại
-          now.second  // Thêm giây hiện tại
-        );
-        
-        // In ra log để debug
-        print('addFoodEntryWithAI: Tạo entry với ngày được chọn: $date -> $timestamp');
-        
-        // Tạo food entry với ngày được chỉ định
-        final entry = FoodEntry(
-          id: _uuid.v4(),
-          description: description,
-          imagePath: image.path,
-          mealType: mealType,
-          dateTime: timestamp,
-          items: foodItems,
-        );
-        
-        _foodEntries.add(entry);
-        
-        // Thêm các món ăn vào danh sách gần đây
-        for (var item in foodItems) {
-          _addToRecentItems(item);
-        }
-        
-        notifyListeners();
-        _saveData();
-        
-        return entry;
-      } else {
-        // Sử dụng ngày hiện tại nếu không có ngày được chỉ định
-        print('addFoodEntryWithAI: Không có ngày được chỉ định, sử dụng ngày được chọn từ provider: $_selectedDate');
-        
-        return await addFoodEntryForDate(
-          date: _selectedDate,
-          description: description,
-          mealType: mealType,
-          items: foodItems,
-          image: image,
-        );
-      }
-    } catch (e) {
-      print('Lỗi khi thêm food entry với AI: $e');
-      return null;
-    }
-  }
-  
-  // Hàm tính toán độ tương đồng giữa hai chuỗi (thuật toán Levenshtein đơn giản)
-  double _calculateSimilarity(String s1, String s2) {
-    s1 = s1.toLowerCase();
-    s2 = s2.toLowerCase();
-    
-    if (s1 == s2) return 1.0;
-    
-    // Nếu một chuỗi là một phần của chuỗi còn lại
-    if (s1.contains(s2) || s2.contains(s1)) {
-      double ratio = min(s1.length, s2.length) / max(s1.length, s2.length);
-      return 0.7 + (ratio * 0.3); // Cho kết quả cao hơn nếu chuỗi dài tương đối giống nhau
-    }
-    
-    // Kiểm tra từng từ
-    List<String> words1 = s1.split(' ');
-    List<String> words2 = s2.split(' ');
-    
-    int matchingWords = 0;
-    for (var word1 in words1) {
-      if (word1.length <= 2) continue; // Bỏ qua các từ ngắn
-      for (var word2 in words2) {
-        if (word2.length <= 2) continue;
-        if (word1 == word2 || word1.contains(word2) || word2.contains(word1)) {
-          matchingWords++;
-          break;
-        }
-      }
-    }
-    
-    if (words1.isNotEmpty && words2.isNotEmpty) {
-      return matchingWords / max(words1.length, words2.length);
-    }
-    
-    return 0.0;
-  }
-  
-  // Xác định loại bữa ăn dựa vào thời gian trong ngày
-  String _determineMealTypeFromTime() {
-    final now = DateTime.now();
-    final hour = now.hour;
-    
-    if (hour >= 5 && hour < 10) {
-      return 'Bữa sáng';
-    } else if (hour >= 10 && hour < 14) {
-      return 'Bữa trưa';
-    } else if (hour >= 14 && hour < 17) {
-      return 'Bữa nhẹ';
-    } else if (hour >= 17 && hour < 22) {
-      return 'Bữa tối';
-    } else {
-      return 'Bữa khuya';
-    }
-  }
-  
-  // Update existing food entry
-  Future<void> updateFoodEntry(FoodEntry updatedEntry) async {
-    final index = _foodEntries.indexWhere((entry) => entry.id == updatedEntry.id);
-    
-    if (index != -1) {
-      final oldEntry = _foodEntries[index];
-      
-      // Kiểm tra nếu có thay đổi về khẩu phần
-      if (oldEntry.items.isNotEmpty && updatedEntry.items.isNotEmpty) {
-        final oldServingSize = oldEntry.items.first.servingSize;
-        final newServingSize = updatedEntry.items.first.servingSize;
-        
-        if (oldServingSize != newServingSize) {
-          // Nếu khẩu phần thay đổi, sử dụng synchronizeNutrition để cập nhật chính xác
-          await synchronizeNutrition(
-            entryId: updatedEntry.id,
-            servingSize: newServingSize,
-            notifyChange: false, // Không thông báo ngay vì sẽ thông báo ở cuối hàm
-          );
-        } else {
-          // Nếu không thay đổi khẩu phần, cập nhật trực tiếp
-          _foodEntries[index] = updatedEntry;
-        }
-      } else {
-        // Nếu không có items hoặc có sự thay đổi về cấu trúc, cập nhật trực tiếp
-        _foodEntries[index] = updatedEntry;
-      }
-    } else {
-      // Nếu không tìm thấy, thêm mới
-      _foodEntries.add(updatedEntry);
-    }
-    
-    // Xóa cache để đảm bảo dữ liệu được tính toán lại
-    _calculationCache.clear();
-    
-    // Thông báo cho UI cập nhật
-    notifyListeners();
-    
-    // Lưu dữ liệu
-    await _saveData();
-  }
-  
-  // Delete food entry
-  Future<void> deleteFoodEntry(String id) async {
-    _foodEntries.removeWhere((entry) => entry.id == id);
-    notifyListeners();
-    _saveData();
-  }
-  
-  // Add item to favorites
-  Future<void> addToFavorites(FoodItem item) async {
-    if (!_favoriteItems.any((favItem) => favItem.id == item.id)) {
-      _favoriteItems.add(item);
-      notifyListeners();
-      _saveData();
-    }
-  }
-  
-  // Remove item from favorites
-  Future<void> removeFromFavorites(String id) async {
-    _favoriteItems.removeWhere((item) => item.id == id);
-    notifyListeners();
-    _saveData();
-  }
-  
-  // Add item to recent items
-  void _addToRecentItems(FoodItem item) {
-    // Remove if already exists to avoid duplicates
-    _recentItems.removeWhere((recentItem) => recentItem.id == item.id);
-    
-    // Add to beginning of list
-    _recentItems.insert(0, item);
-    
-    // Keep only the most recent 20 items
-    if (_recentItems.length > 20) {
-      _recentItems = _recentItems.sublist(0, 20);
-    }
-    
-    _saveData();
-  }
-  
-  // Calculate nutrition totals for a specific date with tính năng cache
-  Map<String, dynamic> getNutritionTotals({String? date}) {
-    final targetDate = date ?? _selectedDate;
-    
-    // Xem trong cache nếu đã có kết quả
-    final cacheKey = 'nutrition_totals_$targetDate';
-    if (_calculationCache.containsKey(cacheKey)) {
-      return _calculationCache[cacheKey]!;
-    }
-    
-    // Lấy danh sách các entries cho ngày cụ thể
-    final entries = _foodEntries.where(
-      (entry) => entry.dateTime.toIso8601String().split('T')[0] == targetDate
-    ).toList();
-    
-    // Tính toán tổng giá trị dinh dưỡng
-    double totalCalories = 0.0;
-    double totalProtein = 0.0;
-    double totalFat = 0.0;
-    double totalCarbs = 0.0;
-    double totalWeight = 0.0;
-    
-    for (var entry in entries) {
-      // Ưu tiên sử dụng dữ liệu từ API nếu có
-      final nutrition = entry.calculateNutritionFromAPI();
-      
-      totalCalories += nutrition['calories'] ?? 0.0;
-      totalProtein += nutrition['protein'] ?? 0.0;
-      totalFat += nutrition['fat'] ?? 0.0;
-      totalCarbs += nutrition['carbs'] ?? 0.0;
-      
-      // Đảm bảo totalWeight được tính đúng từ mỗi entry
-      if (nutrition.containsKey('totalWeight') && nutrition['totalWeight'] != null) {
-        totalWeight += nutrition['totalWeight']!;
-      } else if (entry.nutritionInfo != null && entry.nutritionInfo!.containsKey('totalWeight')) {
-        totalWeight += entry.nutritionInfo!['totalWeight'] as double;
-      } else if (entry.items.isNotEmpty) {
-        // Nếu không có totalWeight, tính từ servingSize của items
-        totalWeight += entry.totalWeight;
-      }
-    }
-    
-    // Tạo kết quả
-    final result = {
-      'calories': totalCalories,
-      'protein': totalProtein,
-      'fat': totalFat,
-      'carbs': totalCarbs,
-      'totalWeight': totalWeight,
-    };
-    
-    // Lưu vào cache
-    _calculationCache[cacheKey] = result;
-    
-    return result;
-  }
+  // Getters for new data and loading states
+  Map<String, dynamic>? get dailyNutritionSummary => _dailyNutritionSummary;
+  List<FoodEntry> get dailyMeals => _dailyMeals;
+  bool get isLoadingSummary => _isLoadingSummary;
+  bool get isLoadingMeals => _isLoadingMeals;
   
   // Thêm biến cache để lưu kết quả tính toán
   final Map<String, Map<String, dynamic>> _calculationCache = {};
   
-  // Phương thức để xóa cache khi cần
-  Future<void> clearNutritionCache() async {
+  // Xóa cache dinh dưỡng để đảm bảo tính toán lại
+  void clearNutritionCache() {
     _calculationCache.clear();
+    _dailySummaryCache.clear();
+    _dailyMealsCache.clear();
     notifyListeners();
+    print('FoodProvider: Đã xóa cache dinh dưỡng');
   }
   
   // Phương thức để làm mới dữ liệu dinh dưỡng
   Future<void> refreshNutrition() async {
+    // Xóa cache để đảm bảo dữ liệu được tính toán lại
     _calculationCache.clear();
+    _dailySummaryCache.clear();
+    _dailyMealsCache.clear();
+    
+    // Đảm bảo tất cả các entry đã được cập nhật đúng cách
+    for (int i = 0; i < _foodEntries.length; i++) {
+      final entry = _foodEntries[i];
+      
+      // Đảm bảo thông tin dinh dưỡng được tính toán lại từ các item nếu cần
+      if (entry.items.isNotEmpty) {
+        if (entry.nutritionInfo == null || entry.nutritionInfo!.isEmpty) {
+          // Tính toán giá trị mới từ các item
+          final nutritionValues = entry.calculateNutritionFromAPI();
+          
+          // Tạo thông tin dinh dưỡng mới
+          final updatedNutritionInfo = {
+            'calories': nutritionValues['calories'],
+            'protein': nutritionValues['protein'],
+            'fat': nutritionValues['fat'],
+            'carbs': nutritionValues['carbs'],
+            'fiber': nutritionValues['fiber'],
+            'sugar': nutritionValues['sugar'],
+            'sodium': nutritionValues['sodium'],
+            'servingSize': entry.items.first.servingSize,
+            'totalWeight': entry.items.first.servingSize * 100,
+          };
+          
+          // Cập nhật entry
+          _foodEntries[i] = entry.copyWith(nutritionInfo: updatedNutritionInfo);
+        } 
+        else {
+          // Đảm bảo các khóa snake_case và camelCase đều được cập nhật
+          final servingSize = entry.items.first.servingSize;
+          final updatedNutritionInfo = Map<String, dynamic>.from(entry.nutritionInfo!);
+          
+          // Đảm bảo các khóa cơ bản luôn tồn tại
+          updatedNutritionInfo['servingSize'] = servingSize;
+          updatedNutritionInfo['totalWeight'] = servingSize * 100;
+          
+          // Đảm bảo tất cả các vi chất dinh dưỡng có cả camelCase và snake_case
+          _syncNutrientKeys(updatedNutritionInfo);
+          
+          // Cập nhật entry
+          _foodEntries[i] = entry.copyWith(nutritionInfo: updatedNutritionInfo);
+        }
+      }
+    }
+    
+    // Đánh dấu rằng dữ liệu đã thay đổi, cần cập nhật UI
     notifyListeners();
+    
+    // Đảm bảo dữ liệu được lưu
+    await _saveData();
+    
+    // Log để debug
+    print('FoodProvider: Đã làm mới dữ liệu dinh dưỡng, UI sẽ được cập nhật');
+  }
+  
+  // Hàm đồng bộ khóa dinh dưỡng giữa camelCase và snake_case
+  void _syncNutrientKeys(Map<String, dynamic> nutritionInfo) {
+    // Danh sách các khóa cần đồng bộ: snake_case -> camelCase và ngược lại
+    final keyMappings = {
+      'vitamin_a': 'vitaminA',
+      'vitamin_b12': 'vitaminB12',
+      'vitamin_c': 'vitaminC',
+      'vitamin_d': 'vitaminD',
+      'vitamin_e': 'vitaminE',
+      'vitamin_k': 'vitaminK',
+      'vitamin_b9': 'vitaminB9',
+      'vitamin_b': 'vitaminB',
+      'saturated_fat': 'saturatedFat',
+      'trans_fat': 'transFat',
+      // Thêm các khóa còn thiếu
+      'cholesterol': 'cholesterol',
+      'omega3': 'omega3',
+      'fiber': 'fiber',
+      'water': 'water',
+      'sugar': 'sugar',
+      'caffeine': 'caffeine',
+      'alcohol': 'alcohol',
+      'iron': 'iron',
+      'calcium': 'calcium',
+      'magnesium': 'magnesium',
+      'potassium': 'potassium',
+      'zinc': 'zinc',
+      'phosphorus': 'phosphorus',
+      'selenium': 'selenium',
+      'copper': 'copper',
+      'manganese': 'manganese',
+      'thiamin': 'thiamin',
+      'riboflavin': 'riboflavin',
+      'niacin': 'niacin',
+    };
+    
+    // Đồng bộ từ snake_case sang camelCase và ngược lại
+    keyMappings.forEach((snakeKey, camelKey) {
+      // Từ snake_case sang camelCase
+      if (nutritionInfo.containsKey(snakeKey) && nutritionInfo[snakeKey] != null) {
+        nutritionInfo[camelKey] = nutritionInfo[snakeKey];
+      }
+      // Từ camelCase sang snake_case
+      else if (nutritionInfo.containsKey(camelKey) && nutritionInfo[camelKey] != null) {
+        nutritionInfo[snakeKey] = nutritionInfo[camelKey];
+      }
+    });
   }
   
   // Hiển thị thông báo khi thêm mới bữa ăn
@@ -676,6 +274,15 @@ class FoodProvider with ChangeNotifier {
     // Lưu dữ liệu
     _saveData();
     
+    // Xóa cache để đảm bảo dữ liệu được tính toán lại
+    clearNutritionCache();
+    
+    // Làm mới dữ liệu dinh dưỡng
+    refreshNutrition();
+    
+    // Lấy ngày của entry để log
+    final entryDate = entry.dateTime.toIso8601String().split('T')[0];
+    
     // Đảm bảo UI được cập nhật
     notifyListeners();
     
@@ -688,6 +295,7 @@ class FoodProvider with ChangeNotifier {
     print('Tổng protein: ${entry.totalProtein}g');
     print('Tổng carbs: ${entry.totalCarbs}g');
     print('Tổng chất béo: ${entry.totalFat}g');
+    print('Đã làm mới dữ liệu dinh dưỡng và bữa ăn cho ngày $entryDate');
   }
   
   // Đặt ngày hiện tại
@@ -807,83 +415,39 @@ class FoodProvider with ChangeNotifier {
     return selectedFoods;
   }
   
-  // Thêm phương thức đồng bộ dữ liệu dinh dưỡng để đảm bảo thông tin nhất quán từ API đến UI khi thay đổi khẩu phần
-  Future<void> synchronizeNutritionData(String foodId, double servingSize) async {
-    // Tìm tất cả các FoodEntry có chứa món ăn này
-    final entriesToUpdate = _foodEntries.where((entry) {
-      return entry.items.any((item) => item.id == foodId);
-    }).toList();
-    
-    if (entriesToUpdate.isEmpty) return;
-    
-    // Cập nhật khẩu phần và giá trị dinh dưỡng cho từng entry
-    for (var entry in entriesToUpdate) {
-      final updatedItems = entry.items.map((item) {
-        if (item.id == foodId) {
-          // Cập nhật servingSize nếu ID trùng khớp
-          return item.copyWith(servingSize: servingSize);
-        }
-        return item;
-      }).toList();
+  // Lấy FoodEntry theo ID
+  FoodEntry? getFoodEntryById(String id) {
+    try {
+      print('getFoodEntryById: Tìm entry với ID: $id');
+      print('getFoodEntryById: Tổng số entries: ${_foodEntries.length}');
       
-      // Tạo FoodEntry mới với danh sách items đã cập nhật
-      final updatedEntry = entry.copyWith(items: updatedItems);
-      
-      // Cập nhật entry trong danh sách
-      final index = _foodEntries.indexWhere((e) => e.id == entry.id);
-      if (index != -1) {
-        _foodEntries[index] = updatedEntry;
+      final entries = _foodEntries.where((entry) => entry.id == id).toList();
+      if (entries.isEmpty) {
+        print('getFoodEntryById: Không tìm thấy entry với ID: $id');
+        return null;
       }
+      
+      final original = entries.first;
+      final entryDate = original.dateTime.toIso8601String().split('T')[0];
+      print('getFoodEntryById: Đã tìm thấy entry với ID: $id, Ngày: $entryDate');
+      
+      return original; // Có thể tạo bản sao mới ở đây nếu cần
+    } catch (e) {
+      print('Không tìm thấy FoodEntry với ID: $id, Lỗi: $e');
+      return null;
     }
-    
-    // Xóa cache để tính toán lại các giá trị dinh dưỡng
-    _calculationCache.clear();
-    
-    // Thông báo cho UI cập nhật
-    notifyListeners();
-    
-    // Lưu dữ liệu
-    await _saveData();
   }
   
-  // Cập nhật servingSize cho món ăn trong một entry cụ thể
-  Future<void> updateFoodItemServingSize({
-    required String entryId,
-    required String foodItemId,
-    required double newServingSize
-  }) async {
-    final entryIndex = _foodEntries.indexWhere((entry) => entry.id == entryId);
-    if (entryIndex == -1) return;
-    
-    final entry = _foodEntries[entryIndex];
-    final updatedItems = entry.items.map((item) {
-      if (item.id == foodItemId) {
-        return item.copyWith(servingSize: newServingSize);
-      }
-      return item;
-    }).toList();
-    
-    _foodEntries[entryIndex] = entry.copyWith(items: updatedItems);
-    
-    // Xóa cache để tính toán lại các giá trị dinh dưỡng
-    _calculationCache.clear();
-    
-    // Thông báo cho UI cập nhật
-    notifyListeners();
-    
-    // Lưu dữ liệu
-    await _saveData();
-  }
-  
-  // Đồng bộ dữ liệu dinh dưỡng trong toàn bộ ứng dụng
+  // Thêm phương thức đồng bộ dữ liệu dinh dưỡng để đảm bảo thông tin nhất quán từ API đến UI khi thay đổi khẩu phần
   Future<void> synchronizeNutrition({
     required String entryId, 
     required double servingSize,
     bool notifyChange = true
   }) async {
-    // Tìm và cập nhật FoodEntry theo ID
+    // Tìm và cập nhật RIÊNG LẺ FoodEntry theo ID
     final entryIndex = _foodEntries.indexWhere((entry) => entry.id == entryId);
     if (entryIndex == -1) {
+      print('Không tìm thấy entry với ID $entryId để đồng bộ');
       return;
     }
     
@@ -896,12 +460,33 @@ class FoodProvider with ChangeNotifier {
       final oldServingSize = entry.items.first.servingSize;
       final ratio = servingSize / oldServingSize;
       
-      // Cập nhật từng item với servingSize mới
+      // Cập nhật từng item với servingSize mới và cập nhật calories
       final updatedItems = entry.items.map((item) {
-        return item.copyWith(servingSize: servingSize);
+        // Tính toán lại calories dựa trên kích thước khẩu phần mới
+        double updatedCalories = item.calories * ratio;
+        double updatedProtein = item.protein * ratio;
+        double updatedFat = item.fat * ratio;
+        double updatedCarbs = item.carbs * ratio;
+        
+        // Cập nhật các giá trị dinh dưỡng bổ sung nếu có
+        double? updatedFiber = item.fiber != null ? item.fiber! * ratio : null;
+        double? updatedSugar = item.sugar != null ? item.sugar! * ratio : null;
+        double? updatedSodium = item.sodium != null ? item.sodium! * ratio : null;
+        
+        // Tạo bản sao của item với servingSize và các giá trị dinh dưỡng mới
+        return item.copyWith(
+          servingSize: servingSize,
+          calories: updatedCalories,
+          protein: updatedProtein,
+          fat: updatedFat,
+          carbs: updatedCarbs,
+          fiber: updatedFiber,
+          sugar: updatedSugar,
+          sodium: updatedSodium,
+        );
       }).toList();
       
-      // Cập nhật thông tin dinh dưỡng trong nutritionInfo nếu có
+      // Cập nhật thông tin dinh dưỡng
       Map<String, dynamic>? updatedNutritionInfo;
       
       if (entry.nutritionInfo != null) {
@@ -923,8 +508,19 @@ class FoodProvider with ChangeNotifier {
         
         // Cập nhật các vi chất dinh dưỡng theo tỷ lệ
         final micronutrients = [
+          // Danh sách vi chất cũ
           'cholesterol', 'omega3', 'vitaminD', 'vitaminB12', 'vitaminC', 
-          'calcium', 'iron', 'potassium', 'magnesium'
+          'calcium', 'iron', 'potassium', 'magnesium',
+          
+          // Thêm các khóa snake_case để đảm bảo dữ liệu được cập nhật đúng cách
+          'vitamin_d', 'vitamin_b12', 'vitamin_c', 'vitamin_a', 'vitamin_e', 'vitamin_k',
+          'vitamin_b9', 'vitamin_b', 'saturated_fat', 'trans_fat', 'phosphorus', 'selenium',
+          'copper', 'manganese', 'thiamin', 'riboflavin', 'niacin', 'water',
+          
+          // Các khóa camelCase bổ sung cũng để đảm bảo tương thích ngược
+          'vitaminA', 'vitaminE', 'vitaminK', 'vitaminB9', 'vitaminB', 'saturatedFat', 'transFat',
+          'zinc', 'caffeine', 'alcohol', 'phosphorus', 'selenium', 'copper', 
+          'manganese', 'thiamin', 'riboflavin', 'niacin'
         ];
         
         for (var nutrient in micronutrients) {
@@ -932,12 +528,28 @@ class FoodProvider with ChangeNotifier {
             updatedNutritionInfo[nutrient] = (updatedNutritionInfo[nutrient] * ratio).toDouble();
           }
         }
+        
+        // Đảm bảo đồng bộ khóa giữa snake_case và camelCase
+        _syncNutrientKeys(updatedNutritionInfo);
+        
+        // In ra log để debug
+        print("synchronizeNutrition: Đã cập nhật các khóa: ${updatedNutritionInfo.keys.toList()}");
+        
+        // Kiểm tra và in ra giá trị Vitamin D - chỉ để debug
+        print("synchronizeNutrition: Vitamin D = ${updatedNutritionInfo['vitamin_d']}, VitaminD = ${updatedNutritionInfo['vitaminD']}");
       } else {
         // Nếu không có nutritionInfo, tạo mới với totalWeight
         updatedNutritionInfo = {
           'servingSize': servingSize,
           'totalWeight': servingSize * 100,
+          'calories': updatedItems.fold(0.0, (sum, item) => sum + item.calories),
+          'protein': updatedItems.fold(0.0, (sum, item) => sum + item.protein),
+          'fat': updatedItems.fold(0.0, (sum, item) => sum + item.fat),
+          'carbs': updatedItems.fold(0.0, (sum, item) => sum + item.carbs),
         };
+        
+        // Đảm bảo đồng bộ khóa dinh dưỡng ngay từ đầu
+        _syncNutrientKeys(updatedNutritionInfo);
       }
       
       // Tạo FoodEntry mới với items và thông tin dinh dưỡng đã cập nhật
@@ -949,7 +561,7 @@ class FoodProvider with ChangeNotifier {
         dateTime: entry.dateTime,
         isFavorite: entry.isFavorite,
         barcode: entry.barcode,
-        calories: entry.calories,
+        calories: updatedItems.fold(0.0, (sum, item) => sum + item.calories),
         nutritionInfo: updatedNutritionInfo,
         mealType: entry.mealType,
         items: updatedItems,
@@ -963,15 +575,87 @@ class FoodProvider with ChangeNotifier {
       
       // Thông báo cho UI cập nhật
       if (notifyChange) {
-        notifyListeners();
+        // Sử dụng Future.microtask để tránh gọi notifyListeners trong quá trình build
+        Future.microtask(() {
+          print("FoodProvider: Đã làm mới dữ liệu dinh dưỡng, UI sẽ được cập nhật");
+          notifyListeners();
+        });
       }
       
       // Lưu dữ liệu
       await _saveData();
-      
-      // Làm mới dữ liệu dinh dưỡng để đảm bảo UI được cập nhật
-      refreshNutrition();
     }
+  }
+  
+  // Hàm hỗ trợ cập nhật các giá trị dinh dưỡng bổ sung theo tỷ lệ
+  Map<String, dynamic> _updateAdditionalNutrients(Map<String, dynamic> nutrients, double ratio) {
+    final result = Map<String, dynamic>.from(nutrients);
+    
+    result.forEach((key, value) {
+      if (value is num) {
+        result[key] = (value * ratio).toDouble();
+      }
+    });
+    
+    return result;
+  }
+
+  // Add a complete FoodEntry directly
+  void addFoodEntry(FoodEntry entry) {
+    _foodEntries.add(entry);
+    
+    // If there are items, add them to recent items
+    if (entry.items.isNotEmpty) {
+      for (var item in entry.items) {
+        _addToRecentItems(item);
+      }
+    }
+    
+    // Xóa cache để đảm bảo dữ liệu được tính toán lại
+    clearNutritionCache();
+    
+    notifyListeners();
+    _saveData();
+  }
+
+  // Kiểm tra xem chế độ demo có được bật không
+  Future<bool> _isDemoModeEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Mặc định là true để có dữ liệu demo khi mới cài đặt ứng dụng
+      return prefs.getBool('demo_mode_enabled') ?? true;
+    } catch (e) {
+      print('Lỗi khi kiểm tra chế độ demo: $e');
+      return false;
+    }
+  }
+  
+  // Thêm dữ liệu demo cho ngày hiện tại
+  Future<void> _addDemoFoodEntries() async {
+    try {
+      // Tạo datetime cho hôm nay với giờ phù hợp
+      final today = DateTime.parse('${_selectedDate}T00:00:00Z');
+      
+
+      // Thêm vào danh sách
+
+
+      // Lưu vào bộ nhớ
+      await _saveData();
+
+      // Thông báo thay đổi
+      notifyListeners();
+      
+      print('DEBUG PROVIDER: Đã thêm 3 mục demo cho ngày $_selectedDate');
+    } catch (e) {
+      print('Lỗi khi thêm dữ liệu demo: $e');
+    }
+  }
+
+  // Đồng bộ một food item cụ thể sang các entry khác sử dụng item đó
+  void _syncItemToOtherEntries(FoodItem updatedItem, String sourceEntryId) {
+    // Không thực hiện đồng bộ giữa các entry
+    return;
   }
   
   // Thêm món ăn vào bữa ăn
@@ -983,7 +667,13 @@ class FoodProvider with ChangeNotifier {
     if (entryIndex == -1) return;
     
     final entry = _foodEntries[entryIndex];
-    final updatedItems = [...entry.items, foodItem];
+    
+    // Tạo bản sao của foodItem với ID mới để tránh đồng bộ giữa các bữa ăn khác nhau
+    final newFoodItem = foodItem.copyWith(
+      id: Uuid().v4(),  // Tạo ID mới để đảm bảo độc lập
+    );
+    
+    final updatedItems = [...entry.items, newFoodItem];
     
     _foodEntries[entryIndex] = entry.copyWith(items: updatedItems);
     
@@ -995,5 +685,366 @@ class FoodProvider with ChangeNotifier {
     
     // Lưu dữ liệu
     await _saveData();
+  }
+
+  // Create a TRULY DEEP copy of a FoodEntry with totally new IDs
+  FoodEntry createDeepCopy(FoodEntry original) {
+    // Tạo bản sao của tất cả các items với ID hoàn toàn mới
+    final newItems = original.items.map((item) {
+      // Tạo một nutritionInfo mới nếu có
+      Map<String, dynamic>? newAdditionalNutrients;
+      if (item.additionalNutrients != null) {
+        newAdditionalNutrients = Map<String, dynamic>.from(item.additionalNutrients!);
+      }
+      
+      return FoodItem(
+        id: _uuid.v4(), // Tạo ID hoàn toàn mới
+        name: item.name,
+        brand: item.brand,
+        calories: item.calories,
+        protein: item.protein,
+        fat: item.fat,
+        carbs: item.carbs,
+        servingSize: item.servingSize,
+        servingUnit: item.servingUnit,
+        fiber: item.fiber,
+        sugar: item.sugar,
+        sodium: item.sodium,
+        imageUrl: item.imageUrl,
+        additionalNutrients: newAdditionalNutrients,
+      );
+    }).toList();
+    
+    // Tạo bản sao MỚI HOÀN TOÀN của nutritionInfo nếu có
+    Map<String, dynamic>? newNutritionInfo;
+    if (original.nutritionInfo != null) {
+      newNutritionInfo = Map<String, dynamic>.from(original.nutritionInfo!);
+    }
+    
+    // Tạo FoodEntry mới với ID mới và dữ liệu mới
+    return FoodEntry(
+      id: _uuid.v4(), // Tạo ID hoàn toàn mới
+      description: original.description,
+      imagePath: original.imagePath,
+      audioPath: original.audioPath,
+      dateTime: original.dateTime,
+      isFavorite: original.isFavorite,
+      barcode: original.barcode,
+      calories: original.calories,
+      nutritionInfo: newNutritionInfo,
+      mealType: original.mealType,
+      items: newItems,
+    );
+  }
+
+  // Khi thêm FoodEntry từ màn hình tìm kiếm vào nhật ký
+  Future<FoodEntry> addCopiedFoodEntry(FoodEntry originalEntry, String mealType, DateTime dateTime) async {
+    // Tạo bản sao hoàn toàn mới
+    final newEntry = createDeepCopy(originalEntry);
+    
+    // Cập nhật mealType và dateTime
+    final updatedEntry = newEntry.copyWith(
+      mealType: mealType,
+      dateTime: dateTime,
+    );
+    
+    // Thêm vào danh sách
+    _foodEntries.add(updatedEntry);
+    notifyListeners();
+    _saveData();
+    
+    return updatedEntry;
+  }
+
+  Future<void> updateServingSize(String entryId, double newServingSize) async {
+    final entryIndex = _foodEntries.indexWhere((entry) => entry.id == entryId);
+    if (entryIndex == -1) return;
+    
+    final entry = _foodEntries[entryIndex];
+    if (entry.nutritionInfo != null) {
+      // Cập nhật nutritionInfo
+      final updatedNutritionInfo = Map<String, dynamic>.from(entry.nutritionInfo!);
+      
+      // Đảm bảo cập nhật cả servingSize và totalWeight
+      updatedNutritionInfo['servingSize'] = newServingSize;
+      updatedNutritionInfo['totalWeight'] = newServingSize * 100;
+      
+      // Cập nhật entry
+      _foodEntries[entryIndex] = entry.copyWith(
+        nutritionInfo: updatedNutritionInfo,
+      );
+      
+      // Đảm bảo cập nhật lại các items nếu cần
+      await synchronizeNutrition(
+        entryId: entryId,
+        servingSize: newServingSize,
+      );
+    }
+    
+    notifyListeners();
+    _saveData();
+  }
+
+  Future<void> fetchDailyNutritionSummary(String date, {BuildContext? context}) async {
+    if (_dailySummaryCache.containsKey(date)) {
+      _dailyNutritionSummary = _dailySummaryCache[date];
+      notifyListeners();
+      return;
+    }
+
+    _isLoadingSummary = true;
+    notifyListeners();
+
+    // Simulate API call
+    await Future.delayed(Duration(milliseconds: 800)); // Simulate network delay
+
+    // Get the actual nutrition values for the selected date
+    final nutritionValues = getNutritionTotals(date: date);
+    
+    // Synchronize with TDEE goals if context is provided
+    Map<String, dynamic> nutritionGoals = {};
+    if (context != null) {
+      try {
+        // Get UserDataProvider
+        final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+        
+        // Create TDEE calculator
+        final calculator = TDEECalculator(
+          gender: userDataProvider.gender,
+          age: userDataProvider.age,
+          heightCm: userDataProvider.heightCm,
+          weightKg: userDataProvider.weightKg,
+          activityLevel: userDataProvider.activityLevel,
+          goal: userDataProvider.goal,
+          pace: userDataProvider.pace,
+        );
+        
+        // Get daily calories goal
+        final dailyCalories = calculator.calculateDailyCalories();
+        
+        // Get macros distribution
+        final macros = calculator.calculateMacroDistribution();
+        
+        // Set goals from TDEE calculations
+        nutritionGoals = {
+          "calories": dailyCalories,
+          "protein": macros['protein'] ?? 0,
+          "carbs": macros['carbs'] ?? 0,
+          "fat": macros['fat'] ?? 0,
+          // Keep default values for other nutrients
+          "cholesterol": 300,
+          "omega3": 1600,
+          "fiber": 38,
+          "water": 2000,
+          "sugar": 69,
+          "saturated_fat": 20,
+          "caffeine": 400,
+          "alcohol": 30,
+          "vitamin_d": 15,
+          "vitamin_b12": 2.4,
+          "vitamin_c": 90,
+          "vitamin_b9": 400,
+          "iron": 8.0,
+          "calcium": 1000,
+          "magnesium": 400,
+          "zinc": 11
+        };
+        
+        print('Synchronized nutrition goals with TDEE: Calories=${nutritionGoals["calories"]}, Protein=${nutritionGoals["protein"]}, Carbs=${nutritionGoals["carbs"]}, Fat=${nutritionGoals["fat"]}');
+      } catch (e) {
+        print('Error synchronizing with TDEE goals: $e');
+        // Fall back to default values if there's an error
+      }
+    }
+    
+    // If we couldn't get goals from TDEE, use default values
+    if (nutritionGoals.isEmpty) {
+      nutritionGoals = {
+        "calories": 2782,
+        "protein": 208, 
+        "fat": 92,
+        "carbs": 278,
+        "cholesterol": 300,
+        "omega3": 1600,
+        "fiber": 38,
+        "water": 2000,
+        "sugar": 69,
+        "saturated_fat": 20,
+        "caffeine": 400,
+        "alcohol": 30,
+        "vitamin_d": 15,
+        "vitamin_b12": 2.4,
+        "vitamin_c": 90,
+        "vitamin_b9": 400,
+        "iron": 8.0,
+        "calcium": 1000,
+        "magnesium": 400,
+        "zinc": 11
+      };
+    }
+
+    // Construct the daily nutrition summary with actual values and goals
+    _dailyNutritionSummary = {
+      "calories": {"value": nutritionValues['calories'] ?? 0, "goal": nutritionGoals["calories"]},
+      "protein": {"value": nutritionValues['protein'] ?? 0, "goal": nutritionGoals["protein"]},
+      "fat": {"value": nutritionValues['fat'] ?? 0, "goal": nutritionGoals["fat"]},
+      "carbs": {"value": nutritionValues['carbs'] ?? 0, "goal": nutritionGoals["carbs"]},
+      "cholesterol": {"value": nutritionValues['cholesterol'] ?? 0, "goal": nutritionGoals["cholesterol"]},
+      "omega3": {"value": nutritionValues['omega3'] ?? 0, "goal": nutritionGoals["omega3"]},
+      "fiber": {"value": nutritionValues['fiber'] ?? 0, "goal": nutritionGoals["fiber"]},
+      "water": {"value": nutritionValues['water'] ?? 0, "goal": nutritionGoals["water"]},
+      "sugar": {"value": nutritionValues['sugar'] ?? 0, "goal": nutritionGoals["sugar"]},
+      "saturated_fat": {"value": nutritionValues['saturated_fat'] ?? 0, "goal": nutritionGoals["saturated_fat"]},
+      "caffeine": {"value": nutritionValues['caffeine'] ?? 0, "goal": nutritionGoals["caffeine"]},
+      "alcohol": {"value": nutritionValues['alcohol'] ?? 0, "goal": nutritionGoals["alcohol"]},
+      "vitamin_d": {"value": nutritionValues['vitamin_d'] ?? 0, "goal": nutritionGoals["vitamin_d"]},
+      "vitamin_b12": {"value": nutritionValues['vitamin_b12'] ?? 0, "goal": nutritionGoals["vitamin_b12"]},
+      "vitamin_c": {"value": nutritionValues['vitamin_c'] ?? 0, "goal": nutritionGoals["vitamin_c"]},
+      "vitamin_b9": {"value": nutritionValues['vitamin_b9'] ?? 0, "goal": nutritionGoals["vitamin_b9"]},
+      "iron": {"value": nutritionValues['iron'] ?? 0, "goal": nutritionGoals["iron"]},
+      "calcium": {"value": nutritionValues['calcium'] ?? 0, "goal": nutritionGoals["calcium"]},
+      "magnesium": {"value": nutritionValues['magnesium'] ?? 0, "goal": nutritionGoals["magnesium"]},
+      "zinc": {"value": nutritionValues['zinc'] ?? 0, "goal": nutritionGoals["zinc"]}
+    };
+
+    _dailySummaryCache[date] = _dailyNutritionSummary!;
+    _isLoadingSummary = false;
+    notifyListeners();
+  }
+
+  Future<void> fetchDailyMeals(String date) async {
+    if (_dailyMealsCache.containsKey(date)) {
+      _dailyMeals = _dailyMealsCache[date]!;
+      notifyListeners();
+      return;
+    }
+
+    _isLoadingMeals = true;
+    notifyListeners();
+
+    // Simulate API call
+    await Future.delayed(Duration(milliseconds: 1200));
+
+    // Khởi tạo một danh sách rỗng thay vì tạo dữ liệu mẫu
+    _dailyMeals = [];
+    _dailyMealsCache[date] = _dailyMeals;
+    
+    _isLoadingMeals = false;
+    notifyListeners();
+  }
+
+  // Đồng bộ dữ liệu cho một food item cụ thể dựa trên ID và kích thước khẩu phần
+  Future<void> synchronizeNutritionData(String itemId, double servingSize) async {
+    try {
+      // Tìm item trong tất cả các food entries
+      FoodItem? foundItem;
+      FoodEntry? parentEntry;
+      
+      for (var entry in _foodEntries) {
+        for (var item in entry.items) {
+          if (item.id == itemId) {
+            foundItem = item;
+            parentEntry = entry;
+            break;
+          }
+        }
+        if (foundItem != null) break;
+      }
+      
+      if (foundItem == null || parentEntry == null) {
+        print('Không tìm thấy item với ID $itemId để đồng bộ');
+        return;
+      }
+      
+      // Sau điểm này, chúng ta chắc chắn rằng foundItem và parentEntry không null
+      // Đánh dấu các biến là non-nullable để Dart compiler hiểu
+      final FoodItem nonNullItem = foundItem;
+      final FoodEntry nonNullEntry = parentEntry;
+      
+      // Tính toán tỷ lệ giữa kích thước khẩu phần mới và cũ
+      final oldServingSize = nonNullItem.servingSize;
+      final ratio = servingSize / oldServingSize;
+      
+      // Tạo item mới với kích thước khẩu phần được cập nhật
+      final updatedItem = FoodItem(
+        id: nonNullItem.id,
+        name: nonNullItem.name,
+        brand: nonNullItem.brand,
+        calories: nonNullItem.calories * ratio,
+        protein: nonNullItem.protein * ratio,
+        fat: nonNullItem.fat * ratio,
+        carbs: nonNullItem.carbs * ratio,
+        servingSize: servingSize,
+        servingUnit: nonNullItem.servingUnit,
+        fiber: nonNullItem.fiber != null ? nonNullItem.fiber! * ratio : null,
+        sugar: nonNullItem.sugar != null ? nonNullItem.sugar! * ratio : null,
+        sodium: nonNullItem.sodium != null ? nonNullItem.sodium! * ratio : null,
+        imageUrl: nonNullItem.imageUrl,
+        additionalNutrients: nonNullItem.additionalNutrients != null 
+            ? _updateAdditionalNutrients(nonNullItem.additionalNutrients!, ratio) 
+            : null,
+      );
+      
+      // Cập nhật item trong danh sách items của entry
+      final updatedItems = nonNullEntry.items.map((item) {
+        if (item.id == itemId) {
+          return updatedItem;
+        }
+        return item;
+      }).toList();
+      
+      // Cập nhật nutritionInfo của entry nếu có
+      Map<String, dynamic>? updatedNutritionInfo;
+      if (nonNullEntry.nutritionInfo != null) {
+        updatedNutritionInfo = Map<String, dynamic>.from(nonNullEntry.nutritionInfo!);
+        
+        // Nếu đây là item duy nhất hoặc item đầu tiên, cập nhật servingSize và totalWeight
+        if (nonNullEntry.items.isNotEmpty && nonNullEntry.items.first.id == itemId) {
+          updatedNutritionInfo['servingSize'] = servingSize;
+          updatedNutritionInfo['totalWeight'] = servingSize * 100;
+        }
+      }
+      
+      // Tạo entry mới với items đã cập nhật
+      final updatedEntry = FoodEntry(
+        id: nonNullEntry.id,
+        description: nonNullEntry.description,
+        imagePath: nonNullEntry.imagePath,
+        audioPath: nonNullEntry.audioPath,
+        dateTime: nonNullEntry.dateTime,
+        isFavorite: nonNullEntry.isFavorite,
+        barcode: nonNullEntry.barcode,
+        calories: nonNullEntry.calories,
+        nutritionInfo: updatedNutritionInfo,
+        mealType: nonNullEntry.mealType,
+        items: updatedItems,
+      );
+      
+      // Cập nhật entry trong danh sách
+      final entryIndex = _foodEntries.indexWhere((entry) => entry.id == nonNullEntry.id);
+      if (entryIndex != -1) {
+        _foodEntries[entryIndex] = updatedEntry;
+      }
+      
+      // Xóa cache để tính toán lại các giá trị dinh dưỡng
+      _calculationCache.clear();
+      
+      // Tránh setState trong quá trình build bằng cách sử dụng Future.microtask
+      Future.microtask(() {
+        print("FoodProvider.synchronizeNutritionData: Đã cập nhật item ${nonNullItem.name} với servingSize mới: $servingSize");
+        notifyListeners();
+      });
+      
+      // Lưu dữ liệu
+      await _saveData();
+    } catch (e) {
+      print('Lỗi khi đồng bộ dữ liệu dinh dưỡng cho item: $e');
+    }
+  }
+
+  // Add a method to explicitly clear the nutrition summary cache
+  void clearNutritionSummaryCache() {
+    _dailySummaryCache.clear();
+    notifyListeners();
   }
 } 

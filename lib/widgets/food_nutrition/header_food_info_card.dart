@@ -3,11 +3,12 @@ import '../../models/food_entry.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import '../../providers/food_provider.dart';
+import '../../screens/food_nutrition_detail_screen.dart';
 
 // Add global context variable for dialog access
 BuildContext? globalContext;
 
-class HeaderFoodInfoCard extends StatelessWidget {
+class HeaderFoodInfoCard extends StatefulWidget {
   final FoodEntry foodEntry;
   final double servingSize;
   final VoidCallback onEditTime;
@@ -40,84 +41,391 @@ class HeaderFoodInfoCard extends StatelessWidget {
     this.onReplace,
     this.onWeightChanged,
   }) : super(key: key);
+
+  @override
+  _HeaderFoodInfoCardState createState() => _HeaderFoodInfoCardState();
+}
+
+class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
+  // State để lưu trữ FoodEntry hiện tại
+  late FoodEntry _currentFoodEntry;
   
-  // Thêm getter để trả về giá trị servingSize hiệu quả
-  double get effectiveServingSize => servingSize <= 0 ? 1.0 : servingSize;
+  @override
+  void initState() {
+    super.initState();
+    _currentFoodEntry = widget.foodEntry;
+  }
+  
+  @override
+  void didUpdateWidget(HeaderFoodInfoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Cập nhật khi widget.foodEntry thay đổi từ bên ngoài
+    if (oldWidget.foodEntry != widget.foodEntry) {
+      setState(() {
+        _currentFoodEntry = widget.foodEntry;
+      });
+    }
+  }
+
+  // Getter để trả về giá trị servingSize hiệu quả
+  double get effectiveServingSize => widget.servingSize <= 0 ? 1.0 : widget.servingSize;
 
   @override
   Widget build(BuildContext context) {
-    // Lưu context vào biến global để sử dụng trong các dialog và cập nhật provider
-    globalContext = context;
-    
-    // Đảm bảo servingSize không nhỏ hơn hoặc bằng 0
-    // Sử dụng getter thay vì biến local
+    // Thêm dòng này vào đầu phương thức build để debug
+    print('HeaderFoodInfoCard đang xây dựng với ngày: ${_formatDateTimeDisplay(_currentFoodEntry.dateTime)}');
     
     // Tính toán giá trị dinh dưỡng ưu tiên từ dữ liệu API nếu có
-    final nutritionValues = foodEntry.calculateNutritionFromAPI();
+    final nutritionValues = _currentFoodEntry.calculateNutritionFromAPI();
     final calories = (nutritionValues['calories']!).toInt();
     final protein = (nutritionValues['protein']!).toInt();
     final fat = (nutritionValues['fat']!).toInt();
     final carbs = (nutritionValues['carbs']!).toInt();
     
     // Đảm bảo totalWeight nằm trong khoảng hợp lý
-    final totalWeight = (foodEntry.nutritionInfo?['totalWeight']?.toInt() ?? 
-                        foodEntry.totalWeight.toInt() ?? 150).clamp(10, 1000);
+    final totalWeight = (nutritionValues['totalWeight']?.toInt() ?? 
+                        _currentFoodEntry.totalWeight.toInt() ?? 150).clamp(10, 1000);
     
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      color: Colors.grey.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header section (food icon, name, time, serving)
-            _buildCustomHeader(context),
-            
-            SizedBox(height: 12),
-            
-            // Food item with nutrition info
-            _buildFoodItemRow(calories, protein, fat, carbs, totalWeight),
-
-            SizedBox(height: 8),
-            
-            // Add more button
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: onAddMore,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Color(0xFFE6F0FF),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.add, color: Color(0xFF007BFF), size: 16),
-                      SizedBox(width: 4),
-                      Text(
-                        "Thêm nữa",
+    // Tính số gram từ servingSize
+    double gramsTotal = effectiveServingSize * 100; 
+    
+    // Kiểm tra xem đang ở trong màn hình meal_recording bằng cách đơn giản hơn
+    final isInMealRecording = ModalRoute.of(context)?.settings.name == '/meal-recording';
+    
+    if (isInMealRecording) {
+      // Sử dụng thiết kế gọn hơn cho màn hình meal_recording
+      return Card(
+        margin: EdgeInsets.zero, // Xóa margin hoàn toàn để sử dụng toàn bộ chiều rộng
+        elevation: 1.5, // Giảm độ nổi
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12), // Giảm bo góc để phù hợp với container cha
+        ),
+        color: Colors.white,
+        child: Container(
+          width: double.infinity, // Đảm bảo sử dụng toàn bộ chiều rộng
+          padding: const EdgeInsets.all(10.0),
+          child: SingleChildScrollView(
+            physics: BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Row đầu tiên chứa loại bữa ăn và thời gian
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Loại bữa ăn
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _currentFoodEntry.mealType,
                         style: TextStyle(
-                          color: Color(0xFF007BFF),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                          color: Colors.green.shade800,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
                         ),
                       ),
-                    ],
+                    ),
+                    
+                    // Thời gian
+                    GestureDetector(
+                      onTap: () => _showDateTimePicker(),
+                      child: Row(
+                        children: [
+                          Icon(Icons.access_time, size: 12, color: Colors.grey.shade600),
+                          SizedBox(width: 4),
+                          Text(
+                            _formatTimeOnly(_currentFoodEntry.dateTime),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                SizedBox(height: 8),
+                
+                // Row thứ hai chứa food icon và thông tin chính
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Food icon nhỏ hơn
+                    SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: _currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty
+                          ? Image.file(
+                              File(_currentFoodEntry.imagePath!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Text(
+                                  _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: Colors.green.shade100,
+                              child: Center(
+                                child: Text(
+                                  _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                                ),
+                              ),
+                            ),
+                      ),
+                    ),
+                    
+                    SizedBox(width: 8),
+                    
+                    // Thông tin chính
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Tên thực phẩm
+                          Text(
+                            _currentFoodEntry.description,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          
+                          SizedBox(height: 4),
+                          
+                          // Hiển thị chi tiết dinh dưỡng 
+                          // Thông tin dinh dưỡng chi tiết hơn
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Calories với icon
+                              Row(
+                                children: [
+                                  Icon(Icons.local_fire_department, color: Colors.orange, size: 14),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    "${calories}kcal",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              
+                              SizedBox(height: 2),
+                              
+                              // Macros trên một hàng
+                              Row(
+                                children: [
+                                  _buildMacroInfo("P", protein, Colors.blue, 12),
+                                  SizedBox(width: 6),
+                                  _buildMacroInfo("C", carbs, Colors.green, 12),
+                                  SizedBox(width: 6),
+                                  _buildMacroInfo("F", fat, Colors.orange.shade700, 12),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                SizedBox(height: 6),
+                
+                // Action button row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    InkWell(
+                      onTap: widget.onEditFood,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit, color: Colors.blue, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              "Sửa",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    SizedBox(width: 6),
+                    
+                    InkWell(
+                      onTap: widget.onDelete,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.delete_outline, color: Colors.red, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              "Xóa",
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Sử dụng thiết kế gốc cho các màn hình khác
+      return Card(
+        margin: EdgeInsets.zero,
+        elevation: 2, // Tăng đổ bóng
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        color: Colors.white, // Đổi màu nền thành trắng
+        child: Padding(
+          padding: const EdgeInsets.all(16.0), // Tăng padding
+          child: SingleChildScrollView(
+            physics: BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Hiển thị loại bữa ăn
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _currentFoodEntry.mealType,
+                    style: TextStyle(
+                      color: Colors.green.shade800,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
-              ),
+                
+                SizedBox(height: 12),
+                
+                // Header section (food icon, name, time, serving) - thiết kế lại
+                _buildCustomHeader(context),
+                
+                SizedBox(height: 16),
+                
+                // Food item with nutrition info
+                _buildNutritionSummary(calories, protein, fat, carbs),
+
+                SizedBox(height: 12),
+                
+                // Action buttons row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Edit button
+                    InkWell(
+                      onTap: widget.onEditFood,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit, color: Colors.blue, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              "Sửa",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    SizedBox(width: 8),
+                    
+                    // Delete button
+                    InkWell(
+                      onTap: widget.onDelete,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.delete_outline, color: Colors.red, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              "Xóa",
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
   
   // Helper method to create header with customized time tap handler
@@ -135,101 +443,65 @@ class HeaderFoodInfoCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Food name with edit icon
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  GestureDetector(
-                    onTap: onEditFood,
-                    child: Icon(Icons.edit, size: 16, color: Colors.grey.shade600),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      foodEntry.description,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+              // Food name
+              Text(
+                _currentFoodEntry.description,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
               
-              SizedBox(height: 6),
+              SizedBox(height: 8),
               
-              // Time with clock icon - with custom action to show our date time picker
+              // Time with clock icon
               GestureDetector(
                 onTap: () => _showDateTimePicker(),
                 child: Row(
                   children: [
                     Icon(Icons.access_time, size: 16, color: Colors.grey.shade600),
                     SizedBox(width: 8),
-                    Text(
-                      _formatDateTimeDisplay(foodEntry.dateTime),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade500,
+                    Flexible(
+                      child: Text(
+                        _formatDateTimeDisplay(_currentFoodEntry.dateTime),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ),
                   ],
                 ),
               ),
               
-              SizedBox(height: 6),
+              SizedBox(height: 8),
               
-              // Serving size with dropdown menu icon
+              // Serving size with slider
               Row(
                 children: [
-                  Icon(Icons.menu, size: 16, color: Colors.grey.shade600),
+                  Icon(Icons.restaurant, size: 16, color: Colors.grey.shade600),
                   SizedBox(width: 8),
                   Text(
-                    "Khẩu Phần: ",
+                    "Khẩu phần: ",
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade700,
                     ),
                   ),
                   GestureDetector(
-                    onTap: () {
-                      // Hiển thị dialog nhập khẩu phần
-                      _showServingSizeDialog();
-                    },
-                    child: Row(
-                      children: [
-                        Text(
-                          "${effectiveServingSize.toStringAsFixed(1)}",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF007BFF),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            InkWell(
-                              onTap: () {
-                                if (onServingSizeChanged != null) {
-                                  onServingSizeChanged!(effectiveServingSize + 0.1);
-                                }
-                              },
-                              child: Icon(Icons.arrow_drop_up, color: Color(0xFF007BFF), size: 14),
-                            ),
-                            InkWell(
-                              onTap: () {
-                                if (onServingSizeChanged != null && effectiveServingSize > 0.1) {
-                                  onServingSizeChanged!(effectiveServingSize - 0.1);
-                                }
-                              },
-                              child: Icon(Icons.arrow_drop_down, color: Color(0xFF007BFF), size: 14),
-                            ),
-                          ],
-                        ),
-                      ],
+                    onTap: () => _showServingSizeDialog(),
+                    child: Text(
+                      "${effectiveServingSize.toStringAsFixed(1)}",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
                     ),
                   ),
                 ],
@@ -241,211 +513,129 @@ class HeaderFoodInfoCard extends StatelessWidget {
     );
   }
 
-  Widget _buildFoodItemRow(int calories, int protein, int fat, int carbs, int totalWeight) {
-    // Lấy tên món ăn từ danh sách items hoặc mô tả
-    final foodName = foodEntry.items.isNotEmpty ? foodEntry.items.first.name : foodEntry.description;
-    
-    // Đảm bảo totalWeight có giá trị hợp lý
-    final displayWeight = totalWeight <= 0 ? 100 : totalWeight;
-    
+  // Phương thức để xây dựng summary nutrition
+  Widget _buildNutritionSummary(int calories, int protein, int fat, int carbs) {
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 4,
-            spreadRadius: 0,
-            offset: Offset(0, 1),
-          ),
-        ],
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Calories
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Food type with checkmark
+              Text(
+                "Dinh dưỡng",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+              ),
               Row(
                 children: [
-                  // Checkmark icon
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: Color(0xFF4CAF50),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.check,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  // Food name
-                  Text(
-                    foodName,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF212121),
-                    ),
-                  ),
+                  Icon(Icons.local_fire_department, color: Colors.orange, size: 16),
                   SizedBox(width: 4),
-                  // Edit icon
-                  GestureDetector(
-                    onTap: onEditFood,
-                    child: Icon(
-                      Icons.edit,
-                      size: 16,
-                      color: Color(0xFF007BFF),
+                  Text(
+                    "$calories kcal",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
                     ),
                   ),
                 ],
               ),
-              
-              // Weight amount
-              GestureDetector(
-                onTap: () {
-                  // Hiển thị dialog nhập khối lượng (gram)
-                  _showWeightInputDialog();
-                },
-                child: Row(
-                  children: [
-                    Text(
-                      "${displayWeight}g",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF007BFF),
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        InkWell(
-                          onTap: () {
-                            if (onWeightChanged != null) {
-                              onWeightChanged!(displayWeight + 10);
-                            }
-                          },
-                          child: Icon(Icons.arrow_drop_up, color: Color(0xFF007BFF), size: 14),
-                        ),
-                        InkWell(
-                          onTap: () {
-                            if (onWeightChanged != null && displayWeight > 10) {
-                              onWeightChanged!(displayWeight - 10);
-                            }
-                          },
-                          child: Icon(Icons.arrow_drop_down, color: Color(0xFF007BFF), size: 14),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
           
-          SizedBox(height: 8),
+          SizedBox(height: 12),
           
-          // Nutrition info in a scrollable row
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                // Calories
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.local_fire_department, color: Color(0xFFFF5722), size: 16),
-                      SizedBox(width: 4),
-                      Text(
-                        "${calories}kcal",
-                        style: TextStyle(
-                          color: Color(0xFFFF5722),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                SizedBox(width: 16),
-                
-                // Protein
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.fitness_center, color: Color(0xFF2196F3), size: 16),
-                      SizedBox(width: 4),
-                      Text(
-                        "${protein}g",
-                        style: TextStyle(
-                          color: Color(0xFF2196F3),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                SizedBox(width: 16),
-                
-                // Fat
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.water_drop, color: Color(0xFFFFA726), size: 16),
-                      SizedBox(width: 4),
-                      Text(
-                        "${fat}g",
-                        style: TextStyle(
-                          color: Color(0xFFFFA726),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                SizedBox(width: 16),
-                
-                // Carbs
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.eco, color: Color(0xFF4CAF50), size: 16),
-                      SizedBox(width: 4),
-                      Text(
-                        "${carbs}g",
-                        style: TextStyle(
-                          color: Color(0xFF4CAF50),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          // Macro nutrients
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildMacroNutrient("Protein", protein, Colors.blue),
+              _buildMacroNutrient("Carbs", carbs, Colors.green),
+              _buildMacroNutrient("Fat", fat, Colors.orange),
+            ],
           ),
         ],
       ),
     );
   }
   
+  // Widget hiển thị macronutrient
+  Widget _buildMacroNutrient(String name, int value, Color color) {
+    return Column(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withOpacity(0.1),
+          ),
+          child: Center(
+            child: Text(
+              "${value}g",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          name,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Widget hiển thị mini-macro info cho meal recording screen
+  Widget _buildMacroInfo(String label, int value, Color color, double fontSize) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            "${value}g",
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          SizedBox(width: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: fontSize,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFoodIcon() {
     return Container(
       width: 56,
@@ -459,9 +649,9 @@ class HeaderFoodInfoCard extends StatelessWidget {
         child: Stack(
           children: [
             // Image if available
-            if (foodEntry.imagePath != null && foodEntry.imagePath!.isNotEmpty)
+            if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty)
               Image.file(
-                File(foodEntry.imagePath!),
+                File(_currentFoodEntry.imagePath!),
                 fit: BoxFit.cover,
                 width: 56,
                 height: 56,
@@ -474,13 +664,14 @@ class HeaderFoodInfoCard extends StatelessWidget {
               ),
             
             // First letter of food name or T if not available
-            if (foodEntry.imagePath == null || foodEntry.imagePath!.isEmpty)
+            if (_currentFoodEntry.imagePath == null || _currentFoodEntry.imagePath!.isEmpty)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                      foodEntry.description.isNotEmpty ? foodEntry.description[0].toUpperCase() : "T",
+                      _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -506,72 +697,74 @@ class HeaderFoodInfoCard extends StatelessWidget {
 
   // Hiển thị dialog nhập khẩu phần
   void _showServingSizeDialog() {
-    if (onServingSizeChanged == null) return;
+    if (widget.onServingSizeChanged == null) return;
     
-    // Không thể lấy context từ StatelessWidget nên phải truyền vào
-    final context = globalContext;
+    final context = this.context;
     if (context == null) return;
+    
+    // Lấy đúng số khẩu phần từ item đầu tiên nếu có, nếu không thì lấy effectiveServingSize
+    double tempServingSize = _currentFoodEntry.items.isNotEmpty ? 
+        _currentFoodEntry.items.first.servingSize : effectiveServingSize;
+    
+    // Hiển thị số gram (không phải số khẩu phần)
+    double tempGrams = tempServingSize * 100;
     
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
-        double tempServingSize = effectiveServingSize;
-        
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            return AlertDialog(
-              title: Text("Khẩu phần"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Slider để điều chỉnh khẩu phần
-                  Slider(
-                    value: tempServingSize,
-                    min: 0.1,
-                    max: 5.0,
-                    divisions: 49,
-                    label: tempServingSize.toStringAsFixed(1),
-                    onChanged: (value) {
-                      // Cập nhật giá trị tạm thời trong dialog
-                      setState(() {
-                        tempServingSize = value;
-                      });
-                    },
-                  ),
-                  
-                  // Hiển thị giá trị khẩu phần
-                  Text(
-                    tempServingSize.toStringAsFixed(1),
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  
-                  // Giải thích về khẩu phần
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      "Điều chỉnh khẩu phần sẽ tự động tính lại giá trị dinh dưỡng",
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
+        return AlertDialog(
+          title: Text('Điều chỉnh khẩu phần'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Nhập số gram:',
+                style: TextStyle(fontWeight: FontWeight.w500),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text("Hủy"),
+              SizedBox(height: 12),
+              TextField(
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Số gram',
+                  suffixText: 'g',
                 ),
-                TextButton(
-                  onPressed: () {
-                    // Lưu giá trị khẩu phần mới và kích hoạt cập nhật giao diện
-                    onServingSizeChanged!(tempServingSize);
-                    Navigator.pop(context);
-                  },
-                  child: Text("Đồng ý"),
+                controller: TextEditingController(text: tempGrams.toStringAsFixed(0)),
+                onChanged: (value) {
+                  final parsedValue = double.tryParse(value);
+                  if (parsedValue != null && parsedValue > 0) {
+                    tempGrams = parsedValue;
+                  }
+                },
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Điều chỉnh số gram món ăn này',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
                 ),
-              ],
-            );
-          }
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Chuyển đổi từ gram sang khẩu phần (1 khẩu phần = 100g)
+                final newServingSize = tempGrams / 100;
+                
+                if (widget.onServingSizeChanged != null) {
+                  widget.onServingSizeChanged?.call(newServingSize);
+                }
+                Navigator.of(dialogContext).pop();
+              },
+              child: Text('Xác nhận'),
+            ),
+          ],
         );
       },
     );
@@ -579,299 +772,79 @@ class HeaderFoodInfoCard extends StatelessWidget {
 
   // Hiển thị dialog nhập khối lượng (gram)
   void _showWeightInputDialog() {
-    if (onWeightChanged == null) return;
+    if (widget.onWeightChanged == null) return;
     
-    // Không thể lấy context từ StatelessWidget nên phải truyền vào
-    final context = globalContext;
+    final context = this.context;
     if (context == null) return;
     
-    // Lấy khối lượng từ nutritionInfo hoặc dùng giá trị mặc định
-    final currentWeight = foodEntry.nutritionInfo?['totalWeight']?.toInt() ?? 
-                         foodEntry.totalWeight.toInt() ?? 100;
+    // Tính số gram từ servingSize
+    double currentWeight = 0.0;
     
-    // Đảm bảo currentWeight có giá trị hợp lý
-    final displayWeight = currentWeight <= 0 ? 100 : currentWeight;
-    String weightStr = displayWeight.toString();
+    if (_currentFoodEntry.items.isNotEmpty) {
+      // Nếu có items, lấy giá trị từ servingSize của item đầu tiên
+      currentWeight = _currentFoodEntry.items.first.servingSize * 100;
+    } else if (_currentFoodEntry.nutritionInfo != null && _currentFoodEntry.nutritionInfo!.containsKey('totalWeight')) {
+      // Nếu có totalWeight trong nutritionInfo
+      currentWeight = (_currentFoodEntry.nutritionInfo!['totalWeight'] as num).toDouble();
+    } else {
+      // Mặc định 100g nếu không có thông tin
+      currentWeight = 100.0;
+    }
     
-    // Tính phần trăm hoàn thành dựa trên khẩu phần
-    final percentComplete = (currentWeight / 2000 * 100).clamp(0, 100).toInt();
-    
-    // Tạo controller cho TextField
-    final TextEditingController textController = TextEditingController(text: weightStr);
+    double tempWeight = currentWeight;
     
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            // Cập nhật phần trăm khi người dùng thay đổi giá trị
-            int updatePercent() {
-              try {
-                final weight = int.tryParse(weightStr);
-                if (weight == null || weight <= 0) return percentComplete;
-                return (weight / 2000 * 100).clamp(0, 100).toInt();
-              } catch (e) {
-                return percentComplete;
-              }
-            }
-            
-            // Cập nhật giá trị hiển thị
-            int getWeightValue() {
-              try {
-                final weight = int.tryParse(weightStr);
-                return weight != null && weight > 0 ? weight : displayWeight;
-              } catch (e) {
-                return displayWeight;
-              }
-            }
-            
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: SingleChildScrollView(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Vòng tròn Calo
-                      Container(
-                        width: 100,
-                        height: 100,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // Vòng tròn nền
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.grey.shade200,
-                                  width: 8,
-                                ),
-                              ),
-                            ),
-                            
-                            // Vòng tròn hiển thị phần trăm
-                            CircularProgressIndicator(
-                              value: updatePercent() / 100,
-                              strokeWidth: 8,
-                              backgroundColor: Colors.grey.shade200,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
-                            ),
-                            
-                            // Biểu tượng lửa và phần trăm
-                            Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.local_fire_department,
-                                  color: Colors.amber,
-                                  size: 20,
-                                ),
-                                Text(
-                                  "${updatePercent()}%",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                                Text(
-                                  "Calo",
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      SizedBox(height: 8),
-                      
-                      // Text thể hiện giá trị hiện tại
-                      Text(
-                        "${getWeightValue()}/2000",
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                      
-                      SizedBox(height: 12),
-                      
-                      // Trường nhập khối lượng
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: textController,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: "Khối lượng",
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              ),
-                              onChanged: (value) {
-                                setState(() {
-                                  weightStr = value;
-                                });
-                              },
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              "g",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      SizedBox(height: 12),
-                      
-                      // Hiển thị gợi ý trọng lượng như trong ảnh, dạng "cảnh báo"
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade100,
-                          border: Border.all(color: Colors.amber.shade400, width: 1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Stack(
-                          children: [
-                            // Tạo nền vằn vện như cảnh báo
-                            Positioned.fill(
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  return CustomPaint(
-                                    size: Size(constraints.maxWidth, constraints.maxHeight),
-                                    painter: StripePainter(
-                                      stripeColor: Colors.amber.shade400,
-                                      stripeWidth: 12,
-                                      stripeSpacing: 12,
-                                      angle: -45,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            
-                            // Hiển thị các giá trị gợi ý
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [100, 150, 200].map((weight) => 
-                                InkWell(
-                                  onTap: () {
-                                    setState(() {
-                                      weightStr = weight.toString();
-                                      textController.text = weight.toString();
-                                    });
-                                  },
-                                  child: Text(
-                                    "${weight}g",
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: int.tryParse(weightStr) == weight 
-                                          ? FontWeight.bold 
-                                          : FontWeight.normal,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                )
-                              ).toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      SizedBox(height: 12),
-                      
-                      // Nút điều khiển
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.symmetric(vertical: 8),
-                                foregroundColor: Colors.grey.shade600,
-                              ),
-                              child: Text(
-                                "Hủy",
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                // Kiểm tra và chuyển đổi giá trị
-                                try {
-                                  final weight = int.tryParse(weightStr);
-                                  if (weight != null && weight > 0) {
-                                    onWeightChanged!(weight.toDouble());
-                                    Navigator.pop(context);
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text("Vui lòng nhập một số hợp lệ")),
-                                    );
-                                  }
-                                } catch (e) {
-                                  // Hiển thị thông báo lỗi
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text("Vui lòng nhập một số hợp lệ")),
-                                  );
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.amber,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(vertical: 8),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              child: Text(
-                                "Đồng ý",
-                                style: TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+        return AlertDialog(
+          title: Text('Điều chỉnh khối lượng'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Nhập khối lượng:',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 12),
+              TextField(
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Khối lượng (g)',
+                  suffixText: 'g',
+                ),
+                controller: TextEditingController(text: tempWeight.toStringAsFixed(0)),
+                onChanged: (value) {
+                  final parsedValue = double.tryParse(value);
+                  if (parsedValue != null && parsedValue > 0) {
+                    tempWeight = parsedValue;
+                  }
+                },
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Điều chỉnh khối lượng món ăn này',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
                 ),
               ),
-            );
-          }
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Đảm bảo sử dụng .call với giá trị mới được deepcopy để tránh chia sẻ tham chiếu
+                widget.onWeightChanged?.call(tempWeight);
+                Navigator.of(dialogContext).pop();
+              },
+              child: Text('Xác nhận'),
+            ),
+          ],
         );
       },
     );
@@ -879,14 +852,8 @@ class HeaderFoodInfoCard extends StatelessWidget {
   
   // Hiển thị dialog chọn ngày giờ
   void _showDateTimePicker() {
-    if (globalContext == null) {
-      // Call the original edit time callback if our context isn't available
-      onEditTime();
-      return;
-    }
-    
-    // Lấy ngày giờ hiện tại hoặc từ foodEntry
-    final currentDate = foodEntry.dateTime;
+    // Lấy ngày giờ hiện tại từ state nội bộ
+    final currentDate = _currentFoodEntry.dateTime;
     
     // Các tháng trong tiếng Việt
     final vietnameseMonths = [
@@ -919,9 +886,9 @@ class HeaderFoodInfoCard extends StatelessWidget {
     int selectedMinute = currentDate.minute;
     
     showDialog(
-      context: globalContext!,
-      barrierDismissible: false, // Ngăn chặn đóng dialog khi nhấn ra ngoài
-      builder: (BuildContext context) {
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
             return Dialog(
@@ -963,7 +930,7 @@ class HeaderFoodInfoCard extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            // Ngày - sử dụng ListWheelScrollView
+                            // Ngày
                             Expanded(
                               child: ListWheelScrollView.useDelegate(
                                 controller: dayController,
@@ -1003,7 +970,7 @@ class HeaderFoodInfoCard extends StatelessWidget {
                               ),
                             ),
                             
-                            // Tháng - sử dụng ListWheelScrollView
+                            // Tháng
                             Expanded(
                               flex: 2,
                               child: ListWheelScrollView.useDelegate(
@@ -1044,7 +1011,7 @@ class HeaderFoodInfoCard extends StatelessWidget {
                               ),
                             ),
                             
-                            // Năm - sử dụng ListWheelScrollView
+                            // Năm
                             Expanded(
                               child: ListWheelScrollView.useDelegate(
                                 controller: yearController,
@@ -1232,17 +1199,43 @@ class HeaderFoodInfoCard extends StatelessWidget {
                       // Nút đồng ý
                       ElevatedButton(
                         onPressed: () {
+                          // Kiểm tra ngày hợp lệ (đặc biệt là số ngày trong tháng)
+                          int maxDaysInMonth = DateTime(selectedYear, selectedMonth + 1, 0).day;
+                          int validDay = selectedDay > maxDaysInMonth ? maxDaysInMonth : selectedDay;
+                          
                           // Tạo đối tượng DateTime mới để cập nhật
                           final updatedDateTime = DateTime(
                             selectedYear,
                             selectedMonth,
-                            selectedDay,
+                            validDay, // Sử dụng ngày đã được kiểm tra
                             selectedHour,
                             selectedMinute,
                           );
                           
                           // Đóng dialog trước tiên
                           Navigator.of(context).pop();
+                          
+                          // Hiển thị indicator đang cập nhật
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 20, 
+                                    height: 20, 
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    )
+                                  ),
+                                  SizedBox(width: 16),
+                                  Text('Đang cập nhật...'),
+                                ],
+                              ),
+                              duration: Duration(seconds: 1),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
                           
                           // Sau đó thực hiện đồng bộ và cập nhật UI
                           Future.delayed(Duration.zero, () {
@@ -1285,63 +1278,72 @@ class HeaderFoodInfoCard extends StatelessWidget {
   
   // Hàm đồng bộ hóa thời gian với màn hình home và nutri
   void syncDateTimeWithHomeAndNutri(DateTime newDateTime) {
-    // Implement logic to sync date time between screens
     try {
-      // 1. Cập nhật FoodEntry với thời gian mới
-      if (foodEntry != null) {
-        // Tạo bản sao của foodEntry với ngày giờ mới
-        final updatedEntry = FoodEntry(
-          id: foodEntry.id,
-          description: foodEntry.description,
-          imagePath: foodEntry.imagePath,
-          audioPath: foodEntry.audioPath,
-          dateTime: newDateTime,
-          isFavorite: foodEntry.isFavorite,
-          barcode: foodEntry.barcode,
-          calories: foodEntry.calories,
-          nutritionInfo: foodEntry.nutritionInfo,
-          mealType: foodEntry.mealType,
-          items: foodEntry.items,
+      // Log thời gian hiện tại và thời gian mới
+      print('Thời gian hiện tại: ${_formatDateTimeDisplay(_currentFoodEntry.dateTime)}');
+      print('Thời gian mới: ${_formatDateTimeDisplay(newDateTime)}');
+      
+      // Cập nhật state nội bộ TRƯỚC - điều này quan trọng!
+      setState(() {
+        // Tạo một bản sao của entry hiện tại nhưng với thời gian mới (không sử dụng copyWith)
+        _currentFoodEntry = FoodEntry(
+          id: _currentFoodEntry.id,
+          description: _currentFoodEntry.description,
+          imagePath: _currentFoodEntry.imagePath,
+          audioPath: _currentFoodEntry.audioPath,
+          dateTime: newDateTime, // Thời gian mới
+          isFavorite: _currentFoodEntry.isFavorite,
+          barcode: _currentFoodEntry.barcode,
+          calories: _currentFoodEntry.calories,
+          nutritionInfo: _currentFoodEntry.nutritionInfo,
+          mealType: _currentFoodEntry.mealType,
+          items: _currentFoodEntry.items,
         );
+      });
+      
+      print('Đã cập nhật state nội bộ, thời gian mới: ${_formatDateTimeDisplay(_currentFoodEntry.dateTime)}');
+      
+      // NEXT: Cập nhật trong FoodProvider
+      final context = this.context;
+      if (context != null) {
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
         
-        // 2. Sử dụng Provider để cập nhật thông tin trên toàn ứng dụng
-        try {
-          // Lấy BuildContext từ biến global context
-          final context = globalContext;
-          
-          // Sử dụng Provider để lấy FoodProvider instance
-          if (context != null) {
-            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-            
-            // Cập nhật entry trong provider
-            foodProvider.updateFoodEntry(updatedEntry);
-            
-            // Cập nhật ngày đã chọn trong provider
-            final selectedDateStr = "${newDateTime.year}-${newDateTime.month.toString().padLeft(2, '0')}-${newDateTime.day.toString().padLeft(2, '0')}";
-            foodProvider.setSelectedDate(selectedDateStr);
-            
-            // Đảm bảo dữ liệu dinh dưỡng được tính toán lại
-            foodProvider.clearNutritionCache();
-            
-            // Cập nhật lại dữ liệu dinh dưỡng trên giao diện
-            foodProvider.refreshNutrition();
-            
-            // In log để xác nhận việc đồng bộ hóa
-            print('Đã đồng bộ thời gian: ${newDateTime.toIso8601String()} giữa các màn hình');
-            print('Đã cập nhật ngày được chọn trong provider: $selectedDateStr');
-          } else {
-            print('Lỗi: Không thể lấy context để cập nhật provider');
-          }
-        } catch (e) {
-          print('Lỗi khi cập nhật Provider: $e');
-        }
+        // Định dạng ngày mới
+        final selectedDateStr = "${newDateTime.year}-${newDateTime.month.toString().padLeft(2, '0')}-${newDateTime.day.toString().padLeft(2, '0')}";
+        
+        // Đặt ngày được chọn trong provider
+        foodProvider.setSelectedDate(selectedDateStr);
+        
+        // Cập nhật entry trong provider
+        foodProvider.updateFoodEntry(_currentFoodEntry);
+        
+        // Reset các cache
+        foodProvider.clearNutritionCache();
+        foodProvider.refreshNutrition();
+        
+        // Force refresh với notifyListeners ngay lập tức không delay
+        foodProvider.notifyListeners();
+        
+        // Thêm dòng này: Cập nhật rõ ràng màn hình home với entry mới
+        foodProvider.updateHomeScreenWithNewEntry(context, _currentFoodEntry);
+        
+        // Thông báo thành công
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã cập nhật ngày thành: ${newDateTime.day}/${newDateTime.month}/${newDateTime.year}'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
+      
+      // Đảm bảo gọi callback để thông báo cho parent widget
+      widget.onEditTime();
+      
     } catch (e) {
-      print('Lỗi khi đồng bộ hóa thời gian: $e');
+      print('Lỗi khi đồng bộ thời gian: $e');
+      widget.onEditTime();
     }
-    
-    // Luôn gọi callback gốc bất kể có lỗi hay không
-    onEditTime();
   }
 
   String _formatDateTimeDisplay(DateTime dateTime) {
@@ -1361,16 +1363,17 @@ class HeaderFoodInfoCard extends StatelessWidget {
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
 
-    String dateLabel;
-    if (dateToCheck == today) {
-      dateLabel = "Hôm nay";
-    } else if (dateToCheck == yesterday) {
-      dateLabel = "Hôm qua";
-    } else {
-      dateLabel = "$day $month, $year";
-    }
+    // Luôn hiển thị ngày tháng đầy đủ để tránh nhầm lẫn
+    String dateLabel = "$day $month, $year";
 
     return "$dateLabel $hour:$minute";
+  }
+
+  // Helper method để định dạng chỉ hiển thị giờ:phút
+  String _formatTimeOnly(DateTime dateTime) {
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return "$hour:$minute";
   }
 }
 

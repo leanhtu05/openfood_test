@@ -5,12 +5,163 @@ import 'package:openfood/models/food_entry.dart';
 import 'package:openfood/models/nutrition_info.dart';
 import 'package:openfood/providers/food_provider.dart';
 import 'package:openfood/services/food_database_service.dart';
-import 'package:openfood/services/edamam_food_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../utils/constants.dart';
+
 import 'package:shimmer/shimmer.dart';
 
 import '../models/food_item.dart';
 import 'food_nutrition_detail_screen.dart';
 
+// Lớp dịch vụ tìm kiếm thực phẩm sử dụng API USDA
+class USDAFoodService {
+  Future<List<Map<String, dynamic>>> searchFood(String query) async {
+    final apiKey = ApiKeys.usdaApiKey;
+    final baseUrl = ApiKeys.usdaBaseUrl;
+    
+    if (apiKey == 'YOUR_USDA_API_KEY') {
+      print('Cần cấu hình USDA API Key trong constants.dart');
+      return [];
+    }
+    
+    try {
+      // Tìm kiếm thực phẩm với USDA API
+      final searchUrl = '$baseUrl/foods/search';
+      final searchParams = {
+        'api_key': apiKey,
+        'query': query,
+        'dataType': 'Foundation,SR Legacy,Survey (FNDDS)',
+        'pageSize': '20',
+      };
+      
+      final searchUri = Uri.parse(searchUrl).replace(queryParameters: searchParams);
+      final searchResponse = await http.get(
+        searchUri,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      ).timeout(Duration(seconds: 10));
+      
+      if (searchResponse.statusCode != 200) {
+        print('Lỗi khi tìm kiếm thực phẩm: ${searchResponse.statusCode}');
+        return [];
+      }
+      
+      final searchData = jsonDecode(searchResponse.body);
+      if (searchData['foods'] == null || searchData['foods'].isEmpty) {
+        return [];
+      }
+      
+      // Chuyển đổi kết quả thành định dạng phù hợp với ứng dụng
+      return searchData['foods'].map<Map<String, dynamic>>((food) {
+        // Tìm giá trị dinh dưỡng cơ bản từ danh sách foodNutrients
+        final nutrients = food['foodNutrients'] as List<dynamic>? ?? [];
+        
+        // Map nutrient IDs USDA sang các thành phần dinh dưỡng của chúng ta
+        double calories = 0, protein = 0, fat = 0, carbs = 0;
+        double fiber = 0, sugar = 0, sodium = 0, cholesterol = 0;
+        double saturatedFat = 0, transFat = 0, water = 0;
+        
+        // Vitamin
+        double vitaminA = 0, vitaminC = 0, vitaminD = 0, vitaminE = 0;
+        double vitaminB6 = 0, vitaminB12 = 0, folate = 0, niacin = 0;
+        double riboflavin = 0, thiamin = 0;
+        
+        // Khoáng chất
+        double calcium = 0, iron = 0, magnesium = 0, phosphorus = 0;
+        double potassium = 0, zinc = 0, copper = 0, selenium = 0;
+        
+        // Mapping ID USDA sang các chất dinh dưỡng
+        Map<int, String> nutrientMapping = {
+          1008: 'calories',      // Energy (kcal)
+          1003: 'protein',       // Protein
+          1004: 'fat',           // Total lipid (fat)
+          1005: 'carbs',         // Carbohydrate
+          1079: 'fiber',         // Fiber, total dietary
+          2000: 'sugar',         // Sugars, total
+          1093: 'sodium',        // Sodium, Na
+          1253: 'cholesterol',   // Cholesterol
+          1258: 'omega3',        // Fatty acids, total n-3
+          1257: 'saturatedFat',  // Fatty acids, saturated
+          1259: 'transFat',      // Fatty acids, trans
+          1051: 'water',         // Water
+          1106: 'vitaminA',      // Vitamin A, RAE
+          1162: 'vitaminC',      // Vitamin C
+          1114: 'vitaminD',      // Vitamin D
+          1109: 'vitaminE',      // Vitamin E
+          1175: 'vitaminB6',     // Vitamin B-6
+          1178: 'vitaminB12',    // Vitamin B-12
+          1190: 'folate',        // Folate, total
+          1167: 'niacin',        // Niacin
+          1166: 'riboflavin',    // Riboflavin
+          1165: 'thiamin',       // Thiamin
+          1087: 'calcium',       // Calcium, Ca
+          1089: 'iron',          // Iron, Fe
+          1090: 'magnesium',     // Magnesium, Mg
+          1091: 'phosphorus',    // Phosphorus, P
+          1092: 'potassium',     // Potassium, K
+          1095: 'zinc',          // Zinc, Zn
+          1098: 'copper',        // Copper, Cu
+          1103: 'selenium',      // Selenium, Se
+        };
+        
+        // Map để lưu tất cả các chất dinh dưỡng
+        Map<String, dynamic> extractedNutrients = {};
+        
+        for (var nutrient in nutrients) {
+          final nutrientId = nutrient['nutrientId'] ?? 0;
+          final value = (nutrient['value'] ?? 0.0).toDouble();
+          
+          // Lưu vào biến tương ứng cho các chất dinh dưỡng chính
+          if (nutrientId == 1008) calories = value;           // Energy (kcal)
+          else if (nutrientId == 1003) protein = value;       // Protein
+          else if (nutrientId == 1004) fat = value;           // Total lipid (fat)
+          else if (nutrientId == 1005) carbs = value;         // Carbohydrate
+          else if (nutrientId == 1079) fiber = value;         // Fiber
+          else if (nutrientId == 2000) sugar = value;         // Sugar
+          else if (nutrientId == 1093) sodium = value;        // Sodium
+          else if (nutrientId == 1253) cholesterol = value;   // Cholesterol
+          
+          // Lưu vào map tất cả các chất dinh dưỡng có trong mapping
+          if (nutrientMapping.containsKey(nutrientId)) {
+            extractedNutrients[nutrientMapping[nutrientId]!] = value;
+          }
+        }
+        
+        // Tạo additionalNutrients map cho các chất dinh dưỡng ngoài các chất cơ bản
+        Map<String, dynamic> additionalNutrients = Map.from(extractedNutrients);
+        // Loại bỏ các chất dinh dưỡng cơ bản đã có trường riêng
+        ['calories', 'protein', 'fat', 'carbs', 'fiber', 'sugar', 'sodium'].forEach((key) {
+          additionalNutrients.remove(key);
+        });
+        
+        return {
+          'fdcId': food['fdcId']?.toString() ?? Uuid().v4(),
+          'description': food['description'] ?? 'Không xác định',
+          'brandOwner': food['brandOwner'] ?? food['brandName'] ?? 'USDA',
+          'calories': calories,
+          'protein': protein,
+          'fat': fat,
+          'carbs': carbs,
+          'fiber': fiber,
+          'sugar': sugar,
+          'sodium': sodium,
+          'cholesterol': cholesterol,
+          'servingSize': 1.0, // 1 khẩu phần = 100g
+          'servingUnit': 'g',
+          'category': food['foodCategory'] ?? 'Thực phẩm',
+          'additionalNutrients': additionalNutrients.isNotEmpty ? additionalNutrients : null,
+          'dataSource': 'USDA',
+        };
+      }).toList();
+      
+    } catch (e) {
+      print('Lỗi khi gọi USDA API: $e');
+      return [];
+    }
+  }
+}
 
 class FoodSearchScreen extends StatefulWidget {
   static const routeName = '/food-search';
@@ -22,7 +173,7 @@ class FoodSearchScreen extends StatefulWidget {
 class _FoodSearchScreenState extends State<FoodSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FoodDatabaseService _databaseService = FoodDatabaseService();
-  final EdamamFoodService _edamamService = EdamamFoodService();
+  final USDAFoodService _usdaService = USDAFoodService();
   
   bool _isSearching = false;
   bool _isLoadingNutrition = false;
@@ -352,7 +503,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
             'fiber': food['fiber'] ?? 0.0,
             'sugar': food['sugar'] ?? 0.0,
             'sodium': food['sodium'] ?? 0.0,
-            'servingSize': 100.0,
+            'servingSize': 1.0, // Đặt đúng servingSize = 1.0 (1 khẩu phần = 100g)
             'servingUnit': 'g',
           }).toList();
           
@@ -360,16 +511,16 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
           _isSearching = false;
         });
       } else {
-        // Nếu không tìm thấy trong dữ liệu địa phương, tìm kiếm với API Edamam
-        print("Không tìm thấy trong dữ liệu địa phương, tìm kiếm với API Edamam");
+        // Nếu không tìm thấy trong dữ liệu địa phương, tìm kiếm với API USDA
+        print("Không tìm thấy trong dữ liệu địa phương, tìm kiếm với API USDA");
         
-        // Tìm kiếm với API Edamam
-        final edamamResults = await _edamamService.searchFood(query);
+        // Tìm kiếm với API USDA
+        final usdaResults = await _usdaService.searchFood(query);
         
-        if (edamamResults.isNotEmpty) {
-          print("Tìm thấy ${edamamResults.length} kết quả từ API Edamam");
+        if (usdaResults.isNotEmpty) {
+          print("Tìm thấy ${usdaResults.length} kết quả từ API USDA");
           setState(() {
-            _searchResults = edamamResults.map((food) => {
+            _searchResults = usdaResults.map((food) => {
               'id': food['fdcId'],
               'name': food['description'],
               'brand': food['brandOwner'] ?? food['category'] ?? 'Unknown',
@@ -380,14 +531,14 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
               'fiber': 0.0, // Có thể không có thông tin chi tiết
               'sugar': 0.0,
               'sodium': 0.0,
-              'servingSize': 100.0,
+              'servingSize': 1.0, // 1 khẩu phần = 100g
               'servingUnit': 'g',
-              'imageUrl': food['image'],
+              'imageUrl': food['imageUrl'],
             }).toList();
             _isSearching = false;
           });
         } else {
-          // Nếu API Edamam không trả về kết quả, hiển thị kết quả mẫu dựa trên từ khóa
+          // Nếu API USDA không trả về kết quả, hiển thị kết quả mẫu dựa trên từ khóa
           print("Không tìm thấy kết quả từ API, sử dụng dữ liệu mẫu");
           setState(() {
             if (query.toLowerCase().contains('meat') || query.toLowerCase().contains('thịt')) {
@@ -403,7 +554,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 0.0,
                   'sugar': 0.0,
                   'sodium': 55.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
                 {
@@ -417,7 +568,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 0.0,
                   'sugar': 0.0,
                   'sodium': 60.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
                 {
@@ -431,7 +582,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 0.0,
                   'sugar': 0.0,
                   'sodium': 74.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
               ];
@@ -448,7 +599,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 0.4,
                   'sugar': 0.1,
                   'sodium': 1.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
                 {
@@ -462,7 +613,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 0.8,
                   'sugar': 1.2,
                   'sodium': 320.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
               ];
@@ -479,7 +630,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 2.6,
                   'sugar': 12.2,
                   'sodium': 1.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
                 {
@@ -493,7 +644,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   'fiber': 2.4,
                   'sugar': 10.4,
                   'sodium': 1.0,
-                  'servingSize': 100.0,
+                  'servingSize': 1.0, // 1 khẩu phần = 100g
                   'servingUnit': 'g',
                 },
               ];
@@ -526,6 +677,15 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
   
   void _selectFood(Map<String, dynamic> food) {
     // Tạo FoodItem từ dữ liệu tìm kiếm
+    // Đảm bảo servingSize luôn đúng chuẩn: nếu truyền vào 100 thì servingSize = 1.0 (1 khẩu phần = 100g)
+    final double rawServingSize = food['servingSize'] is int ? 
+        (food['servingSize'] as int).toDouble() : 
+        (food['servingSize'] as double? ?? 100.0);
+    
+    // Tính servingSize đúng cách: nếu giá trị gốc >= 100 thì chuyển về đơn vị khẩu phần 
+    // (1 khẩu phần = 100g)
+    final double normalizedServingSize = rawServingSize >= 10 ? rawServingSize / 100 : rawServingSize;
+    
     final item = FoodItem(
       id: food['id'] ?? Uuid().v4(),
       name: food['name'],
@@ -537,7 +697,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
       fiber: food['fiber'] != null ? (food['fiber'] is int ? food['fiber'].toDouble() : food['fiber']) : 0.0,
       sugar: food['sugar'] != null ? (food['sugar'] is int ? food['sugar'].toDouble() : food['sugar']) : 0.0,
       sodium: food['sodium'] != null ? (food['sodium'] is int ? food['sodium'].toDouble() : food['sodium']) : 0.0,
-      servingSize: food['servingSize'] is int ? (food['servingSize'] as int).toDouble() : food['servingSize'],
+      servingSize: normalizedServingSize, // Sử dụng servingSize đã chuẩn hóa
       servingUnit: food['servingUnit'] ?? 'g',
       imageUrl: food['imageUrl'],
       additionalNutrients: food['additionalNutrients'] ?? {},

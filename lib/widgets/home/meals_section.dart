@@ -22,20 +22,67 @@ class MealsSection extends StatelessWidget {
     final foodProvider = Provider.of<FoodProvider>(context);
     final selectedDate = foodProvider.selectedDate;
     
-    List<FoodEntry> todayEntries = foodProvider.todayEntries;
+    // In log để debug
+    print('MealsSection.build: Ngày đang chọn: $selectedDate');
+    
+    // Lấy dữ liệu từ todayEntries để đảm bảo phù hợp với mục đích ban đầu
+    List<FoodEntry> entries = foodProvider.todayEntries;
+    
+    // In log số lượng entries
+    print('MealsSection.build: Số lượng entries: ${entries.length}');
+    
+    // In thông tin chi tiết về các entries để debug
+    for (var entry in entries) {
+      final entryDate = entry.dateTime.toIso8601String().split('T')[0];
+      print('MealsSection.build: Entry: ${entry.description} (${entry.mealType}) - ngày: $entryDate');
+    }
+    
+    // Hiển thị loading indicator nếu đang tải dữ liệu
+    if (foodProvider.isLoadingMeals && entries.isEmpty) {
+      return Container(
+        margin: EdgeInsets.symmetric(vertical: 16),
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Center(
+              child: CircularProgressIndicator(),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Đang tải dữ liệu bữa ăn...',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
     
     // Sắp xếp theo thời gian gần nhất
-    todayEntries.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+    entries.sort((a, b) => b.dateTime.compareTo(a.dateTime));
     
     // Nhóm bữa ăn theo loại
     Map<String, List<FoodEntry>> mealsByType = {};
-    for (var entry in todayEntries) {
+    for (var entry in entries) {
       String normalizedType = _normalizeMealType(entry.mealType);
       if (!mealsByType.containsKey(normalizedType)) {
         mealsByType[normalizedType] = [];
       }
       mealsByType[normalizedType]!.add(entry);
     }
+    
+    // In log các loại bữa ăn đã tìm thấy để debug
+    print('MealsSection.build: Các loại bữa ăn đã tìm thấy: ${mealsByType.keys.join(', ')}');
     
     // Hiển thị bữa ăn theo thứ tự: sáng-trưa-tối-phụ
     return Column(

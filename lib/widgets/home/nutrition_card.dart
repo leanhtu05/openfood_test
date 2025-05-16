@@ -18,7 +18,7 @@ class _NutritionCardState extends State<NutritionCard> {
   @override
   void initState() {
     super.initState();
-    // Xóa cache khi widget được tạo
+    // Tải dữ liệu dinh dưỡng khi widget được tạo
     Future.microtask(() {
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       foodProvider.refreshNutrition();
@@ -34,29 +34,65 @@ class _NutritionCardState extends State<NutritionCard> {
     // Đảm bảo lấy dữ liệu cho ngày đã chọn
     final selectedDate = foodProvider.selectedDate;
     
-    final nutritionTotals = foodProvider.getNutritionTotals(date: selectedDate);
-    final consumedCalories = nutritionTotals['calories'].round().toInt();
-    final consumedProtein = nutritionTotals['protein'].round().toInt();
-    final consumedCarbs = nutritionTotals['carbs'].round().toInt();
-    final consumedFat = nutritionTotals['fat'].round().toInt();
-    final totalWeight = nutritionTotals['totalWeight']?.round().toInt() ?? 0;
+    // Sử dụng dữ liệu từ dailyNutritionSummary nếu có
+    final nutritionSummary = foodProvider.dailyNutritionSummary;
+    final isLoading = foodProvider.isLoadingSummary;
     
-    // Tính mục tiêu dinh dưỡng
-    final calculator = TDEECalculator(
-      gender: userData.gender,
-      age: userData.age,
-      heightCm: userData.heightCm,
-      weightKg: userData.weightKg,
-      activityLevel: userData.activityLevel,
-      goal: userData.goal,
-      pace: userData.pace,
-    );
+    // Sử dụng dữ liệu từ fetchDailyNutritionSummary nếu có, 
+    // ngược lại sử dụng dữ liệu từ getNutritionTotals
+    int consumedCalories;
+    int consumedProtein;
+    int consumedCarbs;
+    int consumedFat;
+    int totalWeight;
     
-    final dailyCalories = calculator.calculateDailyCalories().round().toInt();
-    final macrosTarget = calculator.calculateMacroDistribution();
-    final proteinGoal = macrosTarget['protein']!.round().toInt();
-    final carbsGoal = macrosTarget['carbs']!.round().toInt();
-    final fatGoal = macrosTarget['fat']!.round().toInt();
+    if (nutritionSummary != null && nutritionSummary.containsKey('calories')) {
+      // Lấy giá trị từ summary API
+      consumedCalories = (nutritionSummary['calories']['value'] as num).toInt();
+      consumedProtein = (nutritionSummary['protein']['value'] as num).toInt();
+      consumedCarbs = (nutritionSummary['carbs']['value'] as num).toInt();
+      consumedFat = (nutritionSummary['fat']['value'] as num).toInt();
+      totalWeight = 0; // Không có trong API summary
+    } else {
+      // Lấy dữ liệu từ phương thức cũ
+      final nutritionTotals = foodProvider.getNutritionTotals(date: selectedDate);
+      consumedCalories = nutritionTotals['calories'].round().toInt();
+      consumedProtein = nutritionTotals['protein'].round().toInt();
+      consumedCarbs = nutritionTotals['carbs'].round().toInt();
+      consumedFat = nutritionTotals['fat'].round().toInt();
+      totalWeight = nutritionTotals['totalWeight']?.round().toInt() ?? 0;
+    }
+    
+    // Tính mục tiêu dinh dưỡng từ API hoặc từ calculator
+    int dailyCalories;
+    int proteinGoal;
+    int carbsGoal;
+    int fatGoal;
+    
+    if (nutritionSummary != null) {
+      // Lấy mục tiêu từ API
+      dailyCalories = (nutritionSummary['calories']['goal'] as num).toInt();
+      proteinGoal = (nutritionSummary['protein']['goal'] as num).toInt();
+      carbsGoal = (nutritionSummary['carbs']['goal'] as num).toInt();
+      fatGoal = (nutritionSummary['fat']['goal'] as num).toInt();
+    } else {
+      // Tính từ calculator như trước
+      final calculator = TDEECalculator(
+        gender: userData.gender,
+        age: userData.age,
+        heightCm: userData.heightCm,
+        weightKg: userData.weightKg,
+        activityLevel: userData.activityLevel,
+        goal: userData.goal,
+        pace: userData.pace,
+      );
+      
+      dailyCalories = calculator.calculateDailyCalories().round().toInt();
+      final macrosTarget = calculator.calculateMacroDistribution();
+      proteinGoal = macrosTarget['protein']!.round().toInt();
+      carbsGoal = macrosTarget['carbs']!.round().toInt();
+      fatGoal = macrosTarget['fat']!.round().toInt();
+    }
     
     // Lấy calo đã đốt từ bài tập
     final burnedCalories = exerciseProvider.totalCalories;
@@ -70,6 +106,39 @@ class _NutritionCardState extends State<NutritionCard> {
     final proteinPercentage = ((consumedProtein / proteinGoal) * 100).round().clamp(0, 100).toInt();
     final carbsPercentage = ((consumedCarbs / carbsGoal) * 100).round().clamp(0, 100).toInt();
     final fatPercentage = ((consumedFat / fatGoal) * 100).round().clamp(0, 100).toInt();
+    
+    // Hiển thị loading indicator nếu đang tải dữ liệu
+    if (isLoading) {
+      return Container(
+        margin: EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Center(
+                child: CircularProgressIndicator(),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Đang tải dữ liệu dinh dưỡng...',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     
     return Column(
       children: [

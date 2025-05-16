@@ -432,7 +432,7 @@ class MealFoodDetailCard extends StatelessWidget {
                 physics: BouncingScrollPhysics(),
                 shrinkWrap: true,
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: allItems.length,
+                itemCount: entries.length, // Thay đổi từ allItems.length thành entries.length để tạo dòng theo mỗi entry
                 separatorBuilder: (context, index) => Divider(
                   height: 1, 
                   thickness: 1, 
@@ -441,19 +441,89 @@ class MealFoodDetailCard extends StatelessWidget {
                   endIndent: 8,
                 ),
                 itemBuilder: (context, index) {
-                  // Tìm foodEntry tương ứng cho item này
-                  final item = allItems[index];
-                  FoodEntry? foundEntry;
+                  final entry = entries[index];
                   
-                  // Tìm trong danh sách các entries để xác định item thuộc entry nào
-                  for (var entry in entries) {
-                    if (entry.items.any((entryItem) => entryItem.id == item.id)) {
-                      foundEntry = entry;
-                      break;
-                    }
-                  }
+                  // Tính toán dinh dưỡng từ entry
+                  final nutritionValues = entry.calculateNutritionFromAPI();
+                  final calculatedCalories = nutritionValues['calories']?.toInt() ?? 0;
                   
-                  return _buildSimpleFoodItemRow(item, foodEntry: foundEntry);
+                  return InkWell(
+                    onTap: onFoodItemTap != null ? () => onFoodItemTap!(entry) : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      child: Row(
+                        children: [
+                          // Food icon
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: Text(
+                                entry.description.isNotEmpty ? entry.description[0].toUpperCase() : "F",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          // Food name and details
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  entry.description,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  entry.items.isNotEmpty 
+                                    ? '${entry.items.length} thành phần, ${(entry.nutritionInfo?["totalWeight"] ?? entry.totalWeight).toInt()}g' 
+                                    : 'Món đơn lẻ',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          // Calories
+                          Text(
+                            '$calculatedCalories',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                          Text(
+                            'kcal',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 },
               ),
             ),
@@ -494,85 +564,6 @@ class MealFoodDetailCard extends StatelessWidget {
     );
   }
   
-  // Widget hiển thị thông tin món ăn đơn giản khi không có food_item_row.dart
-  Widget _buildSimpleFoodItemRow(FoodItem item, {FoodEntry? foodEntry}) {
-    return InkWell(
-      // Thêm onTap handler, nếu foodEntry và onFoodItemTap có giá trị
-      onTap: (foodEntry != null && onFoodItemTap != null) 
-          ? () => onFoodItemTap!(foodEntry) 
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        child: Row(
-          children: [
-            // Food icon
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.fastfood_outlined,
-                  color: Colors.green.shade700,
-                  size: 20,
-                ),
-              ),
-            ),
-            SizedBox(width: 12),
-            // Food name and details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    '${item.servingSize} khẩu phần, ${(item.servingSize * 100).toInt()}g',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 8),
-            // Calories
-            Text(
-              '${item.calories.round()}',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.redAccent,
-              ),
-            ),
-            Text(
-              'kcal',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.redAccent,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildNutrientBadge(int value, String unit, String label, Color color) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),

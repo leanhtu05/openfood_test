@@ -180,185 +180,198 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
     
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedBuilder(
-            animation: _animationController,
-            builder: (context, child) {
-              final scaleFactor = _isCompleted && _pulseAnimation != null 
-                  ? _pulseAnimation!.value 
-                  : 1.0;
-              
-              return Transform.scale(
-                scale: scaleFactor,
-                child: SizedBox(
-                  width: widget.size,
-                  height: widget.size,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        width: widget.size,
-                        height: widget.size,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.transparent,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
+      child: SizedBox(
+        height: 120,
+        child: SingleChildScrollView(
+          physics: NeverScrollableScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  final scaleFactor = _isCompleted && _pulseAnimation != null 
+                      ? _pulseAnimation!.value 
+                      : 1.0;
+                  
+                  return Transform.scale(
+                    scale: scaleFactor,
+                    child: SizedBox(
+                      width: widget.size,
+                      height: widget.size,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: widget.size,
+                            height: widget.size,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.transparent,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                      
-                      CustomPaint(
-                        size: Size(widget.size, widget.size),
-                        painter: CircleBackgroundPainter(
-                          backgroundColor: widget.backgroundColor.withOpacity(0.3),
-                          strokeWidth: 10.0,
-                        ),
-                      ),
-                      
-                      CustomPaint(
-                        key: widget.circleKey,
-                        size: Size(widget.size, widget.size),
-                        painter: CircleProgressPainter(
-                          percentage: _progressAnimation.value,
-                          color: widget.color,
-                          useRadialGradient: widget.useRadialGradient,
-                          strokeWidth: 10.0,
-                        ),
-                      ),
-                      
-                      Container(
-                        width: widget.size * 0.80,
-                        height: widget.size * 0.80,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: widget.color.withOpacity(0.1),
-                              blurRadius: 2,
-                              spreadRadius: 0,
+                          ),
+                          
+                          CustomPaint(
+                            size: Size(widget.size, widget.size),
+                            painter: CircleBackgroundPainter(
+                              backgroundColor: widget.backgroundColor.withOpacity(0.3),
+                              strokeWidth: 8.0,
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (widget.icon != null) Icon(
-                              widget.icon,
-                              size: widget.size * 0.26,
+                          ),
+                          
+                          CustomPaint(
+                            key: widget.circleKey,
+                            size: Size(widget.size, widget.size),
+                            painter: CircleProgressPainter(
+                              percentage: _progressAnimation.value,
                               color: widget.color,
+                              useRadialGradient: widget.useRadialGradient,
+                              strokeWidth: 8.0,
                             ),
-                            
-                            if (widget.showPercentage) Text(
-                              percentText,
-                              style: TextStyle(
-                                fontSize: widget.size * 0.22,
-                                fontWeight: FontWeight.bold,
-                                color: widget.color,
-                                height: 1.1,
-                              ),
-                              textAlign: TextAlign.center,
+                          ),
+                          
+                          Container(
+                            width: widget.size * 0.80,
+                            height: widget.size * 0.80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: widget.color.withOpacity(0.1),
+                                  blurRadius: 2,
+                                  spreadRadius: 0,
+                                ),
+                              ],
                             ),
-                            
-                            if (!widget.showPercentage) Text(
-                              widget.value.round().toString(),
-                              style: TextStyle(
-                                fontSize: widget.size * 0.22,
-                                fontWeight: FontWeight.bold,
-                                color: widget.color,
-                                height: 1.1,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            
-                            if (widget.icon != null)
-                              Padding(
-                                padding: EdgeInsets.only(top: 2),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: List.generate(
-                                    3,
-                                    (index) => Container(
-                                      width: 3,
-                                      height: 3,
-                                      margin: EdgeInsets.symmetric(horizontal: 1),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: widget.color.withOpacity(0.4),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (widget.icon != null) Icon(
+                                  widget.icon,
+                                  size: widget.size * 0.28,
+                                  color: widget.color,
+                                ),
+                                
+                                if (widget.showPercentage) Text(
+                                  percentText,
+                                  style: TextStyle(
+                                    fontSize: widget.size * 0.24,
+                                    fontWeight: FontWeight.bold,
+                                    color: widget.color,
+                                    height: 1.0,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                
+                                if (!widget.showPercentage) Text(
+                                  widget.value.round().toString(),
+                                  style: TextStyle(
+                                    fontSize: widget.size * 0.22,
+                                    fontWeight: FontWeight.bold,
+                                    color: widget.color,
+                                    height: 1.1,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                
+                                if (widget.icon != null)
+                                  Padding(
+                                    padding: EdgeInsets.only(top: 2),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: List.generate(
+                                        3,
+                                        (index) => Container(
+                                          width: 3,
+                                          height: 3,
+                                          margin: EdgeInsets.symmetric(horizontal: 1),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: widget.color.withOpacity(0.4),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                          ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              ),
+              
+              if (widget.showLabel)
+                Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          widget.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[600],
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ),
+                      if (widget.tooltipMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4.0),
+                          child: Tooltip(
+                            message: widget.tooltipMessage!,
+                            child: Icon(Icons.info_outline, size: 12, color: Colors.grey[400]),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              );
-            }
-          ),
-          
-          if (widget.showLabel)
-            Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[600],
+                
+              if (widget.remainingText.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Container(
+                    width: widget.size * 0.9,
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  if (widget.tooltipMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4.0),
-                      child: Tooltip(
-                        message: widget.tooltipMessage!,
-                        child: Icon(Icons.info_outline, size: 14, color: Colors.grey[400]),
+                    child: Text(
+                      widget.remainingText,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: widget.color.withOpacity(0.8),
+                        fontWeight: FontWeight.w500,
                       ),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
-                ],
-              ),
-            ),
-            
-          if (widget.remainingText.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: widget.color.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  widget.remainingText,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: widget.color.withOpacity(0.8),
-                    fontWeight: FontWeight.w500,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-              ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
