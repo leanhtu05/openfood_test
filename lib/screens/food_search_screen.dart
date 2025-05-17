@@ -731,7 +731,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
             final foodProvider = Provider.of<FoodProvider>(context, listen: false);
             foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
             
-            // Quay về màn hình trước đó
+            // Quay về màn hình trước đó và trả về kết quả
             Navigator.of(context).pop(updatedEntry);
           },
         ),
@@ -739,7 +739,13 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
     ).then((value) {
       // Sau khi trở về từ màn hình chi tiết
       if (value != null) {
-        Navigator.of(context).pop(value);
+        // Chỉ trả về kết quả cho màn hình gọi FoodSearchScreen, không pop nó
+        // Navigator.of(context).pop(value); - Xóa dòng này để không pop màn hình tìm kiếm
+        
+        // Nếu cần truyền kết quả cho ứng dụng, có thể đặt vào biến state
+        setState(() {
+          _selectedItem = null; // Reset UI state
+        });
       }
     });
   }

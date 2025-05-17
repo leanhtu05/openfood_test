@@ -259,7 +259,7 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
               ),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
+              behavior: SnackBarBehavior.fixed,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -279,7 +279,7 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
             ),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.fixed,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -1371,7 +1371,8 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
           content: Text('Đã thêm $amount mL nước'),
           backgroundColor: Colors.blue,
           duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
+          margin: EdgeInsets.only(bottom: 60), // Add bottom margin
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
@@ -1384,7 +1385,8 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
           content: Text('Lỗi khi thêm nước: $e'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
+          margin: EdgeInsets.only(bottom: 60), // Add bottom margin
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),

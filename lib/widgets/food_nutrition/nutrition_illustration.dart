@@ -804,8 +804,11 @@ class NutritionIllustration extends StatelessWidget {
     final circleSize = useCompactLayout ? 58.0 : 68.0;
     
     // Tạo remaining text dạng "130/2000"
-    final remainingText = "${value}/${goal}";
+    final remainingText = value > 999 || goal > 999 
+        ? "${(value/1000).toStringAsFixed(1)}/${(goal/1000).toStringAsFixed(1)}k"
+        : "$value/$goal";
     
+    // Sử dụng NutritionCircle giống các nutrient khác để thống nhất giao diện
     return NutritionCircle(
       size: circleSize,
       value: percentage,
@@ -814,9 +817,11 @@ class NutritionIllustration extends StatelessWidget {
       label: "Calo",
       remainingText: remainingText,
       backgroundColor: color.withOpacity(0.2),
-      useRadialGradient: false,
+      useRadialGradient: useRadialGradient,
       showPercentage: true,
       icon: Icons.local_fire_department,
+      showTotalValue: true,
+      unitLabel: "kcal",
     );
   }
   

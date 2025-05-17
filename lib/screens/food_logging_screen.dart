@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -29,6 +30,8 @@ import '../widgets/food_logging/food_logging_header.dart';
 import '../widgets/food_logging/image_section.dart';
 import '../widgets/custom_loading_indicator.dart';
 import 'package:uuid/uuid.dart';
+import '../providers/exercise_provider.dart';
+import '../providers/water_provider.dart';
 
 // Enum cho trạng thái nhận diện thực phẩm
 enum RecognitionStatus {
@@ -51,58 +54,74 @@ class FoodLoggingScreen extends StatefulWidget {
 }
 
 class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
+  // Controllers
   final TextEditingController _descriptionController = TextEditingController();
+  final _audioRecorder = Record();
   final FoodDatabaseService _databaseService = FoodDatabaseService();
-  File? _foodImage;
   final ImagePicker _picker = ImagePicker();
+  
+  // State variables
+  File? _foodImage;
   bool _isProcessing = false;
   bool _isRecording = false;
   bool _hasRecording = false;
   String? _audioPath;
   String? _barcode;
-  String _selectedMealType = 'Bữa sáng'; // Added class level variable for meal type
-  String? _selectedDate; // Add this variable to store the selected date
+  String _selectedMealType = 'Bữa chính';
+  String? _selectedDate;
+  late String _mealTypeTitle;
+  late FoodProvider _foodProvider;
   
-  // Biến cho nhận diện thực phẩm
+  // AI recognition state
   bool _isRecognizing = false;
   RecognitionStatus _recognitionStatus = RecognitionStatus.idle;
   String successMessage = '';
-  
-  // Record instance để ghi âm
-  final _audioRecorder = Record();
-  
-  // Biến theo dõi bước đang xử lý của AI
   int _currentAIStep = 0;
-  
+
   @override
   void initState() {
     super.initState();
+    _initializeComponents();
+  }
+
+  void _initializeComponents() {
     _databaseService.initialize();
+    _mealTypeTitle = _getMealTypeTitle();
+    _selectedDate = widget.initialDate;
     
-    // Get the current selected date from FoodProvider when the screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      // Sử dụng initialDate nếu có, nếu không thì dùng selectedDate từ provider
-      _selectedDate = widget.initialDate ?? foodProvider.selectedDate;
-      
-      // Đồng bộ ngày đã chọn với provider
-      if (widget.initialDate != null && widget.initialDate != foodProvider.selectedDate) {
-        foodProvider.setSelectedDate(widget.initialDate!);
-      }
-      
-      // Thêm listener để lắng nghe thay đổi từ provider
-      foodProvider.addListener(_updateSelectedDate);
+      _setupProviders();
     });
   }
   
-  // Hàm cập nhật selectedDate khi provider thay đổi
+  void _setupProviders() {
+    _foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+    if (_selectedDate == null || _selectedDate!.isEmpty) {
+      _selectedDate = _foodProvider.selectedDate;
+    } else {
+      _foodProvider.setSelectedDate(_selectedDate!);
+    }
+      
+    _foodProvider.addListener(_updateSelectedDate);
+  }
+
+  String _getMealTypeTitle() {
+    switch (_selectedMealType) {
+      case 'Bữa sáng': return 'Bữa sáng';
+      case 'Bữa trưa': return 'Bữa trưa';
+      case 'Bữa tối': return 'Bữa tối';
+      case 'Bữa phụ': return 'Bữa phụ';
+      default: return 'Bữa chính';
+    }
+  }
+  
   void _updateSelectedDate() {
     if(!mounted) return;
     
-    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    if (foodProvider.selectedDate != _selectedDate) {
+    if (_foodProvider.selectedDate != _selectedDate) {
       setState(() {
-        _selectedDate = foodProvider.selectedDate;
+        _selectedDate = _foodProvider.selectedDate;
       });
       print('FoodLoggingScreen: Đã cập nhật _selectedDate từ provider: $_selectedDate');
     }
@@ -110,15 +129,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
 
   @override
   void dispose() {
-    // Gỡ bỏ listener để tránh memory leak
-    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    foodProvider.removeListener(_updateSelectedDate);
+    _foodProvider.removeListener(_updateSelectedDate);
     _descriptionController.dispose();
     _audioRecorder.dispose();
     super.dispose();
   }
 
-  // Chụp ảnh từ camera
+  // SECTION: IMAGE HANDLING
   Future<void> _takeFoodPhoto() async {
     try {
       final XFile? image = await _picker.pickImage(
@@ -130,18 +147,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         setState(() {
           _foodImage = File(image.path);
         });
-        
-        // Phân tích ảnh nếu cần
         _analyzeImageAndShowEnhancedResults();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể chụp ảnh: $e')),
-      );
+      _showErrorMessage('Không thể chụp ảnh: $e');
     }
   }
 
-  // Chọn ảnh từ thư viện
   Future<void> _pickFoodPhoto() async {
     try {
       final XFile? image = await _picker.pickImage(
@@ -153,111 +165,88 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         setState(() {
           _foodImage = File(image.path);
         });
-        
-        // Phân tích ảnh nếu cần
         _analyzeImageAndShowEnhancedResults();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể chọn ảnh: $e')),
-      );
+      _showErrorMessage('Không thể chọn ảnh: $e');
     }
   }
 
-  // Hiển thị kết quả phân tích dinh dưỡng theo định dạng của food nutrition detail screen
+  // SECTION: FOOD ANALYSIS
   void _showEnhancedNutritionAnalysis(FoodEntry entry) async {
-    // Hiển thị màn hình chi tiết dinh dưỡng và chờ kết quả
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => FoodNutritionDetailScreen(
           foodEntry: entry,
-          onSave: (updatedEntry) {
-            // Lưu kết quả đã chỉnh sửa
-            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-            
-            // Lưu vào cơ sở dữ liệu
-            foodProvider.updateFoodEntry(updatedEntry);
-            
-            // In log thông tin để debug
-            print('_showEnhancedNutritionAnalysis: Đã cập nhật entry: ${updatedEntry.id}');
-            print('_showEnhancedNutritionAnalysis: Ngày: ${updatedEntry.dateTime}');
-            print('_showEnhancedNutritionAnalysis: Loại bữa ăn: ${updatedEntry.mealType}');
-            
-            // Kiểm tra dữ liệu dinh dưỡng
-            if (updatedEntry.items.isNotEmpty) {
-              final item = updatedEntry.items.first;
-              print('_showEnhancedNutritionAnalysis: Item name: ${item.name}');
-              print('_showEnhancedNutritionAnalysis: Calories: ${item.calories}, Protein: ${item.protein}, Carbs: ${item.carbs}, Fat: ${item.fat}');
-              print('_showEnhancedNutritionAnalysis: ServingSize: ${item.servingSize}');
-            }
-          },
+          onSave: _handleFoodEntryUpdate,
         ),
       ),
     );
     
-    // Cập nhật UI và hiển thị thông báo nếu có dữ liệu trả về
     if (result != null) {
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      _processNutritionAnalysisResult(result);
+    }
+  }
+  
+  void _handleFoodEntryUpdate(FoodEntry updatedEntry) {
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    foodProvider.updateFoodEntry(updatedEntry);
+    _logEntryDebugInfo('_handleFoodEntryUpdate', updatedEntry);
+  }
+  
+  void _processNutritionAnalysisResult(dynamic result) {
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    
+    if (result is Map<String, dynamic>) {
+      print('_processNutritionAnalysisResult: Kết quả dạng Map');
       
-      // In log để debug kết quả trả về
-      print('_showEnhancedNutritionAnalysis: Nhận kết quả từ màn hình chi tiết:');
-      if (result is Map<String, dynamic>) {
-        print('_showEnhancedNutritionAnalysis: Kết quả dạng Map');
-        print('_showEnhancedNutritionAnalysis: Các key: ${result.keys.join(', ')}');
+      if (result.containsKey('updatedEntry') && result['updatedEntry'] is FoodEntry) {
+        final updatedEntry = result['updatedEntry'] as FoodEntry;
+        foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
         
-        if (result.containsKey('updatedEntry') && result['updatedEntry'] is FoodEntry) {
-          final updatedEntry = result['updatedEntry'] as FoodEntry;
-          print('_showEnhancedNutritionAnalysis: updatedEntry.dateTime: ${updatedEntry.dateTime}');
+        if (result.containsKey('selectedDate')) {
+          String selectedDate = result['selectedDate'];
+          foodProvider.setSelectedDate(selectedDate);
           
-          // Đảm bảo cập nhật UI
-          foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
-          
-          // Đảm bảo ngày được cập nhật đúng nếu có
-          if (result.containsKey('selectedDate')) {
-            String selectedDate = result['selectedDate'];
-            print('_showEnhancedNutritionAnalysis: Cập nhật ngày được chọn: $selectedDate');
-            
-            // Cập nhật ngày được chọn trong provider
-            foodProvider.setSelectedDate(selectedDate);
-            
-            // Cập nhật biến local
-            setState(() {
-              _selectedDate = selectedDate;
-            });
-          }
-          
-          // Hiển thị thông báo thành công
           setState(() {
-            _isRecognizing = false;
-            _recognitionStatus = RecognitionStatus.success;
-            final itemsCount = updatedEntry.items.length;
-            if (itemsCount == 1) {
-              successMessage = 'Đã nhận diện: ${updatedEntry.items.first.name} (${updatedEntry.totalCalories} kcal)';
-            } else {
-              successMessage = 'Đã nhận diện ${itemsCount} món ăn (${updatedEntry.totalCalories} kcal)';
-            }
+            _selectedDate = selectedDate;
           });
         }
-      } else if (result is FoodEntry) {
-        print('_showEnhancedNutritionAnalysis: Kết quả dạng FoodEntry');
-        foodProvider.updateHomeScreenWithNewEntry(context, result);
         
-        // Hiển thị thông báo thành công
-        setState(() {
-          _isRecognizing = false;
-          _recognitionStatus = RecognitionStatus.success;
-          final itemsCount = result.items.length;
-          if (itemsCount == 1) {
-            successMessage = 'Đã nhận diện: ${result.items.first.name} (${result.totalCalories} kcal)';
-          } else {
-            successMessage = 'Đã nhận diện ${itemsCount} món ăn (${result.totalCalories} kcal)';
-          }
-        });
+        _updateSuccessState(updatedEntry);
       }
+    } else if (result is FoodEntry) {
+      foodProvider.updateHomeScreenWithNewEntry(context, result);
+      _updateSuccessState(result);
+    }
+  }
+  
+  void _updateSuccessState(FoodEntry entry) {
+    setState(() {
+      _isRecognizing = false;
+      _recognitionStatus = RecognitionStatus.success;
+      final itemsCount = entry.items.length;
+      if (itemsCount == 1) {
+        successMessage = 'Đã nhận diện: ${entry.items.first.name} (${entry.totalCalories} kcal)';
+      } else {
+        successMessage = 'Đã nhận diện ${itemsCount} món ăn (${entry.totalCalories} kcal)';
+      }
+    });
+  }
+  
+  void _logEntryDebugInfo(String prefix, FoodEntry entry) {
+    print('$prefix: Entry ID: ${entry.id}');
+    print('$prefix: Ngày: ${entry.dateTime}');
+    print('$prefix: Loại bữa ăn: ${entry.mealType}');
+    
+    if (entry.items.isNotEmpty) {
+      final item = entry.items.first;
+      print('$prefix: Item name: ${item.name}');
+      print('$prefix: Calories: ${item.calories}, Protein: ${item.protein}, Carbs: ${item.carbs}, Fat: ${item.fat}');
+      print('$prefix: ServingSize: ${item.servingSize}');
     }
   }
 
-  // Phân tích ảnh thực phẩm với AI và hiển thị kết quả theo format mới
   Future<FoodEntry?> _analyzeImageAndShowEnhancedResults() async {
     if (_foodImage == null) return null;
     
@@ -268,11 +257,9 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     FoodEntry? resultEntry;
     
     try {
-      // Sử dụng FoodProvider để phân tích ảnh bằng AI
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       final targetDate = foodProvider.selectedDate;
       
-      // Hiển thị dialog tiến trình phân tích theo các bước của AI
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -281,119 +268,28 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         },
       );
       
-      // Mô phỏng các bước xử lý AI
-      await Future.delayed(Duration(milliseconds: 800));
-      if (!mounted) return null;
-      setState(() {
-        _currentAIStep = 1; // Tiền xử lý ảnh
-      });
+      await _simulateAIProcessing();
       
-      await Future.delayed(Duration(milliseconds: 1500));
-      if (!mounted) return null;
-      setState(() {
-        _currentAIStep = 2; // Nhận diện món ăn
-      });
-      
-      await Future.delayed(Duration(milliseconds: 800));
-      if (!mounted) return null;
-      setState(() {
-        _currentAIStep = 3; // Ước tính khẩu phần
-      });
-      
-      await Future.delayed(Duration(milliseconds: 800));
-      if (!mounted) return null;
-      setState(() {
-        _currentAIStep = 4; // Tính toán dinh dưỡng
-      });
-      
-      // Thực hiện nhận diện thực phẩm với AI và sử dụng ngày đã chọn
       final entry = await foodProvider.addFoodEntryWithAI(
         image: _foodImage!,
         description: _descriptionController.text.isNotEmpty 
             ? _descriptionController.text 
             : "Bữa ăn " + _selectedMealType,
         mealType: _selectedMealType,
-        date: _selectedDate ?? targetDate, // Sử dụng ngày đã chọn (ưu tiên _selectedDate nếu có)
+        date: _selectedDate ?? targetDate,
       );
       
-      // Đóng dialog tiến trình
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+      _closeProcessingDialog();
       
       if (entry != null) {
-        final itemsCount = entry.items.length;
-        
-        if (itemsCount == 0) {
-          setState(() {
-            successMessage = 'Đã lưu bữa ăn nhưng không tìm thấy thông tin dinh dưỡng chính xác.';
-          });
-        } else if (itemsCount == 1) {
-          setState(() {
-            successMessage = 'Đã nhận diện: ${entry.items.first.name} (${entry.totalCalories} kcal)';
-          });
-        } else {
-          setState(() {
-            successMessage = 'Đã nhận diện ${itemsCount} món ăn (${entry.totalCalories} kcal)';
-          });
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(successMessage),
-            duration: Duration(seconds: 3),
-          )
-        );
-        
-        // Cập nhật trường mô tả nếu trống
-        if (_descriptionController.text.isEmpty) {
-          setState(() {
-            _descriptionController.text = entry.description;
-          });
-        }
-        
-        // Hiển thị màn hình kết quả phân tích chi tiết
-        _showEnhancedNutritionAnalysis(entry);
-        
-        // Lưu kết quả
+        _handleSuccessfulAIAnalysis(entry);
         resultEntry = entry;
-        
-        // In log để debug
-        print('_analyzeImageAndShowEnhancedResults: Đã tạo entry với AI vào ngày: ${entry.dateTime}');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể nhận diện thực phẩm. Vui lòng thử lại hoặc nhập thủ công.'),
-            duration: Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'TÌM KIẾM',
-              onPressed: () {
-                _openFoodDatabase();
-              },
-            ),
-          )
-        );
+        _showNoFoodDetectedMessage();
       }
     } catch (e) {
-      // Đóng dialog tiến trình nếu có lỗi
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi khi phân tích ảnh: $e'),
-          duration: Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'NHẬP THỦ CÔNG',
-            onPressed: () {
-              _openFoodDatabase();
-            },
-          ),
-        )
-      );
-      
-      print('Exception during image analysis: $e');
+      _closeProcessingDialog();
+      _showAnalysisErrorMessage(e);
     } finally {
       setState(() {
         _isProcessing = false;
@@ -404,7 +300,600 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     return resultEntry;
   }
   
-  // Dialog hiển thị tiến trình phân tích AI
+  Future<void> _simulateAIProcessing() async {
+    await Future.delayed(Duration(milliseconds: 800));
+    if (!mounted) return;
+    setState(() { _currentAIStep = 1; }); // Tiền xử lý ảnh
+    
+    await Future.delayed(Duration(milliseconds: 1500));
+    if (!mounted) return;
+    setState(() { _currentAIStep = 2; }); // Nhận diện món ăn
+    
+    await Future.delayed(Duration(milliseconds: 800));
+    if (!mounted) return;
+    setState(() { _currentAIStep = 3; }); // Ước tính khẩu phần
+    
+    await Future.delayed(Duration(milliseconds: 800));
+    if (!mounted) return;
+    setState(() { _currentAIStep = 4; }); // Tính toán dinh dưỡng
+  }
+  
+  void _closeProcessingDialog() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+  
+  void _handleSuccessfulAIAnalysis(FoodEntry entry) {
+    final itemsCount = entry.items.length;
+    
+    setState(() {
+      if (itemsCount == 0) {
+        successMessage = 'Đã lưu bữa ăn nhưng không tìm thấy thông tin dinh dưỡng chính xác.';
+      } else if (itemsCount == 1) {
+        successMessage = 'Đã nhận diện: ${entry.items.first.name} (${entry.totalCalories} kcal)';
+      } else {
+        successMessage = 'Đã nhận diện ${itemsCount} món ăn (${entry.totalCalories} kcal)';
+      }
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(successMessage),
+        duration: Duration(seconds: 3),
+      )
+    );
+    
+    if (_descriptionController.text.isEmpty) {
+      setState(() {
+        _descriptionController.text = entry.description;
+      });
+    }
+    
+    _showEnhancedNutritionAnalysis(entry);
+  }
+  
+  void _showNoFoodDetectedMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Không thể nhận diện thực phẩm. Vui lòng thử lại hoặc nhập thủ công.'),
+        duration: Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'TÌM KIẾM',
+          onPressed: _openFoodDatabase,
+        ),
+      )
+    );
+  }
+  
+  void _showAnalysisErrorMessage(dynamic error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Lỗi khi phân tích ảnh: $error'),
+        duration: Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'NHẬP THỦ CÔNG',
+          onPressed: _openFoodDatabase,
+        ),
+      )
+    );
+    
+    print('Exception during image analysis: $error');
+  }
+  
+  // SECTION: FOOD ENTRY MANAGEMENT
+  Future<void> _saveFoodEntry() async {
+    if (_descriptionController.text.trim().isEmpty) {
+      _showErrorMessage('Vui lòng nhập mô tả bữa ăn');
+      return;
+    }
+    
+    setState(() {
+      _isProcessing = true;
+    });
+    
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      if (_selectedDate == null || _selectedDate!.isEmpty) {
+        _selectedDate = DateTime.now().toIso8601String().split('T')[0];
+      }
+      
+      final entry = await foodProvider.addFoodEntryManual(
+        dateTime: DateTime.parse(_selectedDate!),
+        description: _descriptionController.text,
+        mealType: _selectedMealType,
+        image: _foodImage,
+      );
+      
+      print('Đã lưu bữa ăn: ${entry.description} (${entry.mealType}) cho ngày $_selectedDate');
+      print('Thời gian lưu: ${entry.dateTime}');
+      
+      foodProvider.updateHomeScreenWithNewEntry(context, entry);
+      
+      final returnData = {
+        'foodEntriesUpdated': true,
+        'selectedDate': _selectedDate,
+      };
+      
+      Navigator.of(context).pop(returnData);
+    } catch (e) {
+      print('Error saving food entry: $e');
+      _showErrorMessage('Có lỗi xảy ra: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  // SECTION: VOICE RECORDING
+  void _startVoiceRecording() {
+    _showErrorMessage('Tính năng ghi âm sẽ được cập nhật soon!');
+  }
+
+  Future<void> _toggleRecording() async {
+    final isGranted = await _requestPermission();
+    if (!isGranted) return;
+    
+    if (_isRecording) {
+      final path = await _audioRecorder.stop();
+      
+      setState(() {
+        _isRecording = false;
+        if (path != null) {
+          _audioPath = path;
+          _hasRecording = true;
+        }
+      });
+      
+      _showErrorMessage('Đã dừng ghi âm');
+    } else {
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final path = '${directory.path}/audio_$timestamp.m4a';
+      
+      await _audioRecorder.start(path: path);
+      
+      setState(() {
+        _isRecording = true;
+      });
+      
+      _showErrorMessage('Đang ghi âm... Nhấn lại để dừng');
+    }
+  }
+  
+  Future<bool> _requestPermission() async {
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      _showErrorMessage('Cần quyền truy cập microphone để sử dụng tính năng này');
+      return false;
+    }
+    return true;
+  }
+
+  // SECTION: BARCODE SCANNING
+  Future<void> _scanBarcode() async {
+    try {
+      final permissionStatus = await Permission.camera.request();
+      
+      if (permissionStatus.isGranted) {
+        String barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
+          '#ff6666', 
+          'Hủy', 
+          true, 
+          ScanMode.BARCODE
+        );
+        
+        if (barcodeScanRes != '-1') {
+          setState(() {
+            _barcode = barcodeScanRes;
+          });
+          
+          _showErrorMessage('Đã quét mã: $_barcode');
+          await _searchProductByBarcode(barcodeScanRes);
+        }
+      } else {
+        _showErrorMessage('Cần quyền truy cập camera để sử dụng tính năng này');
+      }
+    } catch (e) {
+      print('Lỗi khi quét mã vạch: $e');
+      _showErrorMessage('Không thể quét mã vạch: $e');
+    }
+  }
+  
+  Future<void> _searchProductByBarcode(String barcode) async {
+    setState(() {
+      _isProcessing = true;
+    });
+    
+    try {
+      final items = await _databaseService.searchFoodByBarcode(barcode);
+      
+      if (items.isNotEmpty) {
+        final uuid = Uuid();
+        final String entryId = uuid.v4();
+        
+        final FoodItem foodItem = items.first;
+        final entry = FoodEntry(
+          id: entryId,
+          description: foodItem.name,
+          items: [foodItem],
+          dateTime: DateTime.now(),
+          mealType: _selectedMealType,
+          barcode: barcode,
+          nutritionInfo: _createNutritionInfoFromFoodItem(foodItem, barcode),
+        );
+        
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        foodProvider.addFoodEntry(entry);
+        
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FoodNutritionDetailScreen(
+              foodEntry: entry,
+              onSave: (updatedEntry) {
+                foodProvider.updateFoodEntry(updatedEntry);
+              },
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không tìm thấy thông tin từ mã vạch. Thử tìm kiếm thủ công?'),
+            action: SnackBarAction(
+              label: 'TÌM KIẾM',
+              onPressed: _openFoodDatabase,
+            ),
+          )
+        );
+      }
+    } catch (e) {
+      print('Lỗi khi tìm kiếm mã vạch: $e');
+      _showErrorMessage('Không thể tìm kiếm mã vạch: $e');
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+  
+  Map<String, dynamic> _createNutritionInfoFromFoodItem(FoodItem item, String barcode) {
+    return {
+      'calories': item.calories,
+      'protein': item.protein,
+      'fat': item.fat,
+      'carbs': item.carbs,
+      'fiber': item.fiber,
+      'sugar': item.sugar,
+      'sodium': item.sodium,
+      'servingSize': item.servingSize,
+      'totalWeight': item.servingSize * 100,
+      'dataSource': 'Database',
+      'barcode': barcode,
+      ...item.additionalNutrients ?? {},
+    };
+  }
+
+  // SECTION: NAVIGATION AND DATABASE
+  void _openFoodDatabase() async {
+    final result = await Navigator.of(context).pushNamed(FoodSearchScreen.routeName);
+    
+    if (result is List<FoodItem> && result.isNotEmpty) {
+      await _processMultipleFoodItems(result);
+    } else if (result is FoodItem) {
+      await _processSingleFoodItem(result);
+    }
+  }
+  
+  Future<void> _processMultipleFoodItems(List<FoodItem> items) async {
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    
+    final DateTime selectedDateTime = _selectedDate != null 
+        ? DateTime.parse(_selectedDate!)
+        : DateTime.now();
+    
+    final entry = await foodProvider.addFoodEntryManual(
+      description: items.map((item) => item.name).join(", "),
+      mealType: _selectedMealType,
+      dateTime: selectedDateTime,
+      items: items,
+    );
+    
+    print('Đã tạo entry từ tìm kiếm với ngày: ${entry.dateTime}');
+    
+    await _showNutritionDetailAndUpdateUI(entry, foodProvider);
+  }
+  
+  Future<void> _processSingleFoodItem(FoodItem item) async {
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    
+    final DateTime selectedDateTime = _selectedDate != null 
+        ? DateTime.parse(_selectedDate!)
+        : DateTime.now();
+    
+    final entry = await foodProvider.addFoodEntryManual(
+      description: item.name,
+      mealType: _selectedMealType,
+      dateTime: selectedDateTime,
+      items: [item],
+    );
+    
+    print('Đã tạo entry từ item đơn lẻ với ngày: ${entry.dateTime}');
+    
+    await _showNutritionDetailAndUpdateUI(entry, foodProvider);
+  }
+  
+  Future<void> _showNutritionDetailAndUpdateUI(FoodEntry entry, FoodProvider foodProvider) async {
+    final updateResult = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FoodNutritionDetailScreen(
+          foodEntry: entry,
+          onSave: (updatedEntry) {
+            foodProvider.updateFoodEntry(updatedEntry);
+            print('Đã cập nhật entry từ FoodNutritionDetailScreen với ngày: ${updatedEntry.dateTime}');
+          },
+        ),
+      ),
+    );
+    
+    if (updateResult != null) {
+      foodProvider.updateHomeScreenWithNewEntry(
+        context, 
+        updateResult is FoodEntry ? updateResult : entry
+      );
+    }
+  }
+  
+  void _showHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => FoodHistoryScreen())
+    );
+  }
+  
+  void _showFavorites() {
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    List<FoodItem> favoriteItems = foodProvider.favoriteItems;
+    
+    if (favoriteItems.isEmpty) {
+      _showErrorMessage('Bạn chưa có món ăn yêu thích nào');
+      return;
+    }
+    
+    _openFoodDatabase();
+  }
+  
+  void _addToFavorites() {
+    final description = _descriptionController.text;
+    
+    if (description.isEmpty && _foodImage == null) {
+      _showErrorMessage('Vui lòng thêm ảnh hoặc mô tả bữa ăn trước khi đánh dấu yêu thích');
+      return;
+    }
+    
+    _saveFoodEntry();
+  }
+  
+  void _switchToEmptyFood() {
+    _descriptionController.text = "Bữa ăn trống";
+    _showErrorMessage('Chuyển sang chế độ thực phẩm trống');
+  }
+
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message))
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final foodProvider = Provider.of<FoodProvider>(context);
+    _selectedDate = foodProvider.selectedDate;
+    return Scaffold(
+      appBar: _buildAppBar(),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _buildDescriptionBox(),
+                SizedBox(height: 16),
+                _buildInstructionText(),
+                SizedBox(height: 16),
+                _buildImageSection(),
+                SizedBox(height: 24),
+                _buildMainActionButtons(),
+                SizedBox(height: 24),
+                _buildSecondaryActionButtons(),
+                SizedBox(height: 24),
+                _buildFoodDescriptionInput(),
+                SizedBox(height: 16),
+                _buildSaveButton(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  AppBar _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      automaticallyImplyLeading: true,
+      title: Row(
+        children: [
+          Icon(Icons.qr_code_2, color: Colors.green[800]),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Ghi lại thực phẩm', 
+              style: TextStyle(color: Colors.green[800], fontSize: 16),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Spacer(),
+          TextButton(
+            onPressed: _switchToEmptyFood,
+            child: Text('Thực phẩm trống', style: TextStyle(color: Colors.blue)),
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.blue[50],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ],
+      ),
+      iconTheme: IconThemeData(color: Colors.green[800]),
+    );
+  }
+  
+  Widget _buildDescriptionBox() {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.edit, color: Colors.grey),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Mô tả bữa ăn của bạn, ví dụ: "Một đĩa gà nướng với cơm, một phần nhỏ cà rốt luộc và hai ly nước cam"',
+              style: TextStyle(color: Colors.grey[700]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildInstructionText() {
+    return Text(
+      'Chụp ảnh toàn bộ bữa ăn của bạn và/hoặc mô tả nó ở trên',
+      style: TextStyle(fontSize: 16, color: Colors.black87),
+      textAlign: TextAlign.center,
+    );
+  }
+  
+  Widget _buildImageSection() {
+    return Container(
+      width: 220,
+      height: 220,
+      decoration: BoxDecoration(
+        color: Colors.black12,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: _foodImage != null
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Image.file(_foodImage!, fit: BoxFit.cover),
+          )
+        : Icon(Icons.camera_alt, size: 60, color: Colors.grey[400]),
+    );
+  }
+  
+  Widget _buildMainActionButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Search
+        IconButton(
+          icon: Icon(Icons.search, size: 36, color: Colors.blue),
+          onPressed: _openFoodDatabase,
+        ),
+        SizedBox(width: 24),
+        // Gallery
+        IconButton(
+          icon: Icon(Icons.photo, size: 36, color: Colors.orange),
+          onPressed: _pickFoodPhoto,
+        ),
+        SizedBox(width: 24),
+        // Camera (nút lớn)
+        GestureDetector(
+          onTap: _takeFoodPhoto,
+          child: Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.green[700]!, width: 4),
+            ),
+            child: Icon(Icons.camera_alt, color: Colors.white, size: 40),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildSecondaryActionButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        // Barcode
+        IconButton(
+          icon: Icon(Icons.qr_code_scanner, color: Colors.purple),
+          onPressed: _scanBarcode,
+        ),
+        SizedBox(width: 8),
+        // Lịch sử
+        ElevatedButton.icon(
+          onPressed: _showHistory,
+          icon: Icon(Icons.history, color: Colors.blue),
+          label: Text('Lịch Sử', style: TextStyle(color: Colors.blue)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue[50],
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 0,
+          ),
+        ),
+        SizedBox(width: 8),
+        // Yêu thích
+        ElevatedButton.icon(
+          onPressed: _showFavorites,
+          icon: Icon(Icons.star, color: Colors.blue),
+          label: Text('Yêu thích', style: TextStyle(color: Colors.blue)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue[50],
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 0,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildFoodDescriptionInput() {
+    return FoodDescriptionInput(
+      controller: _descriptionController,
+      onSubmit: _saveFoodEntry,
+    );
+  }
+  
+  Widget _buildSaveButton() {
+    return ElevatedButton(
+      onPressed: _saveFoodEntry,
+      child: Text('Lưu bữa ăn'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        minimumSize: Size(double.infinity, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
+  // SECTION: UI COMPONENTS
   Widget _buildAIProcessingDialog() {
     return AlertDialog(
       contentPadding: EdgeInsets.all(20),
@@ -427,7 +916,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
             ),
             SizedBox(height: 24),
             
-            // Bước 1: Tiền xử lý ảnh
             _buildAIProcessStep(
               icon: Icons.image,
               title: 'Tiền xử lý ảnh',
@@ -438,7 +926,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
             
             _buildStepConnector(),
             
-            // Bước 2: Nhận diện món ăn
             _buildAIProcessStep(
               icon: Icons.food_bank,
               title: 'Nhận diện món ăn',
@@ -449,7 +936,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
             
             _buildStepConnector(),
             
-            // Bước 3: Ước tính khẩu phần
             _buildAIProcessStep(
               icon: Icons.scale,
               title: 'Ước tính khẩu phần',
@@ -460,7 +946,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
             
             _buildStepConnector(),
             
-            // Bước 4: Tính toán dinh dưỡng
             _buildAIProcessStep(
               icon: Icons.calculate,
               title: 'Tính toán dinh dưỡng',
@@ -474,7 +959,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     );
   }
   
-  // Widget hiển thị từng bước xử lý của AI
   Widget _buildAIProcessStep({
     required IconData icon,
     required String title,
@@ -484,7 +968,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }) {
     return Row(
       children: [
-        // Icon trạng thái
         Container(
           width: 40,
           height: 40,
@@ -504,7 +987,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         ),
         SizedBox(width: 16),
         
-        // Thông tin bước
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -533,7 +1015,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     );
   }
   
-  // Đường kết nối giữa các bước
   Widget _buildStepConnector() {
     return Container(
       margin: EdgeInsets.only(left: 20),
@@ -541,1030 +1022,5 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       width: 2,
       color: Colors.grey.withOpacity(0.3),
     );
-  }
-  
-  // Phương thức để lưu bữa ăn mới
-  Future<void> _saveFoodEntry() async {
-    if (_descriptionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Vui lòng nhập mô tả bữa ăn')),
-      );
-      return;
-    }
-    
-    setState(() {
-      _isProcessing = true;
-    });
-    
-    try {
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      
-      if (_selectedDate == null || _selectedDate!.isEmpty) {
-        // Gán giá trị mặc định là ngày hôm nay
-        _selectedDate = DateTime.now().toIso8601String().split('T')[0];
-      }
-      final entry = await foodProvider.addFoodEntryManual(
-        dateTime: DateTime.parse(_selectedDate!),
-        description: _descriptionController.text,
-        mealType: _selectedMealType,
-        image: _foodImage,
-      );
-      
-      // In ra log để debug
-      print('Đã lưu bữa ăn: ${entry.description} (${entry.mealType}) cho ngày $_selectedDate');
-      print('Thời gian lưu: ${entry.dateTime}');
-      
-      // Cập nhật giao diện Home
-      foodProvider.updateHomeScreenWithNewEntry(context, entry);
-      
-      // Tạo data để trả về màn hình trước đó
-      final returnData = {
-        'foodEntriesUpdated': true,
-        'selectedDate': _selectedDate,
-      };
-      
-      // Quay về màn hình trước với data
-      Navigator.of(context).pop(returnData);
-    } catch (e) {
-      print('Error saving food entry: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Có lỗi xảy ra: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isProcessing = false;
-        });
-      }
-    }
-  }
-
-  // Ghi âm mô tả (sẽ tích hợp speech-to-text sau)
-  void _startVoiceRecording() {
-    // Sẽ tích hợp sau
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Tính năng ghi âm sẽ được cập nhật soon!')),
-    );
-  }
-
-  // Phương thức ghi âm
-  Future<void> _toggleRecording() async {
-    // Kiểm tra quyền ghi âm
-    final isGranted = await _requestPermission();
-    if (!isGranted) return;
-    
-    if (_isRecording) {
-      // Dừng ghi âm
-      final path = await _audioRecorder.stop();
-      
-      setState(() {
-        _isRecording = false;
-        if (path != null) {
-          _audioPath = path;
-          _hasRecording = true;
-        }
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã dừng ghi âm'))
-      );
-    } else {
-      // Chuẩn bị đường dẫn lưu file âm thanh
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final path = '${directory.path}/audio_$timestamp.m4a';
-      
-      // Bắt đầu ghi âm
-      await _audioRecorder.start(path: path);
-      
-      setState(() {
-        _isRecording = true;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đang ghi âm... Nhấn lại để dừng'))
-      );
-    }
-  }
-  
-  // Yêu cầu quyền ghi âm
-  Future<bool> _requestPermission() async {
-    final status = await Permission.microphone.request();
-    if (status != PermissionStatus.granted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cần quyền truy cập microphone để sử dụng tính năng này'))
-      );
-      return false;
-    }
-    return true;
-  }
-
-  // Phương thức quét mã vạch
-  Future<void> _scanBarcode() async {
-    try {
-      final permissionStatus = await Permission.camera.request();
-      
-      if (permissionStatus.isGranted) {
-        String barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
-          '#ff6666', 
-          'Hủy', 
-          true, 
-          ScanMode.BARCODE
-        );
-        
-        if (barcodeScanRes != '-1') {
-          setState(() {
-            _barcode = barcodeScanRes;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đã quét mã: $_barcode'))
-          );
-          
-          // Tìm kiếm thông tin sản phẩm từ mã vạch
-          await _searchProductByBarcode(barcodeScanRes);
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cần quyền truy cập camera để sử dụng tính năng này'))
-        );
-      }
-    } catch (e) {
-      print('Lỗi khi quét mã vạch: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể quét mã vạch: $e'))
-      );
-    }
-  }
-  
-  // Tìm kiếm sản phẩm từ mã vạch và hiển thị màn hình chi tiết dinh dưỡng
-  Future<void> _searchProductByBarcode(String barcode) async {
-    setState(() {
-      _isProcessing = true;
-    });
-    
-    try {
-      // Tìm kiếm sản phẩm từ mã vạch trong cơ sở dữ liệu
-      final items = await _databaseService.searchFoodByBarcode(barcode);
-      
-      if (items.isNotEmpty) {
-        // Lấy thời gian hiện tại cho bữa ăn
-        DateTime now = DateTime.now();
-        
-        // Tạo UUID mới
-        final uuid = Uuid();
-        final String entryId = uuid.v4();
-        
-        // Tạo entry từ FoodItem
-        final FoodItem foodItem = items.first;
-        final entry = FoodEntry(
-          id: entryId,
-          description: foodItem.name,
-          items: [foodItem],
-          dateTime: now,
-          mealType: _selectedMealType,
-          barcode: barcode,
-          nutritionInfo: {
-            'calories': foodItem.calories,
-            'protein': foodItem.protein,
-            'fat': foodItem.fat,
-            'carbs': foodItem.carbs,
-            'fiber': foodItem.fiber,
-            'sugar': foodItem.sugar,
-            'sodium': foodItem.sodium,
-            'servingSize': foodItem.servingSize,
-            'totalWeight': foodItem.servingSize * 100,
-            'dataSource': 'Database',
-            'barcode': barcode,
-            ...foodItem.additionalNutrients ?? {},
-          },
-        );
-        
-        // Thêm entry vào provider
-        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-        foodProvider.addFoodEntry(entry);
-        
-        // Ngay lập tức chuyển hướng đến màn hình chi tiết dinh dưỡng
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FoodNutritionDetailScreen(
-              foodEntry: entry,
-              onSave: (updatedEntry) {
-                foodProvider.updateFoodEntry(updatedEntry);
-              },
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không tìm thấy thông tin từ mã vạch. Thử tìm kiếm thủ công?'),
-            action: SnackBarAction(
-              label: 'TÌM KIẾM',
-              onPressed: () {
-                _openFoodDatabase();
-              },
-            ),
-          )
-        );
-      }
-    } catch (e) {
-      print('Lỗi khi tìm kiếm mã vạch: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể tìm kiếm mã vạch: $e'))
-      );
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
-  
-  // Mở màn hình tìm kiếm cơ sở dữ liệu thực phẩm
-  void _openFoodDatabase() async {
-    final result = await Navigator.of(context).pushNamed(FoodSearchScreen.routeName);
-    
-    if (result is List<FoodItem> && result.isNotEmpty) {
-      // Tạo một FoodEntry từ các FoodItem được chọn
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      
-      // Sử dụng ngày đã chọn thay vì ngày hiện tại
-      final DateTime selectedDateTime = _selectedDate != null 
-          ? DateTime.parse(_selectedDate!)
-          : DateTime.now();
-      
-      // Tạo food entry với ngày được chọn
-      final entry = await foodProvider.addFoodEntryManual(
-        description: result.map((item) => item.name).join(", "),
-        mealType: _selectedMealType,
-        dateTime: selectedDateTime, // Sử dụng ngày đã chọn
-        items: result,
-      );
-      
-      // In log thông tin để debug
-      print('Đã tạo entry từ tìm kiếm với ngày: ${entry.dateTime}');
-      
-      // Hiển thị màn hình chi tiết dinh dưỡng
-      final updateResult = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FoodNutritionDetailScreen(
-            foodEntry: entry,
-            onSave: (updatedEntry) {
-              // Cập nhật thông tin món ăn
-              foodProvider.updateFoodEntry(updatedEntry);
-              
-              // In log thông tin để debug
-              print('Đã cập nhật entry từ FoodNutritionDetailScreen với ngày: ${updatedEntry.dateTime}');
-            },
-          ),
-        ),
-      );
-      
-      // Nếu có dữ liệu từ màn hình chi tiết trả về, cập nhật UI
-      if (updateResult != null) {
-        foodProvider.updateHomeScreenWithNewEntry(context, 
-            updateResult is FoodEntry ? updateResult : entry);
-      }
-    } else if (result is FoodItem) {
-      // Tạo một FoodEntry từ một FoodItem được chọn
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      
-      // Sử dụng ngày đã chọn thay vì ngày hiện tại
-      final DateTime selectedDateTime = _selectedDate != null 
-          ? DateTime.parse(_selectedDate!)
-          : DateTime.now();
-      
-      final entry = await foodProvider.addFoodEntryManual(
-        description: result.name,
-        mealType: _selectedMealType,
-        dateTime: selectedDateTime, // Sử dụng ngày đã chọn
-        items: [result],
-      );
-      
-      // In log thông tin để debug
-      print('Đã tạo entry từ item đơn lẻ với ngày: ${entry.dateTime}');
-      
-      // Hiển thị màn hình chi tiết dinh dưỡng
-      final updateResult = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FoodNutritionDetailScreen(
-            foodEntry: entry,
-            onSave: (updatedEntry) {
-              // Cập nhật thông tin món ăn
-              foodProvider.updateFoodEntry(updatedEntry);
-              
-              // In log thông tin để debug
-              print('Đã cập nhật entry từ FoodNutritionDetailScreen với ngày: ${updatedEntry.dateTime}');
-            },
-          ),
-        ),
-      );
-      
-      // Nếu có dữ liệu từ màn hình chi tiết trả về, cập nhật UI
-      if (updateResult != null) {
-        foodProvider.updateHomeScreenWithNewEntry(context, 
-            updateResult is FoodEntry ? updateResult : entry);
-      }
-    }
-  }
-  
-  // Hiển thị lịch sử
-  void _showHistory() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => FoodHistoryScreen())
-    );
-  }
-  
-  // Hiển thị yêu thích
-  void _showFavorites() {
-    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    List<FoodItem> favoriteItems = foodProvider.favoriteItems;
-    
-    if (favoriteItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Bạn chưa có món ăn yêu thích nào'))
-      );
-      return;
-    }
-    
-    // Sửa lỗi: thay vì gọi _openFoodDatabase với await, 
-    // chỉ gọi như một phương thức void thông thường
-    _openFoodDatabase();
-  }
-  
-  // Thêm vào yêu thích
-  void _addToFavorites() {
-    final description = _descriptionController.text;
-    
-    if (description.isEmpty && _foodImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Vui lòng thêm ảnh hoặc mô tả bữa ăn trước khi đánh dấu yêu thích'))
-      );
-      return;
-    }
-    
-    _saveFoodEntry();
-  }
-  
-  // Chuyển sang chế độ thực phẩm trống
-  void _switchToEmptyFood() {
-    _descriptionController.text = "Bữa ăn trống";
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Chuyển sang chế độ thực phẩm trống'))
-    );
-  }
-
-  // Hiển thị dialog xác nhận/chỉnh sửa món ăn trước khi lưu
-  Future<FoodEntry?> _showEditMealDialog(List<FoodItem> items, {String mealType = 'Meal'}) async {
-    List<FoodItem> editableItems = List.from(items);
-    String selectedMealType = mealType;
-    
-    // Danh sách các loại bữa ăn hợp lệ
-    final mealTypes = ['Sáng', 'Trưa', 'Tối', 'Khác', 'Bữa chính', 'Bữa phụ', 'Bữa nhẹ', 'Meal'];
-
-    // Đảm bảo selectedMealType nằm trong danh sách mealTypes
-    if (!mealTypes.contains(selectedMealType)) {
-      selectedMealType = 'Bữa chính';
-    }
-
-    FoodEntry? resultEntry;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text('Xác nhận & chỉnh sửa món ăn'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ...editableItems.map((item) {
-                      TextEditingController portionController = TextEditingController(text: item.servingSize.toString());
-                      return Card(
-                        margin: EdgeInsets.symmetric(vertical: 6),
-                        child: ListTile(
-                          title: Text(item.name),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (item.brand != null) Text(item.brand!, style: TextStyle(fontSize: 12, color: Colors.grey)),
-                              // Sửa lỗi RenderFlex overflow bằng cách sử dụng Flexible
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text('Khẩu phần: '),
-                                  ),
-                                  Container(
-                                    width: 60,
-                                    child: TextField(
-                                      controller: portionController,
-                                      keyboardType: TextInputType.number,
-                                      decoration: InputDecoration(suffixText: item.servingUnit),
-                                      onChanged: (val) {
-                                        double? newPortion = double.tryParse(val);
-                                        if (newPortion != null) {
-                                          setState(() {
-                                            editableItems[editableItems.indexOf(item)] = FoodItem(
-                                              id: item.id,
-                                              name: item.name,
-                                              brand: item.brand,
-                                              imageUrl: item.imageUrl,
-                                              calories: item.calories,
-                                              protein: item.protein,
-                                              fat: item.fat,
-                                              carbs: item.carbs,
-                                              fiber: item.fiber,
-                                              sugar: item.sugar,
-                                              sodium: item.sodium,
-                                              servingSize: newPortion,
-                                              servingUnit: item.servingUnit,
-                                              additionalNutrients: item.additionalNutrients,
-                                            );
-                                          });
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          trailing: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                editableItems.remove(item);
-                              });
-                            },
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                    SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      icon: Icon(Icons.add),
-                      label: Text('Thêm món mới'),
-                      onPressed: () async {
-                        // Có thể mở màn hình tìm kiếm món ăn để thêm
-                        final result = await Navigator.of(context).pushNamed('/food-search');
-                        if (result is FoodItem) {
-                          setState(() {
-                            editableItems.add(result);
-                          });
-                        } else if (result is List<FoodItem> && (result as List).isNotEmpty) {
-                          setState(() {
-                            editableItems.addAll(result as List<FoodItem>);
-                          });
-                        }
-                      },
-                    ),
-                    SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Text('Thời gian ăn: '),
-                        SizedBox(width: 8),
-                        DropdownButton<String>(
-                          value: selectedMealType,
-                          items: mealTypes
-                              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => selectedMealType = val);
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  child: Text('Huỷ'),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                ),
-                ElevatedButton(
-                  child: Text('Lưu vào nhật ký'),
-                  onPressed: () async {
-                    if (editableItems.isNotEmpty) {
-                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-                      resultEntry = await foodProvider.addFoodEntryManual(
-                        description: editableItems.map((i) => i.name).join(", "),
-                        mealType: selectedMealType,
-                        dateTime: DateTime.now(),
-                        items: editableItems,
-                      );
-                      Navigator.of(ctx).pop();
-                      
-                      // Mở màn hình chi tiết dinh dưỡng
-                      if (resultEntry != null) {
-                        final updatedEntry = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => FoodNutritionDetailScreen(
-                              foodEntry: resultEntry!,
-                              onSave: (updatedEntry) {
-                                // Cập nhật thông tin
-                                foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
-                              },
-                            ),
-                          ),
-                        );
-                        
-                        if (updatedEntry != null) {
-                          resultEntry = updatedEntry;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Đã lưu bữa ăn thành công!')),
-                          );
-                        }
-                      }
-                    }
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    
-    return resultEntry;
-  }
-
-  // Xử lý kết quả quét mã vạch
-  void _processBarcodeResult(String barcode) {
-    if (barcode.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã quét mã vạch: $barcode. Đang tìm kiếm thông tin...'))
-      );
-      
-      // Thực hiện tìm kiếm thông tin sản phẩm từ mã vạch
-      // Có thể tích hợp với API tra cứu mã vạch ở đây
-    }
-  }
-
-  // Thêm phương thức _showFoodSuggestionsDialog để không gặp lỗi nếu có nơi khác gọi
-  Future<List<FoodItem>?> _showFoodSuggestionsDialog(List<FoodItem> items) async {
-    List<FoodItem> selectedItems = [];
-    
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Món ăn gợi ý'),
-          content: Container(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                bool isSelected = selectedItems.contains(item);
-                
-                return CheckboxListTile(
-                  title: Text(item.name),
-                  subtitle: Text('${item.calories} kcal'),
-                  value: isSelected,
-                  onChanged: (value) {
-                    if (value == true) {
-                      selectedItems.add(item);
-                    } else {
-                      selectedItems.remove(item);
-                    }
-                    // Cần gọi setState để cập nhật UI, nhưng trong AlertDialog với StatelessBuilder
-                    // không thể gọi trực tiếp setState của _FoodLoggingScreenState
-                    // Đây chỉ là code mẫu, cần thêm StatefulBuilder để cập nhật UI đúng cách
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: Text('Hủy'),
-              onPressed: () => Navigator.of(ctx).pop(),
-            ),
-            ElevatedButton(
-              child: Text('Thêm'),
-              onPressed: () {
-                Navigator.of(ctx).pop(selectedItems);
-              },
-            ),
-          ],
-        );
-      },
-    );
-    
-    return selectedItems;
-  }
-
-  // Hiển thị thông báo lỗi
-  void _showErrorMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message))
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Get the latest selected date from the provider
-    final foodProvider = Provider.of<FoodProvider>(context);
-    _selectedDate = foodProvider.selectedDate;
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Ghi chép bữa ăn'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.history),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (ctx) => FoodHistoryScreen(),
-              ));
-            },
-          ),
-        ],
-      ),
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.green.withOpacity(0.05),
-                Colors.white,
-              ],
-            ),
-          ),
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: 12),
-                  
-                  // Chọn bữa ăn - UI mới
-                  _buildMealTypeSelector(),
-                  
-                  SizedBox(height: 24),
-                  
-                  // Input mô tả thực phẩm
-                  FoodDescriptionInput(
-                    controller: _descriptionController,
-                    onSubmit: () => _saveFoodEntry(),
-                  ),
-                  
-                  SizedBox(height: 20),
-                  
-                  // Hiển thị ảnh đã chụp
-                  if (_foodImage != null)
-                    FoodImagePreview(
-                      foodImage: _foodImage!,
-                      onRemove: () {
-                        setState(() {
-                          _foodImage = null;
-                        });
-                      },
-                    ),
-                  
-                  SizedBox(height: 20),
-                  
-                  // Nút chức năng
-                  Wrap(
-                    spacing: 8.0,
-                    runSpacing: 10.0, 
-                    alignment: WrapAlignment.spaceBetween,
-                    children: [
-                      // Nút camera
-                      ActionButton(
-                        icon: Icons.camera_alt,
-                        label: 'Chụp ảnh',
-                        color: Colors.blue,
-                        onPressed: _takeFoodPhoto,
-                      ),
-                      
-                      // Nút thư viện
-                      ActionButton(
-                        icon: Icons.photo_library,
-                        label: 'Thư viện',
-                        color: Colors.orange,
-                        onPressed: _pickFoodPhoto,
-                      ),
-                      
-                      // Nút tìm kiếm thực phẩm
-                      ActionButton(
-                        icon: Icons.search,
-                        label: 'Tìm kiếm',
-                        color: Colors.green,
-                        onPressed: _openFoodDatabase,
-                      ),
-                      
-                      // Nút quét mã vạch
-                      BarcodeScannerButton(
-                        onBarcodeScan: (FoodItem foodItem, String barcode) {
-                          // Tạo và hiển thị FoodEntry trực tiếp từ foodItem từ barcode
-                          _processBarcodeFoodItem(foodItem, barcode);
-                        },
-                        onError: (String error) {
-                          _showErrorMessage("Không thể quét mã vạch: $error");
-                        },
-                      ),
-                    ],
-                  ),
-                  
-                  SizedBox(height: 20),
-                  
-                  // Nút lớn lưu bữa ăn
-                  ElevatedButton(
-                    onPressed: _saveFoodEntry,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      padding: EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      minimumSize: Size(double.infinity, 0),
-                    ),
-                    child: Text(
-                      'Lưu bữa ăn',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-  
-  // Widget mới hiển thị chọn bữa ăn
-  Widget _buildMealTypeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Chọn bữa ăn',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
-          ),
-        ),
-        SizedBox(height: 8),
-        SizedBox(
-          height: 90, // Increased height to fully accommodate the cards
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              _buildMealTypeCard(
-                icon: '🍳',
-                title: 'Bữa sáng',
-                timeRange: '6:00 - 9:00',
-                isSelected: _selectedMealType == 'Bữa sáng',
-                onTap: () {
-                  setState(() {
-                    _selectedMealType = 'Bữa sáng';
-                  });
-                },
-              ),
-              _buildMealTypeCard(
-                icon: '🥗',
-                title: 'Bữa trưa',
-                timeRange: '11:00 - 13:00',
-                isSelected: _selectedMealType == 'Bữa trưa',
-                onTap: () {
-                  setState(() {
-                    _selectedMealType = 'Bữa trưa';
-                  });
-                },
-              ),
-              _buildMealTypeCard(
-                icon: '🍝',
-                title: 'Bữa tối',
-                timeRange: '18:00 - 20:00',
-                isSelected: _selectedMealType == 'Bữa tối',
-                onTap: () {
-                  setState(() {
-                    _selectedMealType = 'Bữa tối';
-                  });
-                },
-              ),
-              _buildMealTypeCard(
-                icon: '🍌',
-                title: 'Bữa phụ',
-                timeRange: 'Bất kỳ',
-                isSelected: _selectedMealType == 'Bữa phụ',
-                onTap: () {
-                  setState(() {
-                    _selectedMealType = 'Bữa phụ';
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-  
-  // Widget cho từng card bữa ăn
-  Widget _buildMealTypeCard({
-    required String icon,
-    required String title, 
-    required String timeRange,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 95,
-        height: 85, // Increased height to prevent overflow
-        margin: EdgeInsets.only(right: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.green.withOpacity(0.15) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? Colors.green : Colors.grey.withOpacity(0.3),
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 4,
-              offset: Offset(0, 1),
-            ),
-          ],
-        ),
-        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-        child: Column(
-          mainAxisSize: MainAxisSize.max, // Fill available space
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              flex: 2,
-              child: Text(
-                icon,
-                style: TextStyle(fontSize: 20),
-              ),
-            ),
-            SizedBox(height: 2),
-            Flexible(
-              flex: 1,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? Colors.green[800] : Colors.grey[800],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            SizedBox(height: 1),
-            Flexible(
-              flex: 1,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  timeRange,
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Widget hiển thị nút tìm kiếm thực phẩm
-  Widget _buildFoodSearchButton() {
-    return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (ctx) => FoodSearchScreen(),
-          ),
-        );
-      },
-      child: Container(
-        width: 80,
-        height: 85, // Increased height to accommodate content
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.max, // Changed to max to fill available space
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Icon(Icons.search, color: Colors.green, size: 22),
-            ),
-            SizedBox(height: 4),
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  'Tìm kiếm',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Thêm phương thức mới để xử lý FoodItem từ mã vạch
-  void _processBarcodeFoodItem(FoodItem foodItem, String barcode) {
-    try {
-      // Lấy thời gian hiện tại cho bữa ăn
-      DateTime now = DateTime.now();
-      
-      // Tạo UUID mới
-      final uuid = Uuid();
-      final String entryId = uuid.v4();
-      
-      // Tạo entry từ FoodItem
-      final entry = FoodEntry(
-        id: entryId,
-        description: foodItem.name,
-        items: [foodItem],
-        dateTime: now,
-        mealType: _selectedMealType,
-        barcode: barcode,
-        nutritionInfo: {
-          'calories': foodItem.calories,
-          'protein': foodItem.protein,
-          'fat': foodItem.fat,
-          'carbs': foodItem.carbs,
-          'fiber': foodItem.fiber,
-          'sugar': foodItem.sugar,
-          'sodium': foodItem.sodium,
-          'servingSize': foodItem.servingSize,
-          'totalWeight': foodItem.servingSize * 100,
-          'dataSource': 'Open Food Facts',
-          'barcode': barcode,
-          ...foodItem.additionalNutrients ?? {},
-        },
-      );
-      
-      // Thêm entry vào provider
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      foodProvider.addFoodEntry(entry);
-      
-      // Hiển thị thông báo thành công
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã tìm thấy: ${foodItem.name}'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 1),
-        ),
-      );
-      
-      // Ngay lập tức chuyển hướng đến màn hình chi tiết dinh dưỡng
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FoodNutritionDetailScreen(
-            foodEntry: entry,
-            onSave: (updatedEntry) {
-              foodProvider.updateFoodEntry(updatedEntry);
-            },
-          ),
-        ),
-      );
-    } catch (e) {
-      print('Lỗi khi xử lý thông tin mã vạch: $e');
-      _showErrorMessage('Không thể xử lý thông tin mã vạch: $e');
-    }
   }
 } 

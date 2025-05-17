@@ -56,10 +56,10 @@ class _NutritionCardState extends State<NutritionCard> {
     } else {
       // Lấy dữ liệu từ phương thức cũ
       final nutritionTotals = foodProvider.getNutritionTotals(date: selectedDate);
-      consumedCalories = nutritionTotals['calories'].round().toInt();
-      consumedProtein = nutritionTotals['protein'].round().toInt();
-      consumedCarbs = nutritionTotals['carbs'].round().toInt();
-      consumedFat = nutritionTotals['fat'].round().toInt();
+      consumedCalories = (nutritionTotals['calories'] ?? 0.0).round().toInt();
+      consumedProtein = (nutritionTotals['protein'] ?? 0.0).round().toInt();
+      consumedCarbs = (nutritionTotals['carbs'] ?? 0.0).round().toInt();
+      consumedFat = (nutritionTotals['fat'] ?? 0.0).round().toInt();
       totalWeight = nutritionTotals['totalWeight']?.round().toInt() ?? 0;
     }
     
@@ -395,6 +395,22 @@ class _NutritionCardState extends State<NutritionCard> {
                               color: Colors.grey[700],
                             ),
                           ),
+                          Container(
+                            margin: EdgeInsets.only(top: 2),
+                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'kcal',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -553,6 +569,11 @@ class _NutritionCardState extends State<NutritionCard> {
     String details,
     Color color
   ) {
+    // Extract the values from details for better display
+    final parts = details.split('/');
+    final currentValue = parts[0].replaceAll(RegExp(r'[^0-9]'), ''); // Remove non-numeric characters
+    final goalValue = parts[1].replaceAll(RegExp(r'g'), '').trim(); // Remove 'g' and trim
+    
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -587,13 +608,18 @@ class _NutritionCardState extends State<NutritionCard> {
             fontSize: 14,
           ),
         ),
-        SizedBox(height: 2),
-        FittedBox(
-          fit: BoxFit.scaleDown,
+        SizedBox(height: 4),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
           child: Text(
-            details,
+            '$currentValue / $goalValue${label == "Protein" || label == "Carbs" || label == "Chất béo" ? "g" : " kcal"}',
             style: TextStyle(
-              color: Colors.grey[600],
+              color: color,
+              fontWeight: FontWeight.w500,
               fontSize: 12,
             ),
           ),

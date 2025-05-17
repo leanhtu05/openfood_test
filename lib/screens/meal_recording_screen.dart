@@ -9,12 +9,15 @@ import '../widgets/food_nutrition/nutrition_circle_detail.dart';
 import '../widgets/food_nutrition/nutrition_circle.dart';
 import '../providers/food_provider.dart';
 import '../providers/user_data_provider.dart';
+import '../providers/exercise_provider.dart';
+import '../providers/water_provider.dart';
 import '../models/food_entry.dart';
 import '../models/food_item.dart';
 import '../utils/constants.dart';
 import '../screens/food_nutrition_detail_screen.dart';
 import '../widgets/food_logging/barcode_scanner_button.dart';
 import 'package:uuid/uuid.dart';
+import '../screens/food_history_screen.dart';
 
 class MealRecordingScreen extends StatefulWidget {
   final String? initialDate;
@@ -84,13 +87,24 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      // Sử dụng initialDate nếu có, nếu không thì dùng selectedDate từ provider
-      _selectedDate = widget.initialDate ?? foodProvider.selectedDate;
       
-      // Đồng bộ ngày đã chọn với provider
-      if (widget.initialDate != null && widget.initialDate != foodProvider.selectedDate) {
-        foodProvider.setSelectedDate(widget.initialDate!);
+      // Sử dụng initialDate nếu có, nếu không thì dùng selectedDate từ provider
+      if (widget.initialDate != null) {
+        _selectedDate = widget.initialDate!;
+        // Đồng bộ ngày đã chọn với provider
+        foodProvider.setSelectedDate(_selectedDate);
+        print('MealRecordingScreen: Khởi tạo với initialDate: ${widget.initialDate}');
+      } else {
+        // Nếu không có initialDate, sử dụng ngày từ provider
+        _selectedDate = foodProvider.selectedDate;
+        print('MealRecordingScreen: Khởi tạo với ngày từ provider: $_selectedDate');
       }
+      
+      // Cập nhật ngày trong các provider khác để đảm bảo đồng bộ hoàn toàn
+      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+      exerciseProvider.setSelectedDate(_selectedDate);
+      waterProvider.setSelectedDate(_selectedDate);
       
       // Khởi tạo PageController
       _pageController = PageController(
@@ -100,6 +114,8 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       
       // Tải dữ liệu các bữa ăn
       loadMealData();
+      
+      print('MealRecordingScreen: Hoàn tất khởi tạo với ngày $_selectedDate');
     });
   }
   
@@ -117,6 +133,12 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     
     try {
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Make sure the provider's selected date matches our selected date
+      if (foodProvider.selectedDate != _selectedDate) {
+        foodProvider.setSelectedDate(_selectedDate);
+      }
+      
       await foodProvider.loadData();
       
       // Thêm debug statement
@@ -224,9 +246,27 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
                   setState(() {
                     _selectedDate = newDate;
                   });
+                  
+                  // Cập nhật ngày trong provider - điều này sẽ đồng bộ với HomeScreen
+                  final foodProvider = Provider.of<FoodProvider>(context, listen: false);
                   foodProvider.setSelectedDate(newDate);
+                  
+                  // Cập nhật ngày trong các provider khác để đảm bảo đồng bộ hoàn toàn
+                  final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+                  final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+                  exerciseProvider.setSelectedDate(newDate);
+                  waterProvider.setSelectedDate(newDate);
+                  
                   // Tải lại dữ liệu khi chọn ngày mới
                   loadMealData();
+                  
+                  // Khi thay đổi ngày, nếu đang ở trong stack navigate, thì pop về với kết quả
+                  if (Navigator.canPop(context) && ModalRoute.of(context)?.settings.name != '/') {
+                    Navigator.pop(context, {'selectedDate': newDate});
+                  }
+                  
+                  // In thông báo debug
+                  print('MealRecordingScreen: Đã thay đổi ngày thành $newDate');
                 },
               ),
               
@@ -243,30 +283,47 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
                               // Phần thực phẩm đã ghi nhận
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.access_time, color: Colors.black87),
-                                        SizedBox(width: 8),
-                                        Text(
-                                          'Thực phẩm đã ghi nhận',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.black87,
+                                child: InkWell(
+                                  onTap: () {
+                                    // Navigate to food history screen
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => FoodHistoryScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.access_time, color: Colors.black87),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Thực phẩm đã ghi nhận',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.black87,
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.arrow_forward_ios, size: 14),
-                                      onPressed: () {
-                                        // Điều hướng đến trang chi tiết nếu cần
-                                      },
-                                    ),
-                                  ],
+                                        ],
+                                      ),
+                                      IconButton(
+                                        icon: Icon(Icons.arrow_forward_ios, size: 14),
+                                        onPressed: () {
+                                          // Navigate to food history screen
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => FoodHistoryScreen(),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                               
@@ -624,27 +681,22 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     if (progress < 0.0) progress = 0.0;
     
     if (nutrient == 'calories') {
-      // Sử dụng NutritionCircleDetail cho calories vì muốn hiển thị thêm thông tin
-      // Định dạng lại để hiển thị giá trị lớn tốt hơn
-      String formattedValue, formattedGoal, formattedUnit;
-      
-      if (value > 9999) {
-        formattedValue = (value/1000).toStringAsFixed(1) + "k";
-        formattedGoal = "/${(goal/1000).toStringAsFixed(1)}k";
-        formattedUnit = unit;
-      } else {
-        formattedValue = value.toStringAsFixed(0);
-        formattedGoal = '/${goal.toStringAsFixed(0)}${unit}';
-        formattedUnit = '';
-      }
-      
-      return NutritionCircleDetail(
-        value: formattedValue,
-        total: formattedGoal,
+      // Sử dụng NutritionCircle giống các nutrient khác để thống nhất giao diện
+      return NutritionCircle(
+        size: 62.0,
+        value: progress * 100,
+        max: 100.0,
         color: color,
-        remaining: remainingText,
-        progress: progress,
         label: label,
+        // Giữ format đẹp cho calories
+        remainingText: value > 9999
+            ? "${(value/1000).toStringAsFixed(1)}/${(goal/1000).toStringAsFixed(1)}k${unit}"
+            : "${value.toInt()}/${goal.toInt()}${unit}",
+        backgroundColor: color.withOpacity(0.2),
+        useRadialGradient: false,
+        showPercentage: true,
+        icon: icon,
+        showTotalValue: true,
       );
     }
     
@@ -835,7 +887,10 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
 
   void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.fixed,
+      ),
     );
   }
 

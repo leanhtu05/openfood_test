@@ -173,8 +173,7 @@ class _NutritionCircleDetailState extends State<NutritionCircleDetail> with Sing
                         fontWeight: FontWeight.w500,
                         color: Colors.grey.shade700,
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                      softWrap: true,
                     ),
                   ),
                   if (widget.tooltipMessage != null)
@@ -280,6 +279,7 @@ class _NutritionCircleDetailState extends State<NutritionCircleDetail> with Sing
                                 color: Colors.grey.shade700,
                                 fontWeight: FontWeight.w500,
                               ),
+                              softWrap: true,
                             ),
                           ],
                         ),
@@ -304,7 +304,7 @@ class _NutritionCircleDetailState extends State<NutritionCircleDetail> with Sing
             LayoutBuilder(
               builder: (context, constraints) {
                 return Container(
-                  width: constraints.maxWidth * 0.9,
+                  width: constraints.maxWidth * 1.2,
                   padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: widget.color.withOpacity(0.1),
@@ -317,8 +317,7 @@ class _NutritionCircleDetailState extends State<NutritionCircleDetail> with Sing
                       fontWeight: FontWeight.w500,
                       color: widget.color,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                    softWrap: true,
                     textAlign: TextAlign.center,
                   ),
                 );

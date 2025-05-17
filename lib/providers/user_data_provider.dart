@@ -12,6 +12,10 @@ class UserDataProvider extends ChangeNotifier {
   static const String _goalKey = 'user_goal';
   static const String _paceKey = 'user_pace';
   static const String _nutritionGoalsKey = 'user_nutrition_goals';
+  static const String _tdeeCaloriesKey = 'user_tdee_calories';
+  static const String _tdeeProteinKey = 'user_tdee_protein';
+  static const String _tdeeCarbsKey = 'user_tdee_carbs';
+  static const String _tdeeFatKey = 'user_tdee_fat';
 
   // Thông tin cơ bản
   String _gender = 'male';
@@ -21,6 +25,12 @@ class UserDataProvider extends ChangeNotifier {
   String _activityLevel = 'Hoạt động vừa phải';
   String _goal = 'Tăng cân';
   double _pace = 0.5;
+  
+  // Các giá trị TDEE đã tính
+  double _tdeeCalories = 0.0;
+  double _tdeeProtein = 0.0;
+  double _tdeeCarbs = 0.0;
+  double _tdeeFat = 0.0;
   
   // Mục tiêu dinh dưỡng với giá trị mặc định
   Map<String, double> _nutritionGoals = {
@@ -54,6 +64,12 @@ class UserDataProvider extends ChangeNotifier {
   String get goal => _goal;
   double get pace => _pace;
   Map<String, double> get nutritionGoals => _nutritionGoals;
+  
+  // Getters cho TDEE
+  double get tdeeCalories => _tdeeCalories;
+  double get tdeeProtein => _tdeeProtein;
+  double get tdeeCarbs => _tdeeCarbs;
+  double get tdeeFat => _tdeeFat;
 
   // Setters
   void setGender(String value) {
@@ -161,6 +177,28 @@ class UserDataProvider extends ChangeNotifier {
     saveUserData();
   }
   
+  // Cập nhật giá trị TDEE
+  void updateTDEEValues({
+    required double calories,
+    required double protein,
+    required double carbs,
+    required double fat,
+  }) {
+    _tdeeCalories = calories;
+    _tdeeProtein = protein;
+    _tdeeCarbs = carbs;
+    _tdeeFat = fat;
+    
+    // Cập nhật cả trong nutrition goals
+    _nutritionGoals['calories'] = calories;
+    _nutritionGoals['protein'] = protein;
+    _nutritionGoals['carbs'] = carbs;
+    _nutritionGoals['fat'] = fat;
+    
+    notifyListeners();
+    saveUserData();
+  }
+  
   // Lưu dữ liệu người dùng vào SharedPreferences
   Future<void> saveUserData() async {
     try {
@@ -174,6 +212,12 @@ class UserDataProvider extends ChangeNotifier {
       await prefs.setString(_goalKey, _goal);
       await prefs.setDouble(_paceKey, _pace);
       await prefs.setString(_nutritionGoalsKey, jsonEncode(_nutritionGoals));
+      
+      // Lưu giá trị TDEE
+      await prefs.setDouble(_tdeeCaloriesKey, _tdeeCalories);
+      await prefs.setDouble(_tdeeProteinKey, _tdeeProtein);
+      await prefs.setDouble(_tdeeCarbsKey, _tdeeCarbs);
+      await prefs.setDouble(_tdeeFatKey, _tdeeFat);
     } catch (e) {
       debugPrint('Lỗi khi lưu dữ liệu người dùng: $e');
     }
@@ -191,6 +235,12 @@ class UserDataProvider extends ChangeNotifier {
       _activityLevel = prefs.getString(_activityLevelKey) ?? _activityLevel;
       _goal = prefs.getString(_goalKey) ?? _goal;
       _pace = prefs.getDouble(_paceKey) ?? _pace;
+      
+      // Tải giá trị TDEE
+      _tdeeCalories = prefs.getDouble(_tdeeCaloriesKey) ?? _tdeeCalories;
+      _tdeeProtein = prefs.getDouble(_tdeeProteinKey) ?? _tdeeProtein;
+      _tdeeCarbs = prefs.getDouble(_tdeeCarbsKey) ?? _tdeeCarbs;
+      _tdeeFat = prefs.getDouble(_tdeeFatKey) ?? _tdeeFat;
       
       final goalsString = prefs.getString(_nutritionGoalsKey);
       if (goalsString != null) {

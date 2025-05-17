@@ -16,6 +16,9 @@ class NutritionCircle extends StatefulWidget {
   final Key? circleKey;
   final String? tooltipMessage;
   final bool hideWhenZero;
+  final bool showTotalValue;
+  final String? unitLabel;
+  final String? tdeeGoal;
 
   const NutritionCircle({
     Key? key,
@@ -33,6 +36,9 @@ class NutritionCircle extends StatefulWidget {
     this.circleKey,
     this.tooltipMessage,
     this.hideWhenZero = false,
+    this.showTotalValue = false,
+    this.unitLabel,
+    this.tdeeGoal,
   }) : super(key: key);
 
   @override
@@ -151,11 +157,14 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
+            Flexible(
+              child: Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             if (widget.tooltipMessage != null)
@@ -330,8 +339,7 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
                             color: Colors.grey[600],
                           ),
                           textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                          softWrap: true,
                         ),
                       ),
                       if (widget.tooltipMessage != null)
@@ -346,11 +354,56 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
                   ),
                 ),
                 
+              if (widget.showTotalValue)
+                Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Container(
+                    width: widget.size * 1.8,
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${widget.value.round()} / ${widget.max.round()}${widget.unitLabel != null ? ' ${widget.unitLabel}' : ''}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: widget.color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                      softWrap: true,
+                    ),
+                  ),
+                ),
+                
+              if (widget.tdeeGoal != null)
+                Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Container(
+                    width: widget.size * 1.5,
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'TDEE: ${widget.tdeeGoal}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: widget.color,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+                
               if (widget.remainingText.isNotEmpty)
                 Padding(
                   padding: EdgeInsets.only(top: 2),
                   child: Container(
-                    width: widget.size * 0.9,
+                    width: widget.size * 1.2,
                     padding: EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
                       color: widget.color.withOpacity(0.08),
@@ -364,8 +417,7 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
                         fontWeight: FontWeight.w500,
                       ),
                       textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+                      softWrap: true,
                     ),
                   ),
                 ),

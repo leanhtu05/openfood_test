@@ -19,6 +19,7 @@ import 'screens/onboarding/activity_level_page.dart';
 import 'screens/onboarding/goal_page.dart';
 import 'screens/onboarding/weight_gain_pace_page.dart';
 import '../screens/meal_recording_screen.dart';
+import 'screens/diet_plan_screen.dart';
 
 
 Map<String, WidgetBuilder> routes = {
@@ -42,6 +43,7 @@ Map<String, WidgetBuilder> routes = {
   '/weight-gain-pace': (context) => const WeightGainPacePage(),
   '/tdee-calculator': (context) => const TDEECalculatorScreen(),
   '/meal-recording': (context) => const MealRecordingScreen(initialDate: null),
+  '/diet-plan': (context) => const DietPlanScreen(),
 };
 
 Route<dynamic>? generateRoute(RouteSettings settings) {

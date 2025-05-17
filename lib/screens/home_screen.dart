@@ -23,6 +23,7 @@ import 'tdee_info_screen.dart';
 import '../screens/food_nutrition_detail_screen.dart';
 import '../models/food_entry.dart';
 import '../screens/meal_recording_screen.dart';
+import '../screens/diet_plan_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -153,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           SnackBar(
             content: Text('Không thể tải dữ liệu bài tập: $e'),
             backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.fixed,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -276,6 +277,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
       actions: [
+        // Thêm nút Diet Plan
+        IconButton(
+          icon: Icon(Icons.restaurant_menu, color: AppColors.primary),
+          tooltip: 'Kế hoạch dinh dưỡng',
+          onPressed: () {
+            Navigator.pushNamed(context, '/diet-plan');
+          },
+        ),
         // Thêm nút Refresh
         IconButton(
           icon: Icon(Icons.refresh, color: AppColors.primary),
@@ -292,6 +301,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 duration: Duration(seconds: 1),
                 backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.fixed,
               ),
             );
             
@@ -525,7 +535,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),
-      body: _buildBody(),
+      body: Consumer<FoodProvider>(
+        builder: (context, foodProvider, child) {
+          // Sync with provider if date changed in MealRecordingScreen tab
+          if (foodProvider.selectedDate != _selectedDate) {
+            print('HomeScreen: Đồng bộ ngày từ FoodProvider: ${foodProvider.selectedDate}');
+            _selectedDate = foodProvider.selectedDate;
+            // Cập nhật _selectedDay để UI hiển thị đúng
+            final selectedDateTime = DateTime.parse(_selectedDate);
+            _selectedDay = selectedDateTime.day;
+          }
+          
+          return _buildBody();
+        }
+      ),
       floatingActionButton: DraggableFloatingActionButton(
         initialOffset: Offset(MediaQuery.of(context).size.width - 80, MediaQuery.of(context).size.height / 2 - 80),
         backgroundColor: AppColors.primary,
@@ -537,9 +560,43 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: BottomNavBar(
           selectedIndex: _selectedNavIndex,
           onItemSelected: (index) {
+            // If the user is switching from MealRecordingScreen tab to another tab,
+            // refresh the data in case date was changed in MealRecordingScreen
+            final wasMealRecordingTab = _selectedNavIndex == 2;
+            
             setState(() {
               _selectedNavIndex = index;
             });
+            
+            // If switching to MealRecordingScreen tab, ensure date is in sync
+            if (index == 2) {
+              // Ensure MealRecordingScreen starts with the current selected date
+              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+              if (foodProvider.selectedDate != _selectedDate) {
+                print('HomeScreen: Cập nhật ngày trong FoodProvider trước khi chuyển sang MealRecordingScreen');
+                foodProvider.setSelectedDate(_selectedDate);
+              }
+            }
+            
+            // If coming back from MealRecordingScreen tab, refresh data
+            if (wasMealRecordingTab && index != 2) {
+              // Đồng bộ ngày từ FoodProvider - để đảm bảo mọi thứ được cập nhật
+              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+              
+              // Nếu ngày trong provider khác với ngày trong HomeScreen, cập nhật HomeScreen
+              if (foodProvider.selectedDate != _selectedDate) {
+                setState(() {
+                  _selectedDate = foodProvider.selectedDate;
+                  // Cập nhật _selectedDay từ _selectedDate
+                  final selectedDateTime = DateTime.parse(_selectedDate);
+                  _selectedDay = selectedDateTime.day;
+                });
+                print('HomeScreen: Đã đồng bộ ngày từ MealRecordingScreen: $_selectedDate');
+              }
+              
+              // Load dữ liệu cho ngày đã đồng bộ
+              _loadDataForSelectedDate();
+            }
           },
         ),
       ),
@@ -611,20 +668,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         context,
                         '/exercise_log',
                         arguments: _selectedDate,
-                      ).then((_) => _loadDataForSelectedDate());
+                      ).then((_) => _loadExercisesForSelectedDate());
                     },
                   ),
                   _buildQuickActionButton(
-                    icon: Icons.camera_alt,
-                    label: 'Chụp ảnh',
+                    icon: Icons.restaurant_menu,
+                    label: 'Ghi lại bữa ăn',
                     color: AppColors.secondary,
                     onTap: () {
-                    Navigator.pop(context);
-                    _navigateToFoodLogging();
-                  },
-                ),
-              ],
-            ),
+                      Navigator.pop(context);
+                      _navigateToMealRecording();
+                    },
+                  ),
+                ],
+              ),
               SizedBox(height: 40),
             ],
           ),
@@ -767,11 +824,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Tab 0
         return Center(child: Text('Tab 0'));
       case 1:
-        // Tab Nutrition
-        return Center(child: Text('Tính năng dinh dưỡng sẽ sớm có!'));
+        // Tab Nutrition - DietPlan
+        return DietPlanScreen();
       case 2:
         // Icon ghi lại hiển thị MealRecordingScreen
-        return MealRecordingScreen();
+        return MealRecordingScreen(initialDate: _selectedDate);
       case 3:
 
        return SingleChildScrollView(
@@ -789,7 +846,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   // const UserProfileCircularSummary(),
                   DaySelector.fullDate(
                     selectedDate: _selectedDate,
-                    onDateChanged: (newDate) {
+                    onDateChanged: (newDate) async {
                       setState(() {
                         _selectedDate = newDate;
                         // Cập nhật _selectedDay để duy trì tương thích với mã hiện tại
@@ -797,10 +854,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         _selectedDay = selectedDateTime.day;
                         print('Đã chọn ngày mới: $_selectedDate từ DaySelector.fullDate');
                       });
+                      
+                      // Cập nhật ngày trong tất cả các provider
+                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+                      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+                      
+                      // Đồng bộ ngày trong tất cả các provider
+                      foodProvider.setSelectedDate(newDate);
+                      exerciseProvider.setSelectedDate(newDate);
+                      waterProvider.setSelectedDate(newDate);
+                      
                       // Cập nhật dữ liệu Food Provider trước
-                      _updateFoodDataForDate(_selectedDate);
+                      await _updateFoodDataForDate(_selectedDate);
                       // Sau đó mới load dữ liệu các provider khác
-                      _loadDataForSelectedDate();
+                      await _loadDataForSelectedDate();
                     },
                   ),
                   _buildMealTimeSuggestion(),
@@ -857,6 +925,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 ),
                                 duration: Duration(seconds: 1),
                                 backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.fixed,
                               ),
                             );
                             Navigator.push(
@@ -972,7 +1041,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   // const UserProfileCircularSummary(),
                   DaySelector.fullDate(
                     selectedDate: _selectedDate,
-                    onDateChanged: (newDate) {
+                    onDateChanged: (newDate) async {
                       setState(() {
                         _selectedDate = newDate;
                         // Cập nhật _selectedDay để duy trì tương thích với mã hiện tại
@@ -980,10 +1049,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         _selectedDay = selectedDateTime.day;
                         print('Đã chọn ngày mới: $_selectedDate từ DaySelector.fullDate');
                       });
+                      
+                      // Cập nhật ngày trong tất cả các provider
+                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+                      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+                      
+                      // Đồng bộ ngày trong tất cả các provider
+                      foodProvider.setSelectedDate(newDate);
+                      exerciseProvider.setSelectedDate(newDate);
+                      waterProvider.setSelectedDate(newDate);
+                      
                       // Cập nhật dữ liệu Food Provider trước
-                      _updateFoodDataForDate(_selectedDate);
+                      await _updateFoodDataForDate(_selectedDate);
                       // Sau đó mới load dữ liệu các provider khác
-                      _loadDataForSelectedDate();
+                      await _loadDataForSelectedDate();
                     },
                   ),
                   _buildMealTimeSuggestion(),
@@ -1040,6 +1120,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 ),
                                 duration: Duration(seconds: 1),
                                 backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.fixed,
                               ),
                             );
                             Navigator.push(
@@ -1164,6 +1245,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       
     } catch (e) {
       print('Lỗi khi cập nhật dữ liệu món ăn cho ngày: $e');
+    }
+  }
+
+  // Add navigation method to MealRecordingScreen that handles the date synchronization
+  void _navigateToMealRecording() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MealRecordingScreen(initialDate: _selectedDate),
+      ),
+    );
+    
+    // Handle result from MealRecordingScreen
+    if (result != null && result is Map<String, dynamic>) {
+      if (result.containsKey('selectedDate')) {
+        setState(() {
+          _selectedDate = result['selectedDate'];
+          // Update the selected day for compatibility with existing code
+          final selectedDateTime = DateTime.parse(_selectedDate);
+          _selectedDay = selectedDateTime.day;
+        });
+        
+        // Update the date in providers
+        await _updateFoodDataForDate(_selectedDate);
+        await _loadDataForSelectedDate();
+      }
     }
   }
 }

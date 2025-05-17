@@ -27,6 +27,16 @@ class TDEECalculatorScreen extends StatelessWidget {
     final dailyCalories = calculator.calculateDailyCalories();
     final macros = calculator.calculateMacroDistribution();
     
+    // Lưu các giá trị TDEE đã tính vào UserDataProvider
+    Future.microtask(() {
+      userData.updateTDEEValues(
+        calories: dailyCalories,
+        protein: macros['protein']!,
+        carbs: macros['carbs']!,
+        fat: macros['fat']!,
+      );
+    });
+    
     return WillPopScope(
       onWillPop: () async {
         // Hiển thị dialog xác nhận khi nhấn nút back

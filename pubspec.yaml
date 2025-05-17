@@ -67,6 +67,7 @@ dependencies:
   # UI/UX
   shimmer: ^3.0.0  # Hiệu ứng loading
   connectivity_plus: ^4.0.2  # Kiểm tra kết nối
+  google_fonts: ^5.1.0  # Google Fonts
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
