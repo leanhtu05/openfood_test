@@ -56,7 +56,7 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _percentage = (widget.value / widget.max).clamp(0.0, 1.0);
+    _percentage = widget.max > 0 ? (widget.value / widget.max).clamp(0.0, 1.0) : 0.0;
     
     _animationController = AnimationController(
       vsync: this,
@@ -119,7 +119,7 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
     super.didUpdateWidget(oldWidget);
     
     if (oldWidget.value != widget.value || oldWidget.max != widget.max) {
-      final newPercentage = (widget.value / widget.max).clamp(0.0, 1.0);
+      final newPercentage = widget.max > 0 ? (widget.value / widget.max).clamp(0.0, 1.0) : 0.0;
       
       _progressAnimation = Tween<double>(
         begin: _percentage,
@@ -144,7 +144,7 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
-    final percentage = (widget.value / widget.max).clamp(0.0, 1.0);
+    final percentage = widget.max > 0 ? (widget.value / widget.max).clamp(0.0, 1.0) : 0.0;
     final percentText = '${(percentage * 100).round()}%';
     
     if (widget.hideWhenZero && widget.value == 0) {
@@ -403,18 +403,22 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
                 Padding(
                   padding: EdgeInsets.only(top: 2),
                   child: Container(
-                    width: widget.size * 1.2,
-                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    width: widget.size * 1.5,
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: widget.color.withOpacity(0.08),
+                      color: widget.color.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: widget.color.withOpacity(0.2),
+                        width: 0.5,
+                      ),
                     ),
                     child: Text(
                       widget.remainingText,
                       style: TextStyle(
-                        fontSize: 9,
-                        color: widget.color.withOpacity(0.8),
-                        fontWeight: FontWeight.w500,
+                        fontSize: 10,
+                        color: widget.color,
+                        fontWeight: FontWeight.w600,
                       ),
                       textAlign: TextAlign.center,
                       softWrap: true,

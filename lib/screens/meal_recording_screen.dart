@@ -18,6 +18,8 @@ import '../screens/food_nutrition_detail_screen.dart';
 import '../widgets/food_logging/barcode_scanner_button.dart';
 import 'package:uuid/uuid.dart';
 import '../screens/food_history_screen.dart';
+import '../services/meal_plan_api_service.dart';
+import '../models/meal_plan.dart';
 
 class MealRecordingScreen extends StatefulWidget {
   final String? initialDate;
@@ -35,6 +37,10 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = true;
   String _selectedMealType = 'Bữa khác';
+  bool _isApiConnected = false;
+  bool _isLoadingMealPlan = false;
+  MealPlan? _currentMealPlan;
+  String? _apiErrorMessage;
   
   // Danh sách các nhóm dinh dưỡng với tiêu đề và danh sách các chất dinh dưỡng
   final List<Map<String, dynamic>> _nutritionGroups = [
@@ -114,6 +120,9 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       
       // Tải dữ liệu các bữa ăn
       loadMealData();
+      
+      // Kiểm tra kết nối API
+      _checkApiConnection();
       
       print('MealRecordingScreen: Hoàn tất khởi tạo với ngày $_selectedDate');
     });
@@ -217,6 +226,32 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     return Scaffold(
       key: _scaffoldKey,
       
+      // Thêm nút tạo kế hoạch thực đơn
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (_isApiConnected)
+            FloatingActionButton(
+              heroTag: 'btn_meal_plan',
+              onPressed: _isLoadingMealPlan ? null : _generateWeeklyMealPlan,
+              backgroundColor: Colors.orange,
+              child: Icon(Icons.restaurant_menu),
+              tooltip: 'Tạo kế hoạch thực đơn',
+            ),
+          SizedBox(height: 10),
+          FloatingActionButton(
+            heroTag: 'btn_add_food',
+            onPressed: () {
+              // Thêm thực phẩm mới
+              // ... existing code ...
+            },
+            backgroundColor: Colors.green,
+            child: Icon(Icons.add),
+            tooltip: 'Thêm thực phẩm',
+          ),
+        ],
+      ),
+      
       body: Consumer<FoodProvider>(
         builder: (context, foodProvider, child) {
           // Cập nhật _selectedDate để khớp với provider nếu cần
@@ -230,13 +265,178 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
           // Debug hiển thị số lượng bữa ăn
           print('DEBUG BUILD: Số lượng bữa ăn: ${recordedMeals.length}');
           
-          // Lấy mục tiêu dinh dưỡng từ UserDataProvider
-          final userProvider = Provider.of<UserDataProvider>(context, listen: false);
-          final goals = userProvider.nutritionGoals;
-          
           // Tính toán tổng hợp dinh dưỡng
-          final summaryData = _calculateNutritionSummary(recordedMeals, goals);
+          final nutritionGoals = foodProvider.getNutritionGoals(context);
+          // Chuyển đổi kiểu Map<String, dynamic> sang Map<String, double>
+          final Map<String, double> convertedGoals = {};
+          nutritionGoals.forEach((key, value) {
+            if (value is num) {
+              convertedGoals[key] = value.toDouble();
+            }
+          });
+          final summaryData = _calculateNutritionSummary(recordedMeals, convertedGoals);
           
+          // Nếu đang tải kế hoạch thực đơn
+          if (_isLoadingMealPlan) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Đang tải kế hoạch thực đơn...'),
+                ],
+              ),
+            );
+          }
+          
+          // Nếu có lỗi API
+          if (_apiErrorMessage != null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  SizedBox(height: 16),
+                  Text(_apiErrorMessage!, textAlign: TextAlign.center),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _checkApiConnection,
+                    child: Text('Thử lại'),
+                  ),
+                ],
+              ),
+            );
+          }
+          
+          // Nếu có kế hoạch thực đơn
+          if (_currentMealPlan != null) {
+            // Lấy ngày trong tuần
+            final DateTime selectedDateTime = DateTime.parse(_selectedDate);
+            final String dayOfWeek = _getDayOfWeekString(selectedDateTime.weekday);
+            
+            // Lấy kế hoạch cho ngày đã chọn
+            final dayPlan = _currentMealPlan!.weeklyPlan[dayOfWeek];
+            
+            if (dayPlan != null) {
+              // Hiển thị kế hoạch thực đơn cho ngày đã chọn
+              return Column(
+                children: [
+                  // Bộ chọn ngày (phần đã có)
+                  DaySelector.fullDate(
+                    selectedDate: _selectedDate,
+                    onDateChanged: (newDate) {
+                      setState(() {
+                        _selectedDate = newDate;
+                      });
+                      
+                      // Cập nhật ngày trong provider - điều này sẽ đồng bộ với HomeScreen
+                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                      foodProvider.setSelectedDate(newDate);
+                      
+                      // Cập nhật ngày trong các provider khác để đảm bảo đồng bộ hoàn toàn
+                      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+                      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+                      exerciseProvider.setSelectedDate(newDate);
+                      waterProvider.setSelectedDate(newDate);
+                      
+                      // Tải lại dữ liệu khi chọn ngày mới
+                      loadMealData();
+                      
+                      // Khi thay đổi ngày, nếu đang ở trong stack navigate, thì pop về với kết quả
+                      if (Navigator.canPop(context) && ModalRoute.of(context)?.settings.name != '/') {
+                        Navigator.pop(context, {'selectedDate': newDate});
+                      }
+                      
+                      // In thông báo debug
+                      print('MealRecordingScreen: Đã thay đổi ngày thành $newDate');
+                    },
+                  ),
+                  
+                  // Tiêu đề kế hoạch thực đơn
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Kế hoạch thực đơn - ${_getVietnameseDayName(dayOfWeek)}',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.history),
+                              onPressed: _getMealPlanHistory,
+                              tooltip: 'Lịch sử kế hoạch',
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.refresh),
+                              onPressed: _replaceDayMealPlan,
+                              tooltip: 'Tạo lại kế hoạch cho ngày này',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Hiển thị thông tin dinh dưỡng
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                    padding: const EdgeInsets.all(16.0),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildNutrientInfo('Calo', dayPlan.nutritionSummary['calories']?.round() ?? 0, 'kcal', Colors.red),
+                        _buildNutrientInfo('Protein', dayPlan.nutritionSummary['protein']?.round() ?? 0, 'g', Colors.blue),
+                        _buildNutrientInfo('Carbs', dayPlan.nutritionSummary['carbs']?.round() ?? 0, 'g', Colors.orange),
+                        _buildNutrientInfo('Chất béo', dayPlan.nutritionSummary['fat']?.round() ?? 0, 'g', Colors.amber),
+                      ],
+                    ),
+                  ),
+                  
+                  // Danh sách các bữa ăn
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: dayPlan.meals.keys.length,
+                      itemBuilder: (context, index) {
+                        final mealType = dayPlan.meals.keys.elementAt(index);
+                        final meals = dayPlan.meals[mealType] ?? [];
+                        
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              mealType,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...meals.map((meal) => _buildMealCard(meal)).toList(),
+                            const SizedBox(height: 16),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            }
+          }
+          
+          // Trở về giao diện mặc định nếu không có kế hoạch
           return Column(
             children: [
               // Bộ chọn ngày
@@ -344,9 +544,9 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
                                             pageSnapping: true,
                                             itemBuilder: (context, index) {
                                               final foodEntry = recordedMeals[index];
-                                              // Lấy mục tiêu dinh dưỡng
-                                              final userProvider = Provider.of<UserDataProvider>(context, listen: false);
-                                              final goals = userProvider.nutritionGoals;
+                                              // Lấy mục tiêu dinh dưỡng từ FoodProvider thay vì trực tiếp từ UserDataProvider
+                                              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                                              final goals = foodProvider.getNutritionGoals(context);
                                               
                                               return AnimatedOpacity(
                                                 duration: Duration(milliseconds: 300),
@@ -452,6 +652,66 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
                                   summaryData: summaryData,
                                 );
                               }).toList(),
+                              
+                              // Hiển thị nút tạo kế hoạch thực đơn nếu kết nối API thành công
+                              if (_isApiConnected)
+                                Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Card(
+                                    elevation: 3,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Column(
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(Icons.restaurant_menu, color: Colors.green),
+                                              SizedBox(width: 8),
+                                              Text(
+                                                'Kế hoạch thực đơn thông minh',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          SizedBox(height: 12),
+                                          Text(
+                                            'DietAI có thể tạo kế hoạch thực đơn phù hợp với mục tiêu dinh dưỡng của bạn.',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.grey.shade700,
+                                            ),
+                                          ),
+                                          SizedBox(height: 16),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              ElevatedButton.icon(
+                                                onPressed: _generateWeeklyMealPlan,
+                                                icon: Icon(Icons.add_circle_outline),
+                                                label: Text('Tạo kế hoạch mới'),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.green,
+                                                  foregroundColor: Colors.white,
+                                                ),
+                                              ),
+                                              OutlinedButton.icon(
+                                                onPressed: _getMealPlanHistory,
+                                                icon: Icon(Icons.history),
+                                                label: Text('Xem lịch sử'),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               
                               SizedBox(height: 80), // Không gian ở dưới cùng cho FAB
                             ],
@@ -560,7 +820,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
         ),
         SizedBox(height: 12),
         Container(
-          height: 150, // Tăng chiều cao từ 140 lên 150
+          height: 170, // Tăng chiều cao từ 150 lên 170 để phù hợp với vòng tròn lớn hơn
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28.0),
@@ -585,7 +845,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               // Calculate an optimal item width based on container width
-              final itemWidth = (constraints.maxWidth / 3.5).clamp(80.0, 105.0); // Tăng kích thước tối đa của item
+              final itemWidth = (constraints.maxWidth / 3.5).clamp(85.0, 110.0); // Tăng kích thước tối đa của item để phù hợp với vòng tròn lớn hơn
               
               return ListView.builder(
                 scrollDirection: Axis.horizontal,
@@ -683,7 +943,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     if (nutrient == 'calories') {
       // Sử dụng NutritionCircle giống các nutrient khác để thống nhất giao diện
       return NutritionCircle(
-        size: 62.0,
+        size: 80.0, // Tăng kích thước lên 80.0
         value: progress * 100,
         max: 100.0,
         color: color,
@@ -702,7 +962,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     
     // Sử dụng NutritionCircle cho các nutrient khác để có giao diện giống với nutrition_illustration.dart
     return NutritionCircle(
-      size: 62.0, // Tăng kích thước từ 55.0 lên 62.0
+      size: 80.0, // Tăng kích thước lên 80.0
       value: progress * 100,
       max: 100.0,
       color: color,
@@ -717,173 +977,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       icon: icon,
     );
   }
-
-  void _showFoodLoggingOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // Nút chụp ảnh
-                  InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  _captureImage();
-                },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 70,
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(Icons.camera_alt, color: Colors.green, size: 28),
-                        ),
-                        SizedBox(height: 8),
-                        Text('Chụp ảnh', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  
-                  // Nút chọn từ thư viện
-                  InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickImageFromGallery();
-                },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 70,
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(Icons.photo_library, color: Colors.blue, size: 28),
-                        ),
-                        SizedBox(height: 8),
-                        Text('Thư viện', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  
-                  // Nút nhập thủ công
-                  InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  _navigateToManualEntry();
-                },
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 70,
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(Icons.edit, color: Colors.orange, size: 28),
-                        ),
-                        SizedBox(height: 8),
-                        Text('Nhập thủ công', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  
-                  // Nút quét mã vạch
-                  BarcodeScannerButton(
-                    onBarcodeScan: (FoodItem foodItem, String barcode) {
-                      Navigator.pop(context);
-                      _processBarcodeFoodItem(foodItem, barcode);
-                    },
-                    onError: (String error) {
-                      _showErrorMessage("Không thể quét mã vạch: $error");
-                    },
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _captureImage() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1200,
-        maxHeight: 1200,
-        imageQuality: 85,
-      );
-      
-      if (image != null) {
-        _processImageForFoodRecognition(File(image.path));
-      }
-    } catch (e) {
-      print('Lỗi khi chụp ảnh: $e');
-      _showErrorMessage('Không thể sử dụng máy ảnh: $e');
-    }
-  }
-
-  Future<void> _pickImageFromGallery() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery, 
-        maxWidth: 1200,
-        maxHeight: 1200,
-        imageQuality: 85,
-      );
-      
-      if (image != null) {
-        _processImageForFoodRecognition(File(image.path));
-      }
-    } catch (e) {
-      print('Lỗi khi chọn ảnh: $e');
-      _showErrorMessage('Không thể truy cập thư viện ảnh: $e');
-    }
-  }
-
-  void _processImageForFoodRecognition(File imageFile) {
-    // Chuyển hướng đến màn hình nhận diện thực phẩm
-    Navigator.pushNamed(
-      context, 
-      '/food-recognition',
-      arguments: {'imageFile': imageFile, 'date': _selectedDate},
-    ).then((_) {
-      // Tải lại dữ liệu khi quay về
-      loadMealData();
-    });
-  }
-
-  void _navigateToManualEntry() {
-    // Chuyển hướng đến màn hình nhập thủ công
-    Navigator.pushNamed(
-      context, 
-      '/food-search',
-      arguments: {'date': _selectedDate},
-    ).then((_) {
-      // Tải lại dữ liệu khi quay về
-      loadMealData();
-    });
-  }
+  
 
   void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1132,6 +1226,543 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
     } catch (e) {
       print('Lỗi khi xử lý thông tin mã vạch: $e');
       _showErrorMessage('Không thể xử lý thông tin mã vạch: $e');
+    }
+  }
+
+  // Kiểm tra kết nối API
+  Future<void> _checkApiConnection() async {
+    try {
+      final isConnected = await MealPlanApiService.checkApiConnection();
+      setState(() {
+        _isApiConnected = isConnected;
+      });
+      
+      if (isConnected) {
+        print('MealRecordingScreen: Kết nối API thành công');
+      } else {
+        print('MealRecordingScreen: Không thể kết nối với API');
+      }
+    } catch (e) {
+      print('Lỗi khi kiểm tra kết nối API: $e');
+      setState(() {
+        _isApiConnected = false;
+      });
+    }
+  }
+  
+  // Tạo kế hoạch thực đơn hàng tuần
+  Future<void> _generateWeeklyMealPlan() async {
+    if (!_isApiConnected) {
+      _showErrorMessage('Không thể kết nối với API. Vui lòng thử lại sau.');
+      return;
+    }
+    
+    setState(() {
+      _isLoadingMealPlan = true;
+      _apiErrorMessage = null;
+    });
+    
+    try {
+      // Lấy mục tiêu dinh dưỡng từ UserDataProvider
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      final nutritionGoals = foodProvider.getNutritionGoals(context);
+      
+      // Tạo kế hoạch thực đơn
+      final result = await MealPlanApiService.generateWeeklyMealPlan(
+        caloriesTarget: nutritionGoals['calories'] ?? 2000,
+        proteinTarget: nutritionGoals['protein'] ?? 150,
+        fatTarget: nutritionGoals['fat'] ?? 70,
+        carbsTarget: nutritionGoals['carbs'] ?? 250,
+      );
+      
+      setState(() {
+        _currentMealPlan = MealPlan.fromJson(result);
+        _isLoadingMealPlan = false;
+      });
+      
+      _showSuccessMessage('Đã tạo kế hoạch thực đơn thành công');
+    } catch (e) {
+      print('Lỗi khi tạo kế hoạch thực đơn: $e');
+      setState(() {
+        _isLoadingMealPlan = false;
+        _apiErrorMessage = 'Lỗi khi tạo kế hoạch thực đơn: $e';
+      });
+      _showErrorMessage('Lỗi khi tạo kế hoạch thực đơn: $e');
+    }
+  }
+  
+  // Thay thế kế hoạch thực đơn cho ngày hiện tại
+  Future<void> _replaceDayMealPlan() async {
+    if (!_isApiConnected) {
+      _showErrorMessage('Không thể kết nối với API. Vui lòng thử lại sau.');
+      return;
+    }
+    
+    setState(() {
+      _isLoadingMealPlan = true;
+      _apiErrorMessage = null;
+    });
+    
+    try {
+      // Xác định ngày trong tuần (Monday, Tuesday, ...)
+      final DateTime selectedDateTime = DateTime.parse(_selectedDate);
+      final String dayOfWeek = _getDayOfWeekString(selectedDateTime.weekday);
+      
+      // Lấy mục tiêu dinh dưỡng từ UserDataProvider
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      final nutritionGoals = foodProvider.getNutritionGoals(context);
+      
+      // Thay thế kế hoạch thực đơn cho ngày đã chọn
+      final result = await MealPlanApiService.replaceDayMealPlan(
+        day: dayOfWeek,
+        caloriesTarget: nutritionGoals['calories'] ?? 2000,
+        proteinTarget: nutritionGoals['protein'] ?? 150,
+        fatTarget: nutritionGoals['fat'] ?? 70,
+        carbsTarget: nutritionGoals['carbs'] ?? 250,
+      );
+      
+      // Cập nhật kế hoạch thực đơn hiện tại
+      if (_currentMealPlan != null) {
+        final updatedPlan = {..._currentMealPlan!.weeklyPlan};
+        updatedPlan[dayOfWeek] = DayMealPlan.fromJson(result['day_plan']);
+        
+        setState(() {
+          _currentMealPlan = MealPlan(
+            id: _currentMealPlan!.id,
+            userId: _currentMealPlan!.userId,
+            createdAt: _currentMealPlan!.createdAt,
+            weeklyPlan: updatedPlan,
+            nutritionTargets: _currentMealPlan!.nutritionTargets,
+          );
+          _isLoadingMealPlan = false;
+        });
+      } else {
+        // Nếu chưa có kế hoạch hiện tại, tạo mới
+        await _generateWeeklyMealPlan();
+      }
+      
+      _showSuccessMessage('Đã cập nhật kế hoạch thực đơn cho ngày ${_getVietnameseDayName(dayOfWeek)}');
+    } catch (e) {
+      print('Lỗi khi thay thế kế hoạch thực đơn ngày: $e');
+      setState(() {
+        _isLoadingMealPlan = false;
+        _apiErrorMessage = 'Lỗi khi thay thế kế hoạch thực đơn ngày: $e';
+      });
+      _showErrorMessage('Lỗi khi thay thế kế hoạch thực đơn ngày: $e');
+    }
+  }
+  
+  // Lấy lịch sử kế hoạch thực đơn
+  Future<void> _getMealPlanHistory() async {
+    if (!_isApiConnected) {
+      _showErrorMessage('Không thể kết nối với API. Vui lòng thử lại sau.');
+      return;
+    }
+    
+    setState(() {
+      _isLoadingMealPlan = true;
+      _apiErrorMessage = null;
+    });
+    
+    try {
+      final history = await MealPlanApiService.getMealPlanHistory();
+      
+      setState(() {
+        _isLoadingMealPlan = false;
+      });
+      
+      // Hiển thị lịch sử trong dialog
+      _showMealPlanHistoryDialog(history);
+    } catch (e) {
+      print('Lỗi khi lấy lịch sử kế hoạch thực đơn: $e');
+      setState(() {
+        _isLoadingMealPlan = false;
+        _apiErrorMessage = 'Lỗi khi lấy lịch sử kế hoạch thực đơn: $e';
+      });
+      _showErrorMessage('Lỗi khi lấy lịch sử kế hoạch thực đơn: $e');
+    }
+  }
+  
+  // Hiển thị dialog lịch sử kế hoạch thực đơn
+  void _showMealPlanHistoryDialog(List<dynamic> history) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Lịch sử kế hoạch thực đơn'),
+        content: Container(
+          width: double.maxFinite,
+          height: 300,
+          child: history.isEmpty
+              ? Center(child: Text('Không có kế hoạch thực đơn nào.'))
+              : ListView.builder(
+                  itemCount: history.length,
+                  itemBuilder: (context, index) {
+                    final item = history[index];
+                    final DateTime createdAt = DateTime.parse(item['created_at']);
+                    final String formattedDate = '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute}';
+                    
+                    return ListTile(
+                      title: Text('Kế hoạch #${index + 1}'),
+                      subtitle: Text('Ngày tạo: $formattedDate'),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete, color: Colors.red),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _deleteMealPlan(item['filename']);
+                        },
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        // Load kế hoạch này
+                        _loadMealPlanFromHistory(item);
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Tải kế hoạch thực đơn từ lịch sử
+  Future<void> _loadMealPlanFromHistory(dynamic historyItem) async {
+    setState(() {
+      _isLoadingMealPlan = true;
+      _apiErrorMessage = null;
+    });
+    
+    try {
+      // Parse dữ liệu từ history item
+      final MealPlan mealPlan = MealPlan.fromJson(historyItem);
+      
+      setState(() {
+        _currentMealPlan = mealPlan;
+        _isLoadingMealPlan = false;
+      });
+      
+      _showSuccessMessage('Đã tải kế hoạch thực đơn thành công');
+    } catch (e) {
+      print('Lỗi khi tải kế hoạch thực đơn từ lịch sử: $e');
+      setState(() {
+        _isLoadingMealPlan = false;
+        _apiErrorMessage = 'Lỗi khi tải kế hoạch thực đơn từ lịch sử: $e';
+      });
+      _showErrorMessage('Lỗi khi tải kế hoạch thực đơn từ lịch sử: $e');
+    }
+  }
+  
+  // Xóa kế hoạch thực đơn
+  Future<void> _deleteMealPlan(String filename) async {
+    setState(() {
+      _isLoadingMealPlan = true;
+      _apiErrorMessage = null;
+    });
+    
+    try {
+      final result = await MealPlanApiService.deleteMealPlan(filename);
+      
+      setState(() {
+        _isLoadingMealPlan = false;
+      });
+      
+      _showSuccessMessage('Đã xóa kế hoạch thực đơn thành công');
+      
+      // Tải lại lịch sử
+      _getMealPlanHistory();
+    } catch (e) {
+      print('Lỗi khi xóa kế hoạch thực đơn: $e');
+      setState(() {
+        _isLoadingMealPlan = false;
+        _apiErrorMessage = 'Lỗi khi xóa kế hoạch thực đơn: $e';
+      });
+      _showErrorMessage('Lỗi khi xóa kế hoạch thực đơn: $e');
+    }
+  }
+  
+  // Hiển thị thông báo thành công
+  void _showSuccessMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+  
+  // Chuyển đổi số thứ tự ngày trong tuần sang tên tiếng Anh
+  String _getDayOfWeekString(int weekday) {
+    switch (weekday) {
+      case 1: return 'Monday';
+      case 2: return 'Tuesday';
+      case 3: return 'Wednesday';
+      case 4: return 'Thursday';
+      case 5: return 'Friday';
+      case 6: return 'Saturday';
+      case 7: return 'Sunday';
+      default: return 'Monday';
+    }
+  }
+  
+  // Chuyển đổi tên tiếng Anh sang tên tiếng Việt
+  String _getVietnameseDayName(String englishDay) {
+    switch (englishDay) {
+      case 'Monday': return 'Thứ 2';
+      case 'Tuesday': return 'Thứ 3';
+      case 'Wednesday': return 'Thứ 4';
+      case 'Thursday': return 'Thứ 5';
+      case 'Friday': return 'Thứ 6';
+      case 'Saturday': return 'Thứ 7';
+      case 'Sunday': return 'Chủ nhật';
+      default: return englishDay;
+    }
+  }
+
+  // Widget hiển thị thông tin dinh dưỡng
+  Widget _buildNutrientInfo(String label, int value, String unit, Color color) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          '$value$unit',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // Widget hiển thị thẻ món ăn
+  Widget _buildMealCard(Meal meal) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Hình ảnh món ăn (nếu có)
+                if (meal.imageUrl != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      meal.imageUrl!,
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 80,
+                        height: 80,
+                        color: Colors.grey.shade200,
+                        child: Icon(Icons.image_not_supported, color: Colors.grey),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.restaurant, color: Colors.grey),
+                  ),
+                
+                SizedBox(width: 12),
+                
+                // Thông tin món ăn
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        meal.name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        meal.description,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            SizedBox(height: 8),
+            
+            // Thông tin dinh dưỡng
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildMealNutrientInfo('Calo', meal.nutrition['calories']?.round() ?? 0, 'kcal', Colors.red),
+                _buildMealNutrientInfo('Protein', meal.nutrition['protein']?.round() ?? 0, 'g', Colors.blue),
+                _buildMealNutrientInfo('Carbs', meal.nutrition['carbs']?.round() ?? 0, 'g', Colors.orange),
+                _buildMealNutrientInfo('Chất béo', meal.nutrition['fat']?.round() ?? 0, 'g', Colors.amber),
+              ],
+            ),
+            
+            // Ingredients (tuỳ chọn)
+            if (meal.ingredients.isNotEmpty) ...[
+              SizedBox(height: 8),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  'Nguyên liệu',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: meal.ingredients.map((ingredient) => Chip(
+                        label: Text(
+                          ingredient,
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        backgroundColor: Colors.green.shade50,
+                      )).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            
+            // Nút hành động
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    // Tạo một FoodEntry từ Meal và thêm vào nhật ký
+                    _addMealToFoodEntry(meal);
+                  },
+                  icon: Icon(Icons.add_circle, size: 16),
+                  label: Text('Thêm vào nhật ký'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Widget hiển thị thông tin dinh dưỡng cho món ăn
+  Widget _buildMealNutrientInfo(String label, int value, String unit, Color color) {
+    return Column(
+      children: [
+        Text(
+          '$value$unit',
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // Thêm món ăn từ kế hoạch vào nhật ký
+  Future<void> _addMealToFoodEntry(Meal meal) async {
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Xác định loại bữa ăn dựa trên thời gian hiện tại
+      DateTime selectedDateTime = DateTime.parse(_selectedDate);
+      final now = DateTime.now();
+      selectedDateTime = DateTime(
+        selectedDateTime.year, 
+        selectedDateTime.month, 
+        selectedDateTime.day,
+        now.hour,
+        now.minute,
+      );
+      
+      // Tạo FoodItem từ Meal
+      final foodItem = FoodItem(
+        id: const Uuid().v4(),
+        name: meal.name,
+        brand: '',
+        calories: meal.nutrition['calories'] ?? 0,
+        protein: meal.nutrition['protein'] ?? 0,
+        fat: meal.nutrition['fat'] ?? 0,
+        carbs: meal.nutrition['carbs'] ?? 0,
+        servingSize: 1.0,
+        servingUnit: 'khẩu phần',
+        fiber: meal.nutrition['fiber'],
+        sugar: meal.nutrition['sugar'],
+        sodium: meal.nutrition['sodium'],
+        additionalNutrients: meal.nutrition,
+      );
+      
+      // Tạo FoodEntry từ FoodItem
+      final entry = FoodEntry(
+        description: meal.name,
+        mealType: _selectedMealType,
+        dateTime: selectedDateTime,
+        items: [foodItem],
+        nutritionInfo: {...meal.nutrition, 'servingSize': 1.0, 'totalWeight': 100.0},
+      );
+      
+      // Thêm vào foodProvider
+      foodProvider.addFoodEntry(entry);
+      
+      // Cập nhật UI
+      loadMealData();
+      
+      // Hiển thị thông báo
+      _showSuccessMessage('Đã thêm ${meal.name} vào nhật ký');
+    } catch (e) {
+      print('Lỗi khi thêm món ăn vào nhật ký: $e');
+      _showErrorMessage('Lỗi khi thêm món ăn vào nhật ký: $e');
     }
   }
 }

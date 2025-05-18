@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'onboarding_screen.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({Key? key}) : super(key: key);
@@ -13,7 +14,7 @@ class WelcomePage extends StatelessWidget {
               minHeight: constraints.maxHeight,
             ),
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: OnboardingStyles.screenPadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
@@ -31,20 +32,16 @@ class WelcomePage extends StatelessWidget {
                   ),
                   
                   // Logo
-                  const Text(
+                  Text(
                     'DietAI',
-                    style: TextStyle(
-                      fontSize: 50,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF24204F),
-                    ),
+                    style: OnboardingStyles.appTitleStyle,
                   ),
                   const SizedBox(height: 16),
                   
                   // Logo hình quả táo
                   SizedBox(
-                    width: 200,
-                    height: 200,
+                    width: OnboardingStyles.iconSize,
+                    height: OnboardingStyles.iconSize,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
@@ -52,15 +49,15 @@ class WelcomePage extends StatelessWidget {
                         Container(
                           width: 180,
                           height: 180,
-                          decoration: const BoxDecoration(
-                            color: Colors.green,
+                          decoration: BoxDecoration(
+                            color: OnboardingStyles.primaryColor,
                             shape: BoxShape.circle,
                           ),
                           child: Center(
                             child: Icon(
                               Icons.apple,
                               size: 150,
-                              color: Colors.green[700],
+                              color: OnboardingStyles.primaryColor.withGreen(100),
                             ),
                           ),
                         ),
@@ -100,10 +97,8 @@ class WelcomePage extends StatelessWidget {
                       Flexible(
                         child: Text(
                           'Năm mới, Bạn mới! Trở nên khỏe mạnh hơn...',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey,
+                          style: OnboardingStyles.bodyTextStyle.copyWith(
+                            color: OnboardingStyles.textSecondaryColor,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -117,13 +112,12 @@ class WelcomePage extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
+                      children: [
                         Text(
                           'Chào👋 Tôi là Chuyên gia Dinh dưỡng Cá nhân của bạn được hỗ trợ bởi AI. Tôi sẽ hỏi bạn một số câu hỏi để cá nhân hóa một kế hoạch ăn kiêng thông minh cho bạn',
-                          style: TextStyle(
+                          style: OnboardingStyles.bodyTextStyle.copyWith(
                             fontSize: 20,
                             fontWeight: FontWeight.w600,
-                            height: 1.5,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -152,12 +146,9 @@ class WelcomePage extends StatelessWidget {
                   const SizedBox(height: 12),
                   
                   // Đăng nhập text
-                  const Text(
+                  Text(
                     'Nếu bạn có tài khoản, vui lòng đăng nhập tại đây',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    style: OnboardingStyles.captionStyle,
                     textAlign: TextAlign.center,
                   ),
                 ],

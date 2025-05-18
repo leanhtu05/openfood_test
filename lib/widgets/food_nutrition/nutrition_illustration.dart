@@ -774,8 +774,8 @@ class NutritionIllustration extends StatelessWidget {
     // Sử dụng kích thước nhỏ hơn khi useCompactLayout là true
     final circleSize = useCompactLayout ? 58.0 : 68.0;
     
-    // Tạo remaining text dạng "65/132g"
-    final remainingText = "${actualValue.toInt()}/${goalValue.toInt()}$unit";
+    // Tạo remaining text dạng "65/132 g" với đơn vị rõ ràng và khoảng trắng
+    final remainingText = "${actualValue.toInt()}/${goalValue.toInt()}${unit.isNotEmpty ? ' $unit' : ''}";
     
     return NutritionCircle(
       size: circleSize,
@@ -788,12 +788,13 @@ class NutritionIllustration extends StatelessWidget {
       useRadialGradient: false,
       showPercentage: true,
       icon: _getIconForLabel(label),
+      showTotalValue: false,
     );
   }
   
   Widget _buildCalorieCircle(int value, int goal, {double size = 68.0, bool useRadialGradient = false, Color backgroundColor = const Color(0xFFEEEEEE), bool showDetailLabels = false}) {
     // Tính toán phần trăm
-    double percentage = value / goal * 100;
+    double percentage = goal > 0 ? (value / goal * 100) : 0.0;
     if (percentage > 100.0) percentage = 100.0;
     if (percentage < 0.0) percentage = 0.0;
     
@@ -803,9 +804,9 @@ class NutritionIllustration extends StatelessWidget {
     // Sử dụng kích thước nhỏ hơn khi useCompactLayout là true
     final circleSize = useCompactLayout ? 58.0 : 68.0;
     
-    // Tạo remaining text dạng "130/2000"
-    final remainingText = value > 999 || goal > 999 
-        ? "${(value/1000).toStringAsFixed(1)}/${(goal/1000).toStringAsFixed(1)}k"
+    // Tạo remaining text cho giá trị kcal với định dạng rõ ràng hơn
+    final remainingText = value > 5000 || goal > 5000 
+        ? "${(value/1000).toStringAsFixed(1)}/${(goal/1000).toStringAsFixed(1)}"
         : "$value/$goal";
     
     // Sử dụng NutritionCircle giống các nutrient khác để thống nhất giao diện
@@ -820,7 +821,7 @@ class NutritionIllustration extends StatelessWidget {
       useRadialGradient: useRadialGradient,
       showPercentage: true,
       icon: Icons.local_fire_department,
-      showTotalValue: true,
+      showTotalValue: false,
       unitLabel: "kcal",
     );
   }

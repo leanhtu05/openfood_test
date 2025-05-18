@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class DietRestrictionPage extends StatefulWidget {
   const DietRestrictionPage({Key? key}) : super(key: key);
@@ -32,121 +35,122 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
       'label': 'Không chứa gluten',
     },
   ];
+  
+  @override
+  void initState() {
+    super.initState();
+    // Lấy dữ liệu từ provider khi khởi tạo
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userData = Provider.of<UserDataProvider>(context, listen: false);
+      if (userData.dietRestrictions.isNotEmpty) {
+        setState(() {
+          selectedRestrictions = userData.dietRestrictions;
+        });
+      }
+    });
+  }
+  
+  // Lưu dữ liệu vào provider
+  void _saveDietRestrictions(List<String> restrictions) {
+    final userData = Provider.of<UserDataProvider>(context, listen: false);
+    userData.dietRestrictions = restrictions;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: Container(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Nút quay lại
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.black),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                      
-                      // Logo
-                      Center(
-                        child: Column(
-                          children: [
-                            const Text(
-                              'DietAI',
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF24204F),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            
-                            // Biểu tượng giới hạn ăn uống
-                            SizedBox(
-                              width: 120,
-                              height: 120,
-                              child: Image.asset(
-                                'assets/images/diet_restriction.png',
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(
-                                    Icons.no_food,
-                                    size: 80,
-                                    color: Colors.indigo,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: Container(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: Padding(
+              padding: OnboardingStyles.screenPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Logo
+                  Center(
+                    child: Column(
+                      children: [
+                        Text(
+                          'DietAI',
+                          style: OnboardingStyles.appTitleStyle,
                         ),
-                      ),
-                      const SizedBox(height: 30),
-                      
-                      // Tiêu đề
-                      const Center(
-                        child: Text(
-                          'Bạn có bất kỳ hạn chế về chế độ ăn uống, dị ứng hoặc thực phẩm nào bạn muốn tránh không?',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      
-                      // Danh sách các lựa chọn
-                      ...dietRestrictions.map((restriction) {
-                        final bool isSelected = restriction['id'] == 'none' 
-                          ? selectedRestrictions.isEmpty || selectedRestrictions.contains('none')
-                          : selectedRestrictions.contains(restriction['id']);
-                          
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16.0),
-                          child: _buildRestrictionOption(
-                            emoji: restriction['emoji'],
-                            label: restriction['label'],
-                            isSelected: isSelected,
-                            onTap: () {
-                              setState(() {
-                                if (restriction['id'] == 'none') {
-                                  selectedRestrictions = ['none'];
-                                } else {
-                                  // Xóa lựa chọn 'không có' nếu có
-                                  selectedRestrictions.remove('none');
-                                  
-                                  // Toggle lựa chọn hiện tại
-                                  if (isSelected) {
-                                    selectedRestrictions.remove(restriction['id']);
-                                  } else {
-                                    selectedRestrictions.add(restriction['id']);
-                                  }
-                                }
-                              });
+                        const SizedBox(height: 24),
+                        
+                        // Biểu tượng giới hạn ăn uống
+                        SizedBox(
+                          width: OnboardingStyles.iconSize,
+                          height: OnboardingStyles.iconSize,
+                          child: Image.asset(
+                            'assets/images/diet_restriction.png',
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.no_food,
+                                size: 80,
+                                color: OnboardingStyles.accentColor,
+                              );
                             },
-                            showInfoIcon: restriction['id'] != 'none',
                           ),
-                        );
-                      }).toList(),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 30),
+                  
+                  // Tiêu đề
+                  Center(
+                    child: Text(
+                      'Bạn có bất kỳ hạn chế về chế độ ăn uống, dị ứng hoặc thực phẩm nào bạn muốn tránh không?',
+                      style: OnboardingStyles.pageTitleStyle,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Danh sách các lựa chọn
+                  ...dietRestrictions.map((restriction) {
+                    final bool isSelected = restriction['id'] == 'none' 
+                      ? selectedRestrictions.isEmpty || selectedRestrictions.contains('none')
+                      : selectedRestrictions.contains(restriction['id']);
+                      
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: _buildRestrictionOption(
+                        emoji: restriction['emoji'],
+                        label: restriction['label'],
+                        isSelected: isSelected,
+                        onTap: () {
+                          setState(() {
+                            if (restriction['id'] == 'none') {
+                              selectedRestrictions = ['none'];
+                            } else {
+                              // Xóa lựa chọn 'không có' nếu có
+                              selectedRestrictions.remove('none');
+                              
+                              // Toggle lựa chọn hiện tại
+                              if (isSelected) {
+                                selectedRestrictions.remove(restriction['id']);
+                              } else {
+                                selectedRestrictions.add(restriction['id']);
+                              }
+                            }
+                          });
+                          _saveDietRestrictions(selectedRestrictions);
+                        },
+                        showInfoIcon: restriction['id'] != 'none',
+                      ),
+                    );
+                  }).toList(),
+                ],
               ),
-            );
-          }
-        ),
-      ),
+            ),
+          ),
+        );
+      }
     );
   }
   
@@ -163,10 +167,10 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green.shade50 : Colors.grey.shade200,
+          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? Colors.green : Colors.grey.shade300,
+            color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
             width: 2,
           ),
         ),
@@ -192,7 +196,7 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.green.shade700 : Colors.black87,
+                  color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
                 ),
               ),
             ),
@@ -216,9 +220,9 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
               Container(
                 width: 24,
                 height: 24,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.green,
+                  color: OnboardingStyles.primaryColor,
                 ),
                 child: const Icon(
                   Icons.check,

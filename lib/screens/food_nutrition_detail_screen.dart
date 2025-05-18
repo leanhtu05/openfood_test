@@ -14,11 +14,13 @@ import '../widgets/food_nutrition/nutrition_footer.dart';
 class FoodNutritionDetailScreen extends StatefulWidget {
   final FoodEntry foodEntry;
   final Function(FoodEntry) onSave;
+  final String? heroTag;
 
   const FoodNutritionDetailScreen({
     Key? key,
     required this.foodEntry,
     required this.onSave,
+    this.heroTag,
   }) : super(key: key);
 
   @override
@@ -542,7 +544,21 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           
           // Cập nhật FoodEntry với loại bữa ăn mới
           _foodEntry = FoodNutritionActions.updateMealType(_foodEntry, mealType);
+          
+          // Đồng bộ ngay lập tức với Food Provider để cập nhật trong HomeScreen
+          final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+          foodProvider.updateFoodEntry(_foodEntry);
         });
+        
+        // Hiển thị thông báo xác nhận đã đổi loại bữa ăn
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã chuyển sang $mealType'),
+            duration: Duration(seconds: 1),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
         Navigator.pop(context);
       },
       trailing: _mealName == mealType ? Icon(Icons.check, color: Colors.green) : null,
@@ -807,11 +823,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       // Lấy chuỗi ngày từ DateTime để truyền về
       String dateStr = "${updatedEntry.dateTime.year}-${updatedEntry.dateTime.month.toString().padLeft(2, '0')}-${updatedEntry.dateTime.day.toString().padLeft(2, '0')}";
       
-      // Quay về màn hình trước với kết quả thành công và truyền selectedDate
+      // Quay về màn hình trước với kết quả thành công và truyền chi tiết cập nhật
       Navigator.of(context).pop({
         'foodEntriesUpdated': true,
         'selectedDate': dateStr,
         'updatedEntry': updatedEntry,
+        'updatedMealType': updatedEntry.mealType, // Thêm thông tin loại bữa ăn đã cập nhật
       });
       
       // Hiển thị thông báo thành công

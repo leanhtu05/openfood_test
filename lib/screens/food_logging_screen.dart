@@ -1,20 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:math';
 import '../models/food_entry.dart';
 import '../models/food_item.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app_settings/app_settings.dart';
-import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import 'package:intl/intl.dart';
 import 'package:openfood/providers/food_provider.dart';
-import 'package:openfood/services/food_database_service.dart';
-import 'package:openfood/utils/food_data_adapter.dart';
 import '../widgets/food_logging/food_description_input.dart';
 import '../widgets/food_logging/food_image_preview.dart';
 import '../widgets/food_logging/action_buttons.dart';
@@ -29,9 +23,15 @@ import '../screens/food_nutrition_detail_screen.dart';
 import '../widgets/food_logging/food_logging_header.dart';
 import '../widgets/food_logging/image_section.dart';
 import '../widgets/custom_loading_indicator.dart';
-import 'package:uuid/uuid.dart';
-import '../providers/exercise_provider.dart';
-import '../providers/water_provider.dart';
+import '../widgets/food_logging/food_logging_app_bar.dart';
+import '../widgets/food_logging/ai_processing_dialog.dart';
+
+// Import services
+import '../services/image_handler_service.dart';
+import '../services/voice_recording_service.dart';
+import '../services/barcode_scanner_service.dart';
+import '../services/food_entry_service.dart';
+import '../services/food_ai_service.dart';
 
 // Enum cho trạng thái nhận diện thực phẩm
 enum RecognitionStatus {
@@ -46,26 +46,31 @@ class FoodLoggingScreen extends StatefulWidget {
   
   // Thêm tham số initialDate để nhận ngày được chọn từ widget khác
   final String? initialDate;
+  // Thêm tham số initialMealType để nhận loại bữa ăn được chọn
+  final String? initialMealType;
   
-  const FoodLoggingScreen({Key? key, this.initialDate}) : super(key: key);
+  const FoodLoggingScreen({
+    Key? key, 
+    this.initialDate,
+    this.initialMealType,
+  }) : super(key: key);
 
   @override
   _FoodLoggingScreenState createState() => _FoodLoggingScreenState();
 }
 
 class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
-  // Controllers
-  final TextEditingController _descriptionController = TextEditingController();
-  final _audioRecorder = Record();
-  final FoodDatabaseService _databaseService = FoodDatabaseService();
-  final ImagePicker _picker = ImagePicker();
+  // Services
+  late final TextEditingController _descriptionController;
+  late final ImageHandlerService _imageService;
+  late final VoiceRecordingService _voiceRecordingService;
+  late final BarcodeScannerService _barcodeScannerService;
+  late final FoodEntryService _foodEntryService;
+  late final FoodAIService _foodAIService;
   
   // State variables
   File? _foodImage;
   bool _isProcessing = false;
-  bool _isRecording = false;
-  bool _hasRecording = false;
-  String? _audioPath;
   String? _barcode;
   String _selectedMealType = 'Bữa chính';
   String? _selectedDate;
@@ -75,23 +80,35 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   // AI recognition state
   bool _isRecognizing = false;
   RecognitionStatus _recognitionStatus = RecognitionStatus.idle;
-  String successMessage = '';
+  String _successMessage = '';
   int _currentAIStep = 0;
 
   @override
   void initState() {
     super.initState();
+    _initializeServices();
     _initializeComponents();
   }
 
+  void _initializeServices() {
+    _descriptionController = TextEditingController();
+    _imageService = ImageHandlerService();
+    _voiceRecordingService = VoiceRecordingService();
+    _barcodeScannerService = BarcodeScannerService();
+    _foodEntryService = FoodEntryService();
+    _foodAIService = FoodAIService();
+  }
+
   void _initializeComponents() {
-    _databaseService.initialize();
+    // Sử dụng initialMealType nếu có
+    if (widget.initialMealType != null && widget.initialMealType!.isNotEmpty) {
+      _selectedMealType = widget.initialMealType!;
+    }
+    
     _mealTypeTitle = _getMealTypeTitle();
     _selectedDate = widget.initialDate;
     
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupProviders();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _setupProviders());
   }
   
   void _setupProviders() {
@@ -106,24 +123,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     _foodProvider.addListener(_updateSelectedDate);
   }
 
-  String _getMealTypeTitle() {
-    switch (_selectedMealType) {
-      case 'Bữa sáng': return 'Bữa sáng';
-      case 'Bữa trưa': return 'Bữa trưa';
-      case 'Bữa tối': return 'Bữa tối';
-      case 'Bữa phụ': return 'Bữa phụ';
-      default: return 'Bữa chính';
-    }
-  }
+  String _getMealTypeTitle() => _selectedMealType;
   
   void _updateSelectedDate() {
-    if(!mounted) return;
+    if (!mounted) return;
     
     if (_foodProvider.selectedDate != _selectedDate) {
-      setState(() {
-        _selectedDate = _foodProvider.selectedDate;
-      });
-      print('FoodLoggingScreen: Đã cập nhật _selectedDate từ provider: $_selectedDate');
+      setState(() => _selectedDate = _foodProvider.selectedDate);
     }
   }
 
@@ -131,50 +137,34 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   void dispose() {
     _foodProvider.removeListener(_updateSelectedDate);
     _descriptionController.dispose();
-    _audioRecorder.dispose();
+    _voiceRecordingService.dispose();
     super.dispose();
   }
 
-  // SECTION: IMAGE HANDLING
+  // IMAGE HANDLING
   Future<void> _takeFoodPhoto() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 80,
-      );
-      
-      if (image != null) {
-        setState(() {
-          _foodImage = File(image.path);
-        });
-        _analyzeImageAndShowEnhancedResults();
-      }
-    } catch (e) {
-      _showErrorMessage('Không thể chụp ảnh: $e');
-    }
+    final image = await _imageService.takeFoodPhoto();
+    _handleImageCapture(image);
   }
 
   Future<void> _pickFoodPhoto() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery, 
-        imageQuality: 80,
-      );
-      
+    final image = await _imageService.pickFoodPhoto();
+    _handleImageCapture(image);
+  }
+  
+  void _handleImageCapture(File? image) {
       if (image != null) {
-        setState(() {
-          _foodImage = File(image.path);
-        });
+      setState(() => _foodImage = image);
         _analyzeImageAndShowEnhancedResults();
-      }
-    } catch (e) {
-      _showErrorMessage('Không thể chọn ảnh: $e');
+    } else {
+      _showErrorMessage('Không thể tải ảnh');
     }
   }
 
-  // SECTION: FOOD ANALYSIS
+  // FOOD ANALYSIS
   void _showEnhancedNutritionAnalysis(FoodEntry entry) async {
-    final result = await Navigator.of(context).push(
+    final result = await Navigator.push(
+      context,
       MaterialPageRoute(
         builder: (context) => FoodNutritionDetailScreen(
           foodEntry: entry,
@@ -189,32 +179,27 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }
   
   void _handleFoodEntryUpdate(FoodEntry updatedEntry) {
-    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    foodProvider.updateFoodEntry(updatedEntry);
-    _logEntryDebugInfo('_handleFoodEntryUpdate', updatedEntry);
+    Provider.of<FoodProvider>(context, listen: false)
+        .updateFoodEntry(updatedEntry);
   }
   
   void _processNutritionAnalysisResult(dynamic result) {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     
-    if (result is Map<String, dynamic>) {
-      print('_processNutritionAnalysisResult: Kết quả dạng Map');
+    if (result is Map<String, dynamic> && 
+        result.containsKey('updatedEntry') && 
+        result['updatedEntry'] is FoodEntry) {
       
-      if (result.containsKey('updatedEntry') && result['updatedEntry'] is FoodEntry) {
         final updatedEntry = result['updatedEntry'] as FoodEntry;
         foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
         
         if (result.containsKey('selectedDate')) {
-          String selectedDate = result['selectedDate'];
+        final selectedDate = result['selectedDate'] as String;
           foodProvider.setSelectedDate(selectedDate);
-          
-          setState(() {
-            _selectedDate = selectedDate;
-          });
+        setState(() => _selectedDate = selectedDate);
         }
         
         _updateSuccessState(updatedEntry);
-      }
     } else if (result is FoodEntry) {
       foodProvider.updateHomeScreenWithNewEntry(context, result);
       _updateSuccessState(result);
@@ -225,34 +210,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     setState(() {
       _isRecognizing = false;
       _recognitionStatus = RecognitionStatus.success;
-      final itemsCount = entry.items.length;
-      if (itemsCount == 1) {
-        successMessage = 'Đã nhận diện: ${entry.items.first.name} (${entry.totalCalories} kcal)';
-      } else {
-        successMessage = 'Đã nhận diện ${itemsCount} món ăn (${entry.totalCalories} kcal)';
-      }
+      _successMessage = _foodAIService.generateSuccessMessage(entry);
     });
-  }
-  
-  void _logEntryDebugInfo(String prefix, FoodEntry entry) {
-    print('$prefix: Entry ID: ${entry.id}');
-    print('$prefix: Ngày: ${entry.dateTime}');
-    print('$prefix: Loại bữa ăn: ${entry.mealType}');
-    
-    if (entry.items.isNotEmpty) {
-      final item = entry.items.first;
-      print('$prefix: Item name: ${item.name}');
-      print('$prefix: Calories: ${item.calories}, Protein: ${item.protein}, Carbs: ${item.carbs}, Fat: ${item.fat}');
-      print('$prefix: ServingSize: ${item.servingSize}');
-    }
   }
 
   Future<FoodEntry?> _analyzeImageAndShowEnhancedResults() async {
     if (_foodImage == null) return null;
-    
-    setState(() {
-      _isProcessing = true;
-    });
+    setState(() => _isProcessing = true);
     
     FoodEntry? resultEntry;
     
@@ -260,27 +224,21 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       final targetDate = foodProvider.selectedDate;
       
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return _buildAIProcessingDialog();
-        },
-      );
-      
+      // Show dialog and start AI processing
+      _showAIProcessingDialog();
       await _simulateAIProcessing();
       
+      // Process image with AI
       final entry = await foodProvider.addFoodEntryWithAI(
         image: _foodImage!,
-        description: _descriptionController.text.isNotEmpty 
-            ? _descriptionController.text 
-            : "Bữa ăn " + _selectedMealType,
+        description: _getDescription(),
         mealType: _selectedMealType,
         date: _selectedDate ?? targetDate,
       );
       
       _closeProcessingDialog();
       
+      // Handle results
       if (entry != null) {
         _handleSuccessfulAIAnalysis(entry);
         resultEntry = entry;
@@ -291,106 +249,102 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       _closeProcessingDialog();
       _showAnalysisErrorMessage(e);
     } finally {
+      if (mounted) {
       setState(() {
         _isProcessing = false;
         _currentAIStep = 0;
       });
+      }
     }
     
     return resultEntry;
   }
   
+  String _getDescription() {
+    return _descriptionController.text.isNotEmpty 
+        ? _descriptionController.text 
+        : "Bữa ăn $_selectedMealType";
+  }
+  
+  void _showAIProcessingDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AIProcessingDialog(currentStep: _currentAIStep),
+    );
+  }
+  
   Future<void> _simulateAIProcessing() async {
-    await Future.delayed(Duration(milliseconds: 800));
+    await _foodAIService.simulateAIProcessing((step) {
     if (!mounted) return;
-    setState(() { _currentAIStep = 1; }); // Tiền xử lý ảnh
-    
-    await Future.delayed(Duration(milliseconds: 1500));
-    if (!mounted) return;
-    setState(() { _currentAIStep = 2; }); // Nhận diện món ăn
-    
-    await Future.delayed(Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() { _currentAIStep = 3; }); // Ước tính khẩu phần
-    
-    await Future.delayed(Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() { _currentAIStep = 4; }); // Tính toán dinh dưỡng
+      setState(() => _currentAIStep = step);
+    });
   }
   
   void _closeProcessingDialog() {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
     }
   }
   
   void _handleSuccessfulAIAnalysis(FoodEntry entry) {
-    final itemsCount = entry.items.length;
+    // Update UI with success message
+    _successMessage = _foodAIService.generateSuccessMessage(entry);
+    _showSnackbar(_successMessage);
     
-    setState(() {
-      if (itemsCount == 0) {
-        successMessage = 'Đã lưu bữa ăn nhưng không tìm thấy thông tin dinh dưỡng chính xác.';
-      } else if (itemsCount == 1) {
-        successMessage = 'Đã nhận diện: ${entry.items.first.name} (${entry.totalCalories} kcal)';
-      } else {
-        successMessage = 'Đã nhận diện ${itemsCount} món ăn (${entry.totalCalories} kcal)';
-      }
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(successMessage),
-        duration: Duration(seconds: 3),
-      )
-    );
-    
+    // Update description if empty
     if (_descriptionController.text.isEmpty) {
-      setState(() {
-        _descriptionController.text = entry.description;
-      });
+      setState(() => _descriptionController.text = entry.description);
     }
     
+    // Show nutrition details
     _showEnhancedNutritionAnalysis(entry);
   }
   
-  void _showNoFoodDetectedMessage() {
+  void _showSnackbar(String message, {int seconds = 3, SnackBarAction? action}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Không thể nhận diện thực phẩm. Vui lòng thử lại hoặc nhập thủ công.'),
-        duration: Duration(seconds: 4),
+        content: Text(message),
+        duration: Duration(seconds: seconds),
+        action: action,
+      )
+    );
+  }
+  
+  void _showNoFoodDetectedMessage() {
+    _showSnackbar(
+      'Không thể nhận diện thực phẩm. Vui lòng thử lại hoặc nhập thủ công.',
+      seconds: 4,
         action: SnackBarAction(
           label: 'TÌM KIẾM',
           onPressed: _openFoodDatabase,
         ),
-      )
     );
   }
   
   void _showAnalysisErrorMessage(dynamic error) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Lỗi khi phân tích ảnh: $error'),
-        duration: Duration(seconds: 5),
+    _showSnackbar(
+      'Lỗi khi phân tích ảnh: $error',
+      seconds: 5,
         action: SnackBarAction(
           label: 'NHẬP THỦ CÔNG',
           onPressed: _openFoodDatabase,
         ),
-      )
     );
+  }
     
-    print('Exception during image analysis: $error');
+  void _showErrorMessage(String message) {
+    _showSnackbar(message);
   }
   
-  // SECTION: FOOD ENTRY MANAGEMENT
+  // FOOD ENTRY MANAGEMENT
   Future<void> _saveFoodEntry() async {
     if (_descriptionController.text.trim().isEmpty) {
       _showErrorMessage('Vui lòng nhập mô tả bữa ăn');
       return;
     }
     
-    setState(() {
-      _isProcessing = true;
-    });
+    setState(() => _isProcessing = true);
     
     try {
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
@@ -406,127 +360,72 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         image: _foodImage,
       );
       
-      print('Đã lưu bữa ăn: ${entry.description} (${entry.mealType}) cho ngày $_selectedDate');
-      print('Thời gian lưu: ${entry.dateTime}');
-      
       foodProvider.updateHomeScreenWithNewEntry(context, entry);
       
-      final returnData = {
+      Navigator.pop(context, {
         'foodEntriesUpdated': true,
         'selectedDate': _selectedDate,
-      };
-      
-      Navigator.of(context).pop(returnData);
+      });
     } catch (e) {
-      print('Error saving food entry: $e');
       _showErrorMessage('Có lỗi xảy ra: $e');
     } finally {
       if (mounted) {
-        setState(() {
-          _isProcessing = false;
-        });
+        setState(() => _isProcessing = false);
       }
     }
   }
 
-  // SECTION: VOICE RECORDING
+  // VOICE RECORDING
   void _startVoiceRecording() {
     _showErrorMessage('Tính năng ghi âm sẽ được cập nhật soon!');
   }
 
   Future<void> _toggleRecording() async {
-    final isGranted = await _requestPermission();
-    if (!isGranted) return;
+    final result = await _voiceRecordingService.toggleRecording();
     
-    if (_isRecording) {
-      final path = await _audioRecorder.stop();
-      
-      setState(() {
-        _isRecording = false;
-        if (path != null) {
-          _audioPath = path;
-          _hasRecording = true;
-        }
-      });
-      
-      _showErrorMessage('Đã dừng ghi âm');
-    } else {
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final path = '${directory.path}/audio_$timestamp.m4a';
-      
-      await _audioRecorder.start(path: path);
-      
-      setState(() {
-        _isRecording = true;
-      });
-      
-      _showErrorMessage('Đang ghi âm... Nhấn lại để dừng');
+    if (!result['success']) {
+      _showErrorMessage(result['message']);
+      return;
     }
-  }
-  
-  Future<bool> _requestPermission() async {
-    final status = await Permission.microphone.request();
-    if (status != PermissionStatus.granted) {
-      _showErrorMessage('Cần quyền truy cập microphone để sử dụng tính năng này');
-      return false;
-    }
-    return true;
+    
+    _showErrorMessage(result['message']);
   }
 
-  // SECTION: BARCODE SCANNING
+  // BARCODE SCANNING
   Future<void> _scanBarcode() async {
     try {
-      final permissionStatus = await Permission.camera.request();
+      final barcode = await _barcodeScannerService.scanBarcode();
       
-      if (permissionStatus.isGranted) {
-        String barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
-          '#ff6666', 
-          'Hủy', 
-          true, 
-          ScanMode.BARCODE
-        );
-        
-        if (barcodeScanRes != '-1') {
-          setState(() {
-            _barcode = barcodeScanRes;
-          });
-          
+      if (barcode != null) {
+        setState(() => _barcode = barcode);
           _showErrorMessage('Đã quét mã: $_barcode');
-          await _searchProductByBarcode(barcodeScanRes);
-        }
+        await _searchProductByBarcode(barcode);
       } else {
         _showErrorMessage('Cần quyền truy cập camera để sử dụng tính năng này');
       }
     } catch (e) {
-      print('Lỗi khi quét mã vạch: $e');
-      _showErrorMessage('Không thể quét mã vạch: $e');
+      _showErrorMessage('Không thể quét mã vạch');
     }
   }
   
   Future<void> _searchProductByBarcode(String barcode) async {
-    setState(() {
-      _isProcessing = true;
-    });
+    setState(() => _isProcessing = true);
     
     try {
-      final items = await _databaseService.searchFoodByBarcode(barcode);
-      
-      if (items.isNotEmpty) {
-        final uuid = Uuid();
-        final String entryId = uuid.v4();
-        
-        final FoodItem foodItem = items.first;
-        final entry = FoodEntry(
-          id: entryId,
-          description: foodItem.name,
-          items: [foodItem],
-          dateTime: DateTime.now(),
-          mealType: _selectedMealType,
-          barcode: barcode,
-          nutritionInfo: _createNutritionInfoFromFoodItem(foodItem, barcode),
-        );
-        
+      await _foodEntryService.searchProductByBarcode(
+        barcode, 
+        _selectedMealType,
+        _handleBarcodeProductFound,
+        _handleBarcodeProductNotFound,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+  
+  void _handleBarcodeProductFound(FoodEntry entry) {
         final foodProvider = Provider.of<FoodProvider>(context, listen: false);
         foodProvider.addFoodEntry(entry);
         
@@ -535,53 +434,25 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
           MaterialPageRoute(
             builder: (context) => FoodNutritionDetailScreen(
               foodEntry: entry,
-              onSave: (updatedEntry) {
-                foodProvider.updateFoodEntry(updatedEntry);
-              },
+          onSave: (updatedEntry) => foodProvider.updateFoodEntry(updatedEntry),
             ),
           ),
         );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không tìm thấy thông tin từ mã vạch. Thử tìm kiếm thủ công?'),
+  }
+  
+  void _handleBarcodeProductNotFound() {
+    _showSnackbar(
+      'Không tìm thấy thông tin từ mã vạch. Thử tìm kiếm thủ công?',
             action: SnackBarAction(
               label: 'TÌM KIẾM',
               onPressed: _openFoodDatabase,
             ),
-          )
-        );
-      }
-    } catch (e) {
-      print('Lỗi khi tìm kiếm mã vạch: $e');
-      _showErrorMessage('Không thể tìm kiếm mã vạch: $e');
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-    }
-  }
-  
-  Map<String, dynamic> _createNutritionInfoFromFoodItem(FoodItem item, String barcode) {
-    return {
-      'calories': item.calories,
-      'protein': item.protein,
-      'fat': item.fat,
-      'carbs': item.carbs,
-      'fiber': item.fiber,
-      'sugar': item.sugar,
-      'sodium': item.sodium,
-      'servingSize': item.servingSize,
-      'totalWeight': item.servingSize * 100,
-      'dataSource': 'Database',
-      'barcode': barcode,
-      ...item.additionalNutrients ?? {},
-    };
+    );
   }
 
-  // SECTION: NAVIGATION AND DATABASE
-  void _openFoodDatabase() async {
-    final result = await Navigator.of(context).pushNamed(FoodSearchScreen.routeName);
+  // NAVIGATION AND DATABASE
+  Future<void> _openFoodDatabase() async {
+    final result = await Navigator.pushNamed(context, FoodSearchScreen.routeName);
     
     if (result is List<FoodItem> && result.isNotEmpty) {
       await _processMultipleFoodItems(result);
@@ -592,10 +463,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   
   Future<void> _processMultipleFoodItems(List<FoodItem> items) async {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    
-    final DateTime selectedDateTime = _selectedDate != null 
-        ? DateTime.parse(_selectedDate!)
-        : DateTime.now();
+    final DateTime selectedDateTime = _getSelectedDateTime();
     
     final entry = await foodProvider.addFoodEntryManual(
       description: items.map((item) => item.name).join(", "),
@@ -604,17 +472,12 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       items: items,
     );
     
-    print('Đã tạo entry từ tìm kiếm với ngày: ${entry.dateTime}');
-    
     await _showNutritionDetailAndUpdateUI(entry, foodProvider);
   }
   
   Future<void> _processSingleFoodItem(FoodItem item) async {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    
-    final DateTime selectedDateTime = _selectedDate != null 
-        ? DateTime.parse(_selectedDate!)
-        : DateTime.now();
+    final DateTime selectedDateTime = _getSelectedDateTime();
     
     final entry = await foodProvider.addFoodEntryManual(
       description: item.name,
@@ -623,9 +486,11 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       items: [item],
     );
     
-    print('Đã tạo entry từ item đơn lẻ với ngày: ${entry.dateTime}');
-    
     await _showNutritionDetailAndUpdateUI(entry, foodProvider);
+  }
+  
+  DateTime _getSelectedDateTime() {
+    return _selectedDate != null ? DateTime.parse(_selectedDate!) : DateTime.now();
   }
   
   Future<void> _showNutritionDetailAndUpdateUI(FoodEntry entry, FoodProvider foodProvider) async {
@@ -634,10 +499,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       MaterialPageRoute(
         builder: (context) => FoodNutritionDetailScreen(
           foodEntry: entry,
-          onSave: (updatedEntry) {
-            foodProvider.updateFoodEntry(updatedEntry);
-            print('Đã cập nhật entry từ FoodNutritionDetailScreen với ngày: ${updatedEntry.dateTime}');
-          },
+          onSave: (updatedEntry) => foodProvider.updateFoodEntry(updatedEntry),
         ),
       ),
     );
@@ -650,15 +512,16 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     }
   }
   
+  // UI ACTIONS
   void _showHistory() {
-    Navigator.of(context).push(
+    Navigator.push(
+      context, 
       MaterialPageRoute(builder: (context) => FoodHistoryScreen())
     );
   }
   
   void _showFavorites() {
-    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    List<FoodItem> favoriteItems = foodProvider.favoriteItems;
+    final favoriteItems = Provider.of<FoodProvider>(context, listen: false).favoriteItems;
     
     if (favoriteItems.isEmpty) {
       _showErrorMessage('Bạn chưa có món ăn yêu thích nào');
@@ -684,25 +547,34 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     _showErrorMessage('Chuyển sang chế độ thực phẩm trống');
   }
 
-  void _showErrorMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message))
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Listen for date changes from the provider
     final foodProvider = Provider.of<FoodProvider>(context);
     _selectedDate = foodProvider.selectedDate;
+    
     return Scaffold(
-      appBar: _buildAppBar(),
-      body: SafeArea(
+      appBar: FoodLoggingAppBar(onSwitchToEmptyFood: _switchToEmptyFood),
+      body: _buildBody(),
+    );
+  }
+  
+  Widget _buildBody() {
+    return SafeArea(
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
+            children: _buildScreenContent(),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  List<Widget> _buildScreenContent() {
+    return [
                 _buildDescriptionBox(),
                 SizedBox(height: 16),
                 _buildInstructionText(),
@@ -716,43 +588,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
                 _buildFoodDescriptionInput(),
                 SizedBox(height: 16),
                 _buildSaveButton(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-  
-  AppBar _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      automaticallyImplyLeading: true,
-      title: Row(
-        children: [
-          Icon(Icons.qr_code_2, color: Colors.green[800]),
-          SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              'Ghi lại thực phẩm', 
-              style: TextStyle(color: Colors.green[800], fontSize: 16),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Spacer(),
-          TextButton(
-            onPressed: _switchToEmptyFood,
-            child: Text('Thực phẩm trống', style: TextStyle(color: Colors.blue)),
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.blue[50],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-          ),
-        ],
-      ),
-      iconTheme: IconThemeData(color: Colors.green[800]),
-    );
+    ];
   }
   
   Widget _buildDescriptionBox() {
@@ -806,20 +642,23 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Search
         IconButton(
           icon: Icon(Icons.search, size: 36, color: Colors.blue),
           onPressed: _openFoodDatabase,
         ),
         SizedBox(width: 24),
-        // Gallery
         IconButton(
           icon: Icon(Icons.photo, size: 36, color: Colors.orange),
           onPressed: _pickFoodPhoto,
         ),
         SizedBox(width: 24),
-        // Camera (nút lớn)
-        GestureDetector(
+        _buildCameraButton(),
+      ],
+    );
+  }
+  
+  Widget _buildCameraButton() {
+    return GestureDetector(
           onTap: _takeFoodPhoto,
           child: Container(
             width: 80,
@@ -831,8 +670,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
             ),
             child: Icon(Icons.camera_alt, color: Colors.white, size: 40),
           ),
-        ),
-      ],
     );
   }
   
@@ -840,36 +677,40 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        // Barcode
         IconButton(
           icon: Icon(Icons.qr_code_scanner, color: Colors.purple),
           onPressed: _scanBarcode,
         ),
         SizedBox(width: 8),
-        // Lịch sử
-        ElevatedButton.icon(
+        _buildActionButton(
+          icon: Icons.history,
+          label: 'Lịch Sử',
           onPressed: _showHistory,
-          icon: Icon(Icons.history, color: Colors.blue),
-          label: Text('Lịch Sử', style: TextStyle(color: Colors.blue)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue[50],
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 0,
-          ),
         ),
         SizedBox(width: 8),
-        // Yêu thích
-        ElevatedButton.icon(
+        _buildActionButton(
+          icon: Icons.star,
+          label: 'Yêu thích',
           onPressed: _showFavorites,
-          icon: Icon(Icons.star, color: Colors.blue),
-          label: Text('Yêu thích', style: TextStyle(color: Colors.blue)),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildActionButton({
+    required IconData icon, 
+    required String label, 
+    required VoidCallback onPressed
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, color: Colors.blue),
+      label: Text(label, style: TextStyle(color: Colors.blue)),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.blue[50],
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             elevation: 0,
           ),
-        ),
-      ],
     );
   }
   
@@ -890,137 +731,6 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         minimumSize: Size(double.infinity, 48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
-    );
-  }
-
-  // SECTION: UI COMPONENTS
-  Widget _buildAIProcessingDialog() {
-    return AlertDialog(
-      contentPadding: EdgeInsets.all(20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      content: Container(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Phân tích bữa ăn bằng AI',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.green[800],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 24),
-            
-            _buildAIProcessStep(
-              icon: Icons.image,
-              title: 'Tiền xử lý ảnh',
-              description: 'Chuẩn hóa ảnh, tăng độ tương phản, loại bỏ nhiễu...',
-              isActive: _currentAIStep >= 1,
-              isProcessing: _currentAIStep == 1,
-            ),
-            
-            _buildStepConnector(),
-            
-            _buildAIProcessStep(
-              icon: Icons.food_bank,
-              title: 'Nhận diện món ăn',
-              description: 'AI phân tích và nhận diện các loại thực phẩm trong ảnh',
-              isActive: _currentAIStep >= 2,
-              isProcessing: _currentAIStep == 2,
-            ),
-            
-            _buildStepConnector(),
-            
-            _buildAIProcessStep(
-              icon: Icons.scale,
-              title: 'Ước tính khẩu phần',
-              description: 'Phân tích kích thước và ước tính khối lượng từng món',
-              isActive: _currentAIStep >= 3,
-              isProcessing: _currentAIStep == 3,
-            ),
-            
-            _buildStepConnector(),
-            
-            _buildAIProcessStep(
-              icon: Icons.calculate,
-              title: 'Tính toán dinh dưỡng',
-              description: 'Tính toán calo, protein, carbs, chất béo từ dữ liệu nhận diện',
-              isActive: _currentAIStep >= 4,
-              isProcessing: _currentAIStep == 4,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildAIProcessStep({
-    required IconData icon,
-    required String title,
-    required String description,
-    required bool isActive,
-    required bool isProcessing,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: isActive ? Colors.green : Colors.grey.withOpacity(0.3),
-            shape: BoxShape.circle,
-          ),
-          child: isProcessing
-              ? CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 2,
-                )
-              : Icon(
-                  isActive ? (isProcessing ? Icons.hourglass_empty : Icons.check) : icon,
-                  color: isActive ? Colors.white : Colors.grey,
-                ),
-        ),
-        SizedBox(width: 16),
-        
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                  color: isActive ? Colors.black : Colors.grey,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                description,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isActive ? Colors.grey[700] : Colors.grey,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildStepConnector() {
-    return Container(
-      margin: EdgeInsets.only(left: 20),
-      height: 20,
-      width: 2,
-      color: Colors.grey.withOpacity(0.3),
     );
   }
 } 

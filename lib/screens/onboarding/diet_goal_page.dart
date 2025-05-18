@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class DietGoalPage extends StatefulWidget {
   const DietGoalPage({Key? key}) : super(key: key);
@@ -36,7 +37,7 @@ class _DietGoalPageState extends State<DietGoalPage> {
                   minHeight: constraints.maxHeight,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(24.0),
+                  padding: OnboardingStyles.screenPadding,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -58,27 +59,23 @@ class _DietGoalPageState extends State<DietGoalPage> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
+                            Text(
                               'DietAI',
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF24204F),
-                              ),
+                              style: OnboardingStyles.appTitleStyle,
                             ),
                             const SizedBox(height: 24),
                             
                             // Biểu tượng mục tiêu
                             SizedBox(
-                              width: 150,
-                              height: 150,
+                              width: OnboardingStyles.iconSize,
+                              height: OnboardingStyles.iconSize,
                               child: Image.asset(
                                 'assets/images/target_icon.png',
                                 errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(
+                                  return Icon(
                                     Icons.track_changes,
                                     size: 100,
-                                    color: Colors.indigo,
+                                    color: OnboardingStyles.accentColor,
                                   );
                                 },
                               ),
@@ -89,14 +86,10 @@ class _DietGoalPageState extends State<DietGoalPage> {
                       const SizedBox(height: 30),
                       
                       // Tiêu đề
-                      const Center(
+                      Center(
                         child: Text(
                           'Mục tiêu chính về chế độ ăn uống của bạn là gì?',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
+                          style: OnboardingStyles.pageTitleStyle,
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -163,10 +156,10 @@ class _DietGoalPageState extends State<DietGoalPage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green.shade50 : Colors.grey.shade200,
+          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? Colors.green : Colors.grey.shade300,
+            color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
             width: 2,
           ),
         ),
@@ -192,7 +185,7 @@ class _DietGoalPageState extends State<DietGoalPage> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.green.shade700 : Colors.black87,
+                  color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
                 ),
               ),
             ),
@@ -202,9 +195,9 @@ class _DietGoalPageState extends State<DietGoalPage> {
               Container(
                 width: 24,
                 height: 24,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.green,
+                  color: OnboardingStyles.primaryColor,
                 ),
                 child: const Icon(
                   Icons.check,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class AgeSelectionPage extends StatefulWidget {
   const AgeSelectionPage({Key? key}) : super(key: key);
@@ -24,6 +25,11 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
     });
   }
   
+  // Lưu dữ liệu vào provider
+  void _saveAge(int age) {
+    Provider.of<UserDataProvider>(context, listen: false).setAge(age);
+  }
+  
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -34,49 +40,33 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
               minHeight: constraints.maxHeight,
             ),
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: OnboardingStyles.screenPadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Nút quay lại
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.black),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  
                   // Logo và Biểu tượng
                   Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           'DietAI',
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF24204F),
-                          ),
+                          style: OnboardingStyles.appTitleStyle,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 24),
                         
                         // Biểu tượng bánh sinh nhật
                         SizedBox(
-                          width: 120,
-                          height: 120,
+                          width: OnboardingStyles.iconSize,
+                          height: OnboardingStyles.iconSize,
                           child: Image.asset(
                             'assets/images/birthday_cake.png',
                             errorBuilder: (context, error, stackTrace) {
-                              return const Icon(
+                              return Icon(
                                 Icons.cake,
                                 size: 80,
-                                color: Colors.indigo,
+                                color: OnboardingStyles.accentColor,
                               );
                             },
                           ),
@@ -84,95 +74,94 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 30),
                   
                   // Tiêu đề
-                  const Center(
+                  Center(
                     child: Text(
                       'Bạn bao nhiêu tuổi?',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
+                      style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 30),
                   
                   // Chọn tuổi - Thiết kế selector
                   Center(
                     child: SizedBox(
                       height: 160,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Tuổi trước đó
-                          Opacity(
-                            opacity: 0.3,
-                            child: Text(
-                              '${selectedAge - 2}',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                color: Colors.grey,
+                      child: SingleChildScrollView(
+                        physics: NeverScrollableScrollPhysics(),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Tuổi trước đó
+                            Opacity(
+                              opacity: 0.3,
+                              child: Text(
+                                '${selectedAge - 2}',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
-                          ),
-                          
-                          // Tuổi trước đó
-                          Opacity(
-                            opacity: 0.5,
-                            child: Text(
-                              '${selectedAge - 1}',
-                              style: const TextStyle(
-                                fontSize: 26,
-                                color: Colors.grey,
+                            
+                            // Tuổi trước đó
+                            Opacity(
+                              opacity: 0.5,
+                              child: Text(
+                                '${selectedAge - 1}',
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
-                          ),
-                          
-                          // Tuổi đã chọn
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 4),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.blue, width: 2),
-                              borderRadius: BorderRadius.circular(50),
-                            ),
-                            child: Text(
-                              '$selectedAge',
-                              style: const TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                            
+                            // Tuổi đã chọn
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 4),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: OnboardingStyles.accentColor, width: 2),
+                                borderRadius: BorderRadius.circular(50),
+                              ),
+                              child: Text(
+                                '$selectedAge',
+                                style: TextStyle(
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.bold,
+                                  color: OnboardingStyles.accentColor,
+                                ),
                               ),
                             ),
-                          ),
-                          
-                          // Tuổi tiếp theo
-                          Opacity(
-                            opacity: 0.5,
-                            child: Text(
-                              '${selectedAge + 1}',
-                              style: const TextStyle(
-                                fontSize: 26,
-                                color: Colors.grey,
+                            
+                            // Tuổi tiếp theo
+                            Opacity(
+                              opacity: 0.5,
+                              child: Text(
+                                '${selectedAge + 1}',
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
-                          ),
-                          
-                          // Tuổi tiếp theo
-                          Opacity(
-                            opacity: 0.3,
-                            child: Text(
-                              '${selectedAge + 2}',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                color: Colors.grey,
+                            
+                            // Tuổi tiếp theo
+                            Opacity(
+                              opacity: 0.3,
+                              child: Text(
+                                '${selectedAge + 2}',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -191,31 +180,37 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
                               selectedAge--;
                             });
                             // Lưu giá trị vào provider
-                            Provider.of<UserDataProvider>(context, listen: false).setAge(selectedAge);
+                            _saveAge(selectedAge);
                           }
                         },
-                        icon: const Icon(Icons.remove_circle, size: 32, color: Colors.blue),
+                        icon: Icon(Icons.remove_circle, size: 32, color: OnboardingStyles.accentColor),
                       ),
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: Colors.blue,
+                            activeTrackColor: OnboardingStyles.primaryColor,
                             inactiveTrackColor: Colors.grey.shade300,
-                            thumbColor: Colors.blue,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12.0),
-                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 24.0),
+                            thumbColor: OnboardingStyles.primaryColor,
+                            overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
+                            valueIndicatorColor: OnboardingStyles.primaryColor,
+                            valueIndicatorTextStyle: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                             trackHeight: 6.0,
                           ),
                           child: Slider(
                             min: 12,
                             max: 80,
+                            divisions: 68,
                             value: selectedAge.toDouble(),
+                            label: '$selectedAge tuổi',
                             onChanged: (value) {
                               setState(() {
                                 selectedAge = value.toInt();
                               });
                               // Lưu giá trị vào provider
-                              Provider.of<UserDataProvider>(context, listen: false).setAge(selectedAge);
+                              _saveAge(selectedAge);
                             },
                           ),
                         ),
@@ -227,10 +222,10 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
                               selectedAge++;
                             });
                             // Lưu giá trị vào provider
-                            Provider.of<UserDataProvider>(context, listen: false).setAge(selectedAge);
+                            _saveAge(selectedAge);
                           }
                         },
-                        icon: const Icon(Icons.add_circle, size: 32, color: Colors.blue),
+                        icon: Icon(Icons.add_circle, size: 32, color: OnboardingStyles.accentColor),
                       ),
                     ],
                   ),

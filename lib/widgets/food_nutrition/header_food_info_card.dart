@@ -669,19 +669,21 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                       _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: Colors.green,
                     ),
                   ),
+                  SizedBox(height: 2),
                   Text(
                     "scan",
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 8,
                       color: Colors.green,
                       fontWeight: FontWeight.w500,
                     ),

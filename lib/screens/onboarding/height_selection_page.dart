@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class HeightSelectionPage extends StatefulWidget {
   const HeightSelectionPage({Key? key}) : super(key: key);
@@ -12,6 +15,32 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
   String unit = 'cm'; // 'cm' hoặc 'ft'
 
   @override
+  void initState() {
+    super.initState();
+    // Lấy dữ liệu từ provider khi khởi tạo
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userData = Provider.of<UserDataProvider>(context, listen: false);
+      setState(() {
+        heightCm = userData.heightCm;
+      });
+    });
+  }
+
+  // Chuyển đổi cm sang ft và inch
+  String get heightInFeetInches {
+    final totalInches = heightCm / 2.54;
+    final feet = (totalInches / 12).floor();
+    final inches = (totalInches % 12).round();
+    return '$feet\'$inches"';
+  }
+
+  // Lưu dữ liệu vào provider
+  void _saveHeight() {
+    final userData = Provider.of<UserDataProvider>(context, listen: false);
+    userData.heightCm = heightCm;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -21,49 +50,33 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
               minHeight: constraints.maxHeight,
             ),
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: OnboardingStyles.screenPadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Nút quay lại
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.black),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
                   // Logo và Biểu tượng
                   Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           'DietAI',
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF24204F),
-                          ),
+                          style: OnboardingStyles.appTitleStyle,
                         ),
                         const SizedBox(height: 24),
                         
                         // Biểu tượng đo chiều cao
                         SizedBox(
-                          width: 150,
-                          height: 150,
+                          width: OnboardingStyles.iconSize,
+                          height: OnboardingStyles.iconSize,
                           child: Image.asset(
                             'assets/images/height_icon.png',
                             errorBuilder: (context, error, stackTrace) {
-                              return const Icon(
+                              return Icon(
                                 Icons.height,
                                 size: 100,
-                                color: Colors.indigo,
+                                color: OnboardingStyles.accentColor,
                               );
                             },
                           ),
@@ -74,14 +87,10 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                   const SizedBox(height: 40),
                   
                   // Tiêu đề
-                  const Center(
+                  Center(
                     child: Text(
                       'Chiều cao của bạn là bao nhiêu?',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
+                      style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -107,7 +116,7 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                               decoration: BoxDecoration(
-                                color: unit == 'cm' ? Colors.green : Colors.transparent,
+                                color: unit == 'cm' ? OnboardingStyles.primaryColor : Colors.transparent,
                                 borderRadius: BorderRadius.circular(30.0),
                               ),
                               child: Text(
@@ -130,7 +139,7 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                               decoration: BoxDecoration(
-                                color: unit == 'ft' ? Colors.green : Colors.transparent,
+                                color: unit == 'ft' ? OnboardingStyles.primaryColor : Colors.transparent,
                                 borderRadius: BorderRadius.circular(30.0),
                               ),
                               child: Text(
@@ -151,11 +160,11 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                   // Hiển thị chiều cao đã chọn
                   Center(
                     child: Text(
-                      '${heightCm.toInt()} cm',
-                      style: const TextStyle(
+                      unit == 'cm' ? '${heightCm.toInt()} cm' : heightInFeetInches,
+                      style: TextStyle(
                         fontSize: 40,
                         fontWeight: FontWeight.bold,
-                        color: Colors.blue,
+                        color: OnboardingStyles.accentColor,
                       ),
                     ),
                   ),
@@ -222,7 +231,7 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                                           return Icon(
                                             Icons.person,
                                             size: 100,
-                                            color: Colors.blue,
+                                            color: OnboardingStyles.accentColor,
                                           );
                                         },
                                       ),
@@ -233,7 +242,7 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                                         bottom: 0,
                                         child: Container(
                                           height: 2,
-                                          color: Colors.blue,
+                                          color: OnboardingStyles.accentColor,
                                         ),
                                       ),
                                     ],
@@ -250,21 +259,27 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                   // Thanh trượt
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: Colors.blue,
+                      activeTrackColor: OnboardingStyles.primaryColor,
                       inactiveTrackColor: Colors.grey.shade300,
-                      thumbColor: Colors.blue,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 15.0),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 30.0),
-                      trackHeight: 8.0,
+                      thumbColor: OnboardingStyles.primaryColor,
+                      overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
+                      valueIndicatorColor: OnboardingStyles.primaryColor,
+                      valueIndicatorTextStyle: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     child: Slider(
                       min: 140,
-                      max: 200,
+                      max: 210,
+                      divisions: 140,
                       value: heightCm,
+                      label: unit == 'cm' ? '${heightCm.toInt()} cm' : heightInFeetInches,
                       onChanged: (value) {
                         setState(() {
                           heightCm = value;
                         });
+                        _saveHeight();
                       },
                     ),
                   ),

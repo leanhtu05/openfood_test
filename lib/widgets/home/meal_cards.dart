@@ -609,6 +609,123 @@ class MealFoodDetailCard extends StatelessWidget {
   }
 }
 
+/// Widget hiển thị thẻ bữa ăn khi không có món ăn nào
+class MealItemCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final String calories;
+  final VoidCallback onAddPressed;
+
+  const MealItemCard({
+    Key? key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.calories,
+    required this.onAddPressed,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onAddPressed, // Sử dụng onAddPressed để tạo bữa ăn đúng
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                // Container biểu tượng bữa ăn
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: color),
+                ),
+                SizedBox(width: 16),
+                
+                // Thông tin bữa ăn
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Khoảng $calories',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Nút thêm món ăn
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    onPressed: onAddPressed,
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      Icons.add,
+                      color: color,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // Hàm tiện ích dùng chung cho cả hai widget
 
 // Lấy biểu tượng tương ứng với loại bữa ăn

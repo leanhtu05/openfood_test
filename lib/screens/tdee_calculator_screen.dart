@@ -27,16 +27,6 @@ class TDEECalculatorScreen extends StatelessWidget {
     final dailyCalories = calculator.calculateDailyCalories();
     final macros = calculator.calculateMacroDistribution();
     
-    // Lưu các giá trị TDEE đã tính vào UserDataProvider
-    Future.microtask(() {
-      userData.updateTDEEValues(
-        calories: dailyCalories,
-        protein: macros['protein']!,
-        carbs: macros['carbs']!,
-        fat: macros['fat']!,
-      );
-    });
-    
     return WillPopScope(
       onWillPop: () async {
         // Hiển thị dialog xác nhận khi nhấn nút back
@@ -104,6 +94,14 @@ class TDEECalculatorScreen extends StatelessWidget {
               ) ?? false;
               
               if (shouldComplete) {
+                // Ensure TDEE values are saved first
+                await userData.updateTDEEValues(
+                  calories: dailyCalories,
+                  protein: macros['protein']!,
+                  carbs: macros['carbs']!,
+                  fat: macros['fat']!,
+                );
+                
                 // Đánh dấu onboarding đã hoàn thành
                 await OnboardingService.setOnboardingComplete();
                 
@@ -245,6 +243,14 @@ class TDEECalculatorScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () async {
+                    // Ensure TDEE values are saved first
+                    await userData.updateTDEEValues(
+                      calories: dailyCalories,
+                      protein: macros['protein']!,
+                      carbs: macros['carbs']!,
+                      fat: macros['fat']!,
+                    );
+                    
                     // Đảm bảo onboarding đã hoàn thành
                     await OnboardingService.setOnboardingComplete();
                     

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class DietPreferencePage extends StatefulWidget {
   const DietPreferencePage({Key? key}) : super(key: key);
@@ -34,6 +37,26 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Lấy dữ liệu từ provider khi khởi tạo
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userData = Provider.of<UserDataProvider>(context, listen: false);
+      if (userData.dietPreference.isNotEmpty) {
+        setState(() {
+          selectedDiet = userData.dietPreference;
+        });
+      }
+    });
+  }
+
+  // Lưu dữ liệu vào provider
+  void _saveDietPreference(String preference) {
+    final userData = Provider.of<UserDataProvider>(context, listen: false);
+    userData.dietPreference = preference;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
@@ -45,48 +68,32 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
                   minHeight: constraints.maxHeight,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(24.0),
+                  padding: OnboardingStyles.screenPadding,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Nút quay lại
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.black),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      
                       // Logo và Biểu tượng
                       Center(
                         child: Column(
                           children: [
-                            const Text(
+                            Text(
                               'DietAI',
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF24204F),
-                              ),
+                              style: OnboardingStyles.appTitleStyle,
                             ),
                             const SizedBox(height: 24),
                             
                             // Biểu tượng thực phẩm
-                            Container(
-                              width: 150,
-                              height: 150,
+                            SizedBox(
+                              width: OnboardingStyles.iconSize,
+                              height: OnboardingStyles.iconSize,
                               child: Image.asset(
                                 'assets/images/diet_preference.png',
                                 errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(
+                                  return Icon(
                                     Icons.restaurant_menu,
                                     size: 100,
-                                    color: Colors.indigo,
+                                    color: OnboardingStyles.accentColor,
                                   );
                                 },
                               ),
@@ -97,14 +104,10 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
                       const SizedBox(height: 30),
                       
                       // Tiêu đề
-                      const Center(
+                      Center(
                         child: Text(
                           'Bạn thích loại chế độ ăn uống nào?',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
+                          style: OnboardingStyles.pageTitleStyle,
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -124,6 +127,7 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
                                 setState(() {
                                   selectedDiet = preference['id'];
                                 });
+                                _saveDietPreference(preference['id']);
                               },
                             ),
                             SizedBox(height: 16),
@@ -153,10 +157,10 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green.shade50 : Colors.grey.shade200,
+          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? Colors.green : Colors.grey.shade300,
+            color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
             width: 2,
           ),
         ),
@@ -180,7 +184,7 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: isSelected ? Colors.green.shade700 : Colors.black87,
+                color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
               ),
             ),
             

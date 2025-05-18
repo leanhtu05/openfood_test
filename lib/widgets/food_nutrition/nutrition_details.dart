@@ -414,7 +414,7 @@ class NutritionDetails extends StatelessWidget {
       String unit, int max) {
     // Phần trăm của RDI (Reference Daily Intake)
     int intValue = int.tryParse(value) ?? 0;
-    double percentage = (intValue / max).clamp(0.0, 1.0);
+    double percentage = max > 0 ? (intValue / max).clamp(0.0, 1.0) : 0.0;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

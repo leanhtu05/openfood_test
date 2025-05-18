@@ -286,7 +286,7 @@ class _NutritionCircleDetailState extends State<NutritionCircleDetail> with Sing
                       ],
                       if (!showCircle)
                         Text(
-                          "${widget.label}: ${widget.value}${widget.total}",
+                          "${widget.label}: ${widget.value}/${widget.total}",
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey.shade600,
@@ -305,16 +305,20 @@ class _NutritionCircleDetailState extends State<NutritionCircleDetail> with Sing
               builder: (context, constraints) {
                 return Container(
                   width: constraints.maxWidth * 1.2,
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: widget.color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: widget.color.withOpacity(0.2),
+                      width: 0.5,
+                    ),
                   ),
                   child: Text(
                     widget.remaining,
                     style: TextStyle(
                       fontSize: 10,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: widget.color,
                     ),
                     softWrap: true,

@@ -216,3 +216,15 @@ class ApiKeys {
   // static const String edamamAppId = '5d75d79e'; 
   // static const String edamamAppKey = 'dba31cdcb3194f2ed9e3b611decfb938';
 }
+
+class ApiEndpoints {
+  // Thay thế bằng URL thực tế của API của bạn
+  static const String baseUrl = 'http://192.168.0.101:8000';
+  
+  // Meal plan endpoints
+  static const String generateWeeklyMeal = '/generate-weekly-meal';
+  static const String replaceDay = '/replace-day';
+  static const String replaceWeek = '/replace-week';
+  static const String mealPlanHistory = '/meal-plan-history';
+  static const String deleteMealPlan = '/meal-plan';
+}

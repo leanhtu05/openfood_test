@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class WeightSelectionPage extends StatefulWidget {
   const WeightSelectionPage({Key? key}) : super(key: key);
@@ -21,10 +22,19 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userData = Provider.of<UserDataProvider>(context, listen: false);
       setState(() {
+        // Ensure weight is within valid range (40-150)
         weightKg = userData.weightKg;
+        if (weightKg < 40) weightKg = 40;
+        if (weightKg > 150) weightKg = 150;
         heightCm = userData.heightCm;
       });
     });
+  }
+  
+  // Lưu dữ liệu vào provider
+  void _saveWeight() {
+    final userData = Provider.of<UserDataProvider>(context, listen: false);
+    userData.weightKg = weightKg;
   }
   
   double get bmi => weightKg / ((heightCm / 100) * (heightCm / 100));
@@ -39,7 +49,7 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
   
   Color get bmiColor {
     if (bmi < 18.5) return Colors.blue;
-    if (bmi < 25) return Colors.green;
+    if (bmi < 25) return OnboardingStyles.primaryColor;
     if (bmi < 30) return Colors.orange;
     return Colors.red;
   }
@@ -54,49 +64,33 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
               minHeight: constraints.maxHeight,
             ),
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: OnboardingStyles.screenPadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Nút quay lại
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.black),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
                   // Logo và Biểu tượng
                   Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           'DietAI',
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF24204F),
-                          ),
+                          style: OnboardingStyles.appTitleStyle,
                         ),
                         const SizedBox(height: 24),
                         
                         // Biểu tượng cân
-                        Container(
-                          width: 150,
-                          height: 150,
+                        SizedBox(
+                          width: OnboardingStyles.iconSize,
+                          height: OnboardingStyles.iconSize,
                           child: Image.asset(
                             'assets/images/weight_scale.png',
                             errorBuilder: (context, error, stackTrace) {
-                              return const Icon(
+                              return Icon(
                                 Icons.monitor_weight_outlined,
                                 size: 100,
-                                color: Colors.indigo,
+                                color: OnboardingStyles.accentColor,
                               );
                             },
                           ),
@@ -107,14 +101,10 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                   const SizedBox(height: 30),
                   
                   // Tiêu đề
-                  const Center(
+                  Center(
                     child: Text(
                       'Cân nặng của bạn là bao nhiêu?',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
+                      style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -140,7 +130,7 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                               decoration: BoxDecoration(
-                                color: unit == 'kg' ? Colors.green : Colors.transparent,
+                                color: unit == 'kg' ? OnboardingStyles.primaryColor : Colors.transparent,
                                 borderRadius: BorderRadius.circular(30.0),
                               ),
                               child: Text(
@@ -167,7 +157,7 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                               decoration: BoxDecoration(
-                                color: unit == 'lbs' ? Colors.green : Colors.transparent,
+                                color: unit == 'lbs' ? OnboardingStyles.primaryColor : Colors.transparent,
                                 borderRadius: BorderRadius.circular(30.0),
                               ),
                               child: Text(
@@ -192,12 +182,9 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
+                          Text(
                             'Chỉ số khối cơ thể (BMI) của bạn là',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
-                            ),
+                            style: OnboardingStyles.captionStyle,
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -205,7 +192,7 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                             style: TextStyle(
                               fontSize: 42,
                               fontWeight: FontWeight.bold,
-                              color: Colors.blue,
+                              color: bmiColor,
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -213,9 +200,8 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                             children: [
                               Text(
                                 'BMI của bạn cho thấy bạn đang',
-                                style: TextStyle(
+                                style: OnboardingStyles.bodyTextStyle.copyWith(
                                   fontSize: 16,
-                                  color: Colors.black,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -234,10 +220,10 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                           // Hiển thị cân nặng đã chọn
                           Text(
                             '${weightKg.toInt()} kg',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 40,
                               fontWeight: FontWeight.bold,
-                              color: Colors.blue,
+                              color: OnboardingStyles.accentColor,
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -245,21 +231,27 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                           // Thanh trượt
                           SliderTheme(
                             data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: Colors.blue,
+                              activeTrackColor: OnboardingStyles.primaryColor,
                               inactiveTrackColor: Colors.grey.shade300,
-                              thumbColor: Colors.blue,
-                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 15.0),
-                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 30.0),
-                              trackHeight: 8.0,
+                              thumbColor: OnboardingStyles.primaryColor,
+                              overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
+                              valueIndicatorColor: OnboardingStyles.primaryColor,
+                              valueIndicatorTextStyle: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             child: Slider(
-                              min: 30,
+                              min: 40,
                               max: 150,
+                              divisions: 110,
                               value: weightKg,
-                              onChanged: (value) {
+                              label: '${weightKg.toInt()} kg',
+                              onChanged: (double value) {
                                 setState(() {
                                   weightKg = value;
                                 });
+                                _saveWeight();
                               },
                             ),
                           ),
@@ -273,34 +265,6 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
           ),
         );
       }
-    );
-  }
-  
-  Widget _buildBmiMarker(String value, String label, Color color, double position) {
-    return Container(
-      width: 60,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
     );
   }
 } 

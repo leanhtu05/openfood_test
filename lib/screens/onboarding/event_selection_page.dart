@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/user_data_provider.dart';
+import 'onboarding_screen.dart';
 
 class EventSelectionPage extends StatefulWidget {
   const EventSelectionPage({Key? key}) : super(key: key);
@@ -9,126 +12,134 @@ class EventSelectionPage extends StatefulWidget {
 
 class _EventSelectionPageState extends State<EventSelectionPage> {
   String? selectedEvent;
+  
+  @override
+  void initState() {
+    super.initState();
+    // Lấy dữ liệu từ provider khi khởi tạo
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userData = Provider.of<UserDataProvider>(context, listen: false);
+      if (userData.event.isNotEmpty) {
+        setState(() {
+          selectedEvent = userData.event;
+        });
+      }
+    });
+  }
+  
+  // Lưu dữ liệu vào provider
+  void _saveEvent(String event) {
+    final userData = Provider.of<UserDataProvider>(context, listen: false);
+    userData.event = event;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: Container(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Nút quay lại
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.black),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                          },
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: Container(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: Padding(
+              padding: OnboardingStyles.screenPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Logo và Biểu tượng
+                  Center(
+                    child: Column(
+                      children: [
+                        Text(
+                          'DietAI',
+                          style: OnboardingStyles.appTitleStyle,
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Logo và Biểu tượng
-                      Center(
-                        child: Column(
-                          children: [
-                            const Text(
-                              'DietAI',
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF24204F),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            
-                            // Biểu tượng sự kiện
-                            Container(
-                              width: 150,
-                              height: 150,
-                              child: Image.asset(
-                                'assets/images/event_icon.png',
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(
-                                    Icons.event_note,
-                                    size: 100,
-                                    color: Colors.indigo,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      
-                      // Tiêu đề
-                      const Center(
-                        child: Text(
-                          'Bạn có sự kiện cụ thể nào đang thúc đẩy bạn lấy lại vóc dáng không?',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
+                        const SizedBox(height: 24),
+                        
+                        // Biểu tượng sự kiện
+                        SizedBox(
+                          width: OnboardingStyles.iconSize,
+                          height: OnboardingStyles.iconSize,
+                          child: Image.asset(
+                            'assets/images/event_icon.png',
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                Icons.event_note,
+                                size: 100,
+                                color: OnboardingStyles.accentColor,
+                              );
+                            },
                           ),
-                          textAlign: TextAlign.center,
                         ),
-                      ),
-                      const SizedBox(height: 40),
-                      
-                      // Lựa chọn sự kiện
-                      _buildEventOption(
-                        emoji: '👥',
-                        label: 'Họp mặt',
-                        isSelected: selectedEvent == 'Họp mặt',
-                        onTap: () => setState(() => selectedEvent = 'Họp mặt'),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      _buildEventOption(
-                        emoji: '🎂',
-                        label: 'Sinh nhật',
-                        isSelected: selectedEvent == 'Sinh nhật',
-                        onTap: () => setState(() => selectedEvent = 'Sinh nhật'),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      _buildEventOption(
-                        emoji: '📅',
-                        label: 'Sự kiện khác',
-                        isSelected: selectedEvent == 'Sự kiện khác',
-                        onTap: () => setState(() => selectedEvent = 'Sự kiện khác'),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      _buildEventOption(
-                        emoji: '❌',
-                        label: 'Không',
-                        isSelected: selectedEvent == 'Không',
-                        onTap: () => setState(() => selectedEvent = 'Không'),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 30),
+                  
+                  // Tiêu đề
+                  Center(
+                    child: Text(
+                      'Bạn có sự kiện cụ thể nào đang thúc đẩy bạn lấy lại vóc dáng không?',
+                      style: OnboardingStyles.pageTitleStyle,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  
+                  // Lựa chọn sự kiện
+                  _buildEventOption(
+                    emoji: '👥',
+                    label: 'Họp mặt',
+                    isSelected: selectedEvent == 'Họp mặt',
+                    onTap: () {
+                      setState(() => selectedEvent = 'Họp mặt');
+                      _saveEvent('Họp mặt');
+                    },
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  _buildEventOption(
+                    emoji: '🎂',
+                    label: 'Sinh nhật',
+                    isSelected: selectedEvent == 'Sinh nhật',
+                    onTap: () {
+                      setState(() => selectedEvent = 'Sinh nhật');
+                      _saveEvent('Sinh nhật');
+                    },
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  _buildEventOption(
+                    emoji: '📅',
+                    label: 'Sự kiện khác',
+                    isSelected: selectedEvent == 'Sự kiện khác',
+                    onTap: () {
+                      setState(() => selectedEvent = 'Sự kiện khác');
+                      _saveEvent('Sự kiện khác');
+                    },
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  _buildEventOption(
+                    emoji: '❌',
+                    label: 'Không',
+                    isSelected: selectedEvent == 'Không',
+                    onTap: () {
+                      setState(() => selectedEvent = 'Không');
+                      _saveEvent('Không');
+                    },
+                  ),
+                ],
               ),
-            );
-          }
-        ),
-      ),
+            ),
+          ),
+        );
+      }
     );
   }
   
@@ -144,10 +155,10 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green.shade50 : Colors.grey.shade200,
+          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? Colors.green : Colors.grey.shade300,
+            color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
             width: 2,
           ),
         ),
@@ -160,7 +171,7 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
               alignment: Alignment.center,
               child: Text(
                 emoji,
-                style: TextStyle(fontSize: 24),
+                style: const TextStyle(fontSize: 24),
               ),
             ),
             const SizedBox(width: 16),
@@ -171,7 +182,7 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: isSelected ? Colors.green.shade700 : Colors.black87,
+                color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
               ),
             ),
             
@@ -185,9 +196,9 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
                 height: 24,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.green,
+                  color: OnboardingStyles.primaryColor,
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.check,
                   color: Colors.white,
                   size: 16,

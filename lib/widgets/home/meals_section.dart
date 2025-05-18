@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../meal_components.dart';
+import '../meal_components.dart' as components;
 import '../home/meal_cards.dart';
 import '../../providers/food_provider.dart';
 import '../../models/food_entry.dart';
@@ -9,11 +9,13 @@ import '../../utils/constants.dart';
 class MealsSection extends StatelessWidget {
   final VoidCallback onMealTap;
   final Function(FoodEntry)? onFoodItemTap;
+  final Function(String)? onMealTypeTap;
 
   const MealsSection({
     Key? key,
     required this.onMealTap,
     this.onFoodItemTap,
+    this.onMealTypeTap,
   }) : super(key: key);
 
   @override
@@ -152,17 +154,18 @@ class MealsSection extends StatelessWidget {
       return MealFoodDetailCard(
         mealType: mealType,
         entries: entries,
-        onAddPressed: onMealTap,
+        onAddPressed: onMealTypeTap != null ? () => onMealTypeTap!(mealType) : onMealTap,
         onFoodItemTap: onFoodItemTap,
       );
     } else {
+      // Using MealItemCard from meal_cards.dart, not the one from meal_components.dart
       return MealItemCard(
         title: mealType,
         subtitle: 'Gợi ý: $suggestion',
         icon: icon,
         color: color,
         calories: '${calories}kcal',
-        onAddPressed: onMealTap,
+        onAddPressed: onMealTypeTap != null ? () => onMealTypeTap!(mealType) : onMealTap,
       );
     }
   }

@@ -796,7 +796,9 @@ class FoodProvider with ChangeNotifier {
     _saveData();
   }
 
-  Future<void> fetchDailyNutritionSummary(String date, {BuildContext? context}) async {
+  // Tính toán và tổng hợp giá trị dinh dưỡng cho một ngày
+  Future<void> fetchDailyNutritionSummary(String date, [BuildContext? context]) async {
+    // Kiểm tra cache trước tiên
     if (_dailySummaryCache.containsKey(date)) {
       _dailyNutritionSummary = _dailySummaryCache[date];
       notifyListeners();
@@ -819,49 +821,55 @@ class FoodProvider with ChangeNotifier {
         // Get UserDataProvider
         final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
 
-        // Create TDEE calculator
-        final calculator = TDEECalculator(
-          gender: userDataProvider.gender,
-          age: userDataProvider.age,
-          heightCm: userDataProvider.heightCm,
-          weightKg: userDataProvider.weightKg,
-          activityLevel: userDataProvider.activityLevel,
-          goal: userDataProvider.goal,
-          pace: userDataProvider.pace,
-        );
+        // Ưu tiên sử dụng mục tiêu dinh dưỡng từ UserDataProvider
+        if (userDataProvider.nutritionGoals.isNotEmpty) {
+          nutritionGoals = Map<String, dynamic>.from(userDataProvider.nutritionGoals);
+          print('Using direct nutrition goals from UserDataProvider');
+        } else {
+          // Create TDEE calculator
+          final calculator = TDEECalculator(
+            gender: userDataProvider.gender,
+            age: userDataProvider.age,
+            heightCm: userDataProvider.heightCm,
+            weightKg: userDataProvider.weightKg,
+            activityLevel: userDataProvider.activityLevel,
+            goal: userDataProvider.goal,
+            pace: userDataProvider.pace,
+          );
 
-        // Get daily calories goal
-        final dailyCalories = calculator.calculateDailyCalories();
+          // Get daily calories goal
+          final dailyCalories = calculator.calculateDailyCalories();
 
-        // Get macros distribution
-        final macros = calculator.calculateMacroDistribution();
+          // Get macros distribution
+          final macros = calculator.calculateMacroDistribution();
 
-        // Set goals from TDEE calculations
-        nutritionGoals = {
-          "calories": dailyCalories,
-          "protein": macros['protein'] ?? 0,
-          "carbs": macros['carbs'] ?? 0,
-          "fat": macros['fat'] ?? 0,
-          // Keep default values for other nutrients
-          "cholesterol": 300,
-          "omega3": 1600,
-          "fiber": 38,
-          "water": 2000,
-          "sugar": 69,
-          "saturated_fat": 20,
-          "caffeine": 400,
-          "alcohol": 30,
-          "vitamin_d": 15,
-          "vitamin_b12": 2.4,
-          "vitamin_c": 90,
-          "vitamin_b9": 400,
-          "iron": 8.0,
-          "calcium": 1000,
-          "magnesium": 400,
-          "zinc": 11
-        };
+          // Set goals from TDEE calculations
+          nutritionGoals = {
+            "calories": dailyCalories,
+            "protein": macros['protein'] ?? 0,
+            "carbs": macros['carbs'] ?? 0,
+            "fat": macros['fat'] ?? 0,
+            // Keep default values for other nutrients
+            "cholesterol": 300,
+            "omega3": 1600,
+            "fiber": 38,
+            "water": 2000,
+            "sugar": 69,
+            "saturated_fat": 20,
+            "caffeine": 400,
+            "alcohol": 30,
+            "vitamin_d": 15,
+            "vitamin_b12": 2.4,
+            "vitamin_c": 90,
+            "vitamin_b9": 400,
+            "iron": 8.0,
+            "calcium": 1000,
+            "magnesium": 400,
+            "zinc": 11
+          };
 
-        print('Synchronized nutrition goals with TDEE: Calories=${nutritionGoals["calories"]}, Protein=${nutritionGoals["protein"]}, Carbs=${nutritionGoals["carbs"]}, Fat=${nutritionGoals["fat"]}');
+          print('Synchronized nutrition goals with TDEE: Calories=${nutritionGoals["calories"]}, Protein=${nutritionGoals["protein"]}, Carbs=${nutritionGoals["carbs"]}, Fat=${nutritionGoals["fat"]}');
+        }
       } catch (e) {
         print('Error synchronizing with TDEE goals: $e');
         // Fall back to default values if there's an error
@@ -1171,16 +1179,81 @@ class FoodProvider with ChangeNotifier {
   // Tính tổng dinh dưỡng
   Map<String, double> getNutritionTotals({required String date}) {
     print('FoodProvider: getNutritionTotals được gọi cho ngày $date');
-    // Trả về dữ liệu mẫu
-    return {
-      'calories': 1500.0,
-      'protein': 75.0,
-      'carbs': 150.0,
-      'fat': 50.0,
-      'fiber': 25.0,
-      'sugar': 30.0,
-      'sodium': 1500.0,
+    
+    // Get entries for the specified date
+    final dateEntries = _foodEntries.where((entry) => 
+      entry.dateTime.toIso8601String().split('T')[0] == date).toList();
+    
+    // Initialize totals
+    Map<String, double> totals = {
+      'calories': 0.0,
+      'protein': 0.0,
+      'carbs': 0.0,
+      'fat': 0.0,
+      'fiber': 0.0,
+      'sugar': 0.0,
+      'sodium': 0.0,
     };
+    
+    // If no entries found, return zeros
+    if (dateEntries.isEmpty) {
+      print('FoodProvider: Không tìm thấy bữa ăn nào cho ngày $date');
+      return totals;
+    }
+    
+    // Sum up nutrition from all entries
+    for (var entry in dateEntries) {
+      // Use nutritionInfo if available
+      if (entry.nutritionInfo != null && entry.nutritionInfo!.isNotEmpty) {
+        // Add basic nutrients
+        if (entry.nutritionInfo!['calories'] != null) {
+          totals['calories'] = (totals['calories'] ?? 0.0) + (entry.nutritionInfo!['calories'] as num).toDouble();
+        }
+        if (entry.nutritionInfo!['protein'] != null) {
+          totals['protein'] = (totals['protein'] ?? 0.0) + (entry.nutritionInfo!['protein'] as num).toDouble();
+        }
+        if (entry.nutritionInfo!['fat'] != null) {
+          totals['fat'] = (totals['fat'] ?? 0.0) + (entry.nutritionInfo!['fat'] as num).toDouble();
+        }
+        if (entry.nutritionInfo!['carbs'] != null) {
+          totals['carbs'] = (totals['carbs'] ?? 0.0) + (entry.nutritionInfo!['carbs'] as num).toDouble();
+        }
+        
+        // Add optional nutrients if available
+        if (entry.nutritionInfo!['fiber'] != null) {
+          totals['fiber'] = (totals['fiber'] ?? 0.0) + (entry.nutritionInfo!['fiber'] as num).toDouble();
+        }
+        if (entry.nutritionInfo!['sugar'] != null) {
+          totals['sugar'] = (totals['sugar'] ?? 0.0) + (entry.nutritionInfo!['sugar'] as num).toDouble();
+        }
+        if (entry.nutritionInfo!['sodium'] != null) {
+          totals['sodium'] = (totals['sodium'] ?? 0.0) + (entry.nutritionInfo!['sodium'] as num).toDouble();
+        }
+      } 
+      // Fallback to individual items
+      else if (entry.items.isNotEmpty) {
+        for (var item in entry.items) {
+          totals['calories'] = (totals['calories'] ?? 0.0) + item.calories;
+          totals['protein'] = (totals['protein'] ?? 0.0) + item.protein;
+          totals['carbs'] = (totals['carbs'] ?? 0.0) + item.carbs;
+          totals['fat'] = (totals['fat'] ?? 0.0) + item.fat;
+          
+          if (item.fiber != null) {
+            totals['fiber'] = (totals['fiber'] ?? 0.0) + item.fiber!;
+          }
+          if (item.sugar != null) {
+            totals['sugar'] = (totals['sugar'] ?? 0.0) + item.sugar!;
+          }
+          if (item.sodium != null) {
+            totals['sodium'] = (totals['sodium'] ?? 0.0) + item.sodium!;
+          }
+        }
+      }
+    }
+    
+    print('FoodProvider: Tính toán giá trị dinh dưỡng cho ${dateEntries.length} bữa ăn - calories: ${totals['calories']?.round()}');
+    
+    return totals;
   }
   
   // Xóa food entry
@@ -1280,5 +1353,120 @@ class FoodProvider with ChangeNotifier {
   // Cập nhật food entry trong danh sách
   Future<void> updateFoodEntryInList(FoodEntry updatedEntry) async {
     await updateFoodEntry(updatedEntry);
+  }
+
+  /// Cập nhật thông tin dinh dưỡng cho một FoodEntry từ API
+  Future<FoodEntry> updateNutritionFromAPI(FoodEntry entry) async {
+    try {
+      // Hiển thị log
+      print('Đang cập nhật thông tin dinh dưỡng từ API cho: ${entry.description}');
+      
+      // Gọi API để lấy dữ liệu dinh dưỡng
+      final nutritionData = await FoodDataAdapter.fetchNutritionInfo(entry.description);
+      
+      if (nutritionData != null) {
+        // Cập nhật FoodEntry với dữ liệu dinh dưỡng mới
+        final updatedEntry = FoodDataAdapter.updateWithNutritionInfo(
+          entry: entry,
+          nutritionInfo: nutritionData,
+          fromAPI: true,
+        );
+        
+        // Cập nhật trong bộ nhớ
+        final index = _foodEntries.indexWhere((e) => e.id == updatedEntry.id);
+        if (index >= 0) {
+          _foodEntries[index] = updatedEntry;
+          notifyListeners();
+        }
+        
+        // Lưu dữ liệu vào persistent storage
+        await _saveData();
+        
+        return updatedEntry;
+      }
+      
+      // Nếu không lấy được dữ liệu mới, trả về entry gốc
+      return entry;
+    } catch (e) {
+      print('Lỗi khi cập nhật thông tin dinh dưỡng: $e');
+      return entry;
+    }
+  }
+
+  // Lấy mục tiêu dinh dưỡng từ UserDataProvider hoặc tính toán từ TDEE
+  Map<String, dynamic> getNutritionGoals(BuildContext context) {
+    try {
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      
+      // Ưu tiên sử dụng mục tiêu dinh dưỡng trực tiếp từ UserDataProvider
+      if (userDataProvider.nutritionGoals.isNotEmpty) {
+        // Chuyển đổi thành Map<String, dynamic>
+        final goals = Map<String, dynamic>.from(userDataProvider.nutritionGoals);
+        print('Using direct nutrition goals from UserDataProvider');
+        return goals;
+      }
+      
+      // Nếu không có sẵn, tính toán từ TDEE
+      final calculator = TDEECalculator(
+        gender: userDataProvider.gender,
+        age: userDataProvider.age,
+        heightCm: userDataProvider.heightCm,
+        weightKg: userDataProvider.weightKg,
+        activityLevel: userDataProvider.activityLevel,
+        goal: userDataProvider.goal,
+        pace: userDataProvider.pace,
+      );
+
+      final dailyCalories = calculator.calculateDailyCalories();
+      final macros = calculator.calculateMacroDistribution();
+
+      return {
+        "calories": dailyCalories,
+        "protein": macros['protein'] ?? 0,
+        "carbs": macros['carbs'] ?? 0,
+        "fat": macros['fat'] ?? 0,
+        "cholesterol": 300,
+        "omega3": 1600,
+        "fiber": 38,
+        "water": 2000,
+        "sugar": 69,
+        "saturated_fat": 20,
+        "caffeine": 400,
+        "alcohol": 30,
+        "vitamin_d": 15,
+        "vitamin_b12": 2.4,
+        "vitamin_c": 90,
+        "vitamin_b9": 400,
+        "iron": 8.0,
+        "calcium": 1000,
+        "magnesium": 400,
+        "zinc": 11
+      };
+    } catch (e) {
+      print('Error getting nutrition goals: $e');
+      // Giá trị mặc định
+      return {
+        "calories": 2782,
+        "protein": 208,
+        "fat": 92,
+        "carbs": 278,
+        "cholesterol": 300,
+        "omega3": 1600,
+        "fiber": 38,
+        "water": 2000,
+        "sugar": 69,
+        "saturated_fat": 20,
+        "caffeine": 400,
+        "alcohol": 30,
+        "vitamin_d": 15,
+        "vitamin_b12": 2.4,
+        "vitamin_c": 90,
+        "vitamin_b9": 400,
+        "iron": 8.0,
+        "calcium": 1000,
+        "magnesium": 400,
+        "zinc": 11
+      };
+    }
   }
 } 

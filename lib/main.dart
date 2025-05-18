@@ -19,6 +19,7 @@ import 'package:openfood/services/food_database_service.dart';
 import 'package:openfood/services/onboarding_service.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'providers/user_data_provider.dart';
+import 'providers/meal_plan_provider.dart';
 
 void main() async {
   // Đảm bảo WidgetsFlutterBinding được khởi tạo
@@ -41,6 +42,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => WaterProvider()),
         ChangeNotifierProvider(create: (_) => FoodProvider()),
         ChangeNotifierProvider(create: (context) => UserDataProvider()),
+        ChangeNotifierProvider(create: (_) => MealPlanProvider()),
       ],
       child: MyApp(),
     ),
@@ -61,49 +63,46 @@ Future<void> initializeServices() async {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => UserDataProvider(),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'DietAI',
-        theme: ThemeData(
-          primarySwatch: Colors.green,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-        ),
-        home: FutureBuilder<bool>(
-          future: OnboardingService.hasCompletedOnboarding(),
-          builder: (context, snapshot) {
-            // Hiển thị màn hình loading trong khi đang kiểm tra
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-            
-            // Kiểm tra xem người dùng đã hoàn thành onboarding chưa
-            final hasCompletedOnboarding = snapshot.data ?? false;
-            
-            // Nếu đã hoàn thành, chuyển đến màn hình chính
-            // Nếu chưa, chuyển đến màn hình onboarding
-            return hasCompletedOnboarding ? HomeScreen() : const OnboardingScreen();
-          },
-        ),
-        routes: routes,
-        onGenerateRoute: generateRoute,
-        // Hỗ trợ hiển thị tiếng Việt
-        localizationsDelegates: [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: [
-          const Locale('vi', 'VN'),
-          const Locale('en', 'US'),
-        ],
-        locale: const Locale('vi', 'VN'),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'DietAI',
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      home: FutureBuilder<bool>(
+        future: OnboardingService.hasCompletedOnboarding(),
+        builder: (context, snapshot) {
+          // Hiển thị màn hình loading trong khi đang kiểm tra
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+          
+          // Kiểm tra xem người dùng đã hoàn thành onboarding chưa
+          final hasCompletedOnboarding = snapshot.data ?? false;
+          
+          // Nếu đã hoàn thành, chuyển đến màn hình chính
+          // Nếu chưa, chuyển đến màn hình onboarding
+          return hasCompletedOnboarding ? HomeScreen() : const OnboardingScreen();
+        },
+      ),
+      routes: routes,
+      onGenerateRoute: generateRoute,
+      // Hỗ trợ hiển thị tiếng Việt
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: [
+        const Locale('vi', 'VN'),
+        const Locale('en', 'US'),
+      ],
+      locale: const Locale('vi', 'VN'),
     );
   }
 }
