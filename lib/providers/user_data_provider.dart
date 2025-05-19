@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../services/user_profile_api.dart';
 
 class UserDataProvider extends ChangeNotifier {
   // Khai báo các key cho SharedPreferences
@@ -475,6 +476,22 @@ class UserDataProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Lỗi khi tải dữ liệu người dùng: $e');
+    }
+  }
+
+  // Gửi dữ liệu người dùng đến API
+  Future<bool> sendToApi() async {
+    try {
+      final result = await UserProfileApi.sendUserProfile(this);
+      if (result) {
+        debugPrint('Đã gửi dữ liệu người dùng thành công đến API');
+      } else {
+        debugPrint('Gửi dữ liệu người dùng đến API thất bại');
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Lỗi khi gửi dữ liệu người dùng đến API: $e');
+      return false;
     }
   }
 } 

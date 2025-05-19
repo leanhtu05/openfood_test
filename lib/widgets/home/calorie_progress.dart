@@ -115,143 +115,143 @@ class CalorieProgressSection extends StatelessWidget {
         GestureDetector(
           onTap: () => _navigateToFoodLogging(context, foodProvider),
           child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with calorie icon
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.food.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.local_fire_department_rounded,
+                    color: AppColors.food,
+                    size: 18,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Calo hôm nay',
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      remainingCalories > 0 
+                          ? 'Còn lại $remainingCalories calo'
+                          : 'Đã vượt ${-remainingCalories} calo',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: remainingCalories > 0 ? AppColors.textSecondary : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+                Spacer(),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.food.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                          '$displayPercentage%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                            color: displayPercentage > 100 ? Colors.red : AppColors.food,
+                    ),
+                  ),
                 ),
               ],
             ),
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            
+            SizedBox(height: 16),
+            
+            // Calorie progress bar
+            Container(
+              height: 8,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
                 children: [
-                  // Header with calorie icon
-                  Row(
-                    children: [
-                      Container(
-                        padding: EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.food.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.local_fire_department_rounded,
-                          color: AppColors.food,
-                          size: 18,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Calo hôm nay',
-                            style: AppTextStyles.bodyLarge.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            remainingCalories > 0 
-                                ? 'Còn lại $remainingCalories calo'
-                                : 'Đã vượt ${-remainingCalories} calo',
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: remainingCalories > 0 ? AppColors.textSecondary : Colors.red,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Spacer(),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.food.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '$displayPercentage%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: displayPercentage > 100 ? Colors.red : AppColors.food,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  SizedBox(height: 16),
-                  
-                  // Calorie progress bar
-                  Container(
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      children: [
-                        // Consumed calories
-                        Flexible(
+                  // Consumed calories
+                  Flexible(
                           flex: (progressValue * 100).toInt(),
-                          child: Container(
-                            decoration: BoxDecoration(
+                    child: Container(
+                      decoration: BoxDecoration(
                               color: displayPercentage > 100 ? Colors.red : AppColors.food,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ),
-                        // Remaining calories
-                        if (progressValue < 1.0)
-                          Flexible(
-                            flex: ((1.0 - progressValue) * 100).toInt(),
-                            child: Container(color: Colors.transparent),
-                          ),
-                      ],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
                   ),
-                  
-                  SizedBox(height: 20),
-                  
-                  // Calorie details in cards
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildCalorieCard(
-                          label: 'Mục tiêu',
-                          value: '$actualCaloriesGoal',
-                          icon: Icons.flag_rounded,
-                          color: AppColors.secondary,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCalorieCard(
-                          label: 'Đã tiêu thụ',
-                          value: '$actualConsumedCalories',
-                          icon: Icons.restaurant_rounded,
-                          color: AppColors.food,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCalorieCard(
-                          label: 'Đã đốt',
-                          value: '+$actualExerciseCalories',
-                          icon: Icons.directions_run_rounded,
-                          color: AppColors.exercise,
-                        ),
-                      ),
-                    ],
-                  ),
+                  // Remaining calories
+                  if (progressValue < 1.0)
+                    Flexible(
+                      flex: ((1.0 - progressValue) * 100).toInt(),
+                      child: Container(color: Colors.transparent),
+                    ),
                 ],
               ),
             ),
+            
+            SizedBox(height: 20),
+            
+            // Calorie details in cards
+            Row(
+              children: [
+                Expanded(
+                  child: _buildCalorieCard(
+                    label: 'Mục tiêu',
+                          value: '$actualCaloriesGoal',
+                    icon: Icons.flag_rounded,
+                    color: AppColors.secondary,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: _buildCalorieCard(
+                    label: 'Đã tiêu thụ',
+                          value: '$actualConsumedCalories',
+                    icon: Icons.restaurant_rounded,
+                    color: AppColors.food,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: _buildCalorieCard(
+                    label: 'Đã đốt',
+                          value: '+$actualExerciseCalories',
+                    icon: Icons.directions_run_rounded,
+                    color: AppColors.exercise,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
           ),
         ),
         

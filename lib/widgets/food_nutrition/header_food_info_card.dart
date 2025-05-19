@@ -679,13 +679,15 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
                       color: Colors.green,
                     ),
                   ),
-                  SizedBox(height: 2),
-                  Text(
-                    "scan",
-                    style: TextStyle(
-                      fontSize: 8,
-                      color: Colors.green,
-                      fontWeight: FontWeight.w500,
+                  Container(
+                    height: 12, // Đặt chiều cao cố định
+                    child: Text(
+                      "scan",
+                      style: TextStyle(
+                        fontSize: 8,
+                        color: Colors.green,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],

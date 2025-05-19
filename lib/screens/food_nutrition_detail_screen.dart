@@ -112,12 +112,14 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   Widget build(BuildContext context) {
     // Lấy dữ liệu user từ provider
     final userDataProvider = Provider.of<UserDataProvider>(context);
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     
-    // Mục tiêu dinh dưỡng từ userDataProvider
-    final caloriesGoal = userDataProvider.nutritionGoals['calories'] ?? 2000.0;
-    final proteinGoal = userDataProvider.nutritionGoals['protein'] ?? 50.0;
-    final fatGoal = userDataProvider.nutritionGoals['fat'] ?? 70.0;
-    final carbsGoal = userDataProvider.nutritionGoals['carbs'] ?? 310.0;
+    // Mục tiêu dinh dưỡng từ FoodProvider thay vì trực tiếp từ UserDataProvider
+    final nutritionGoals = foodProvider.getNutritionGoals(context);
+    final caloriesGoal = nutritionGoals['calories'] ?? 2000.0;
+    final proteinGoal = nutritionGoals['protein'] ?? 50.0;
+    final fatGoal = nutritionGoals['fat'] ?? 70.0;
+    final carbsGoal = nutritionGoals['carbs'] ?? 310.0;
     
     // Tính toán các giá trị dinh dưỡng
     Map<String, double> nutritionValues = _calculateNutritionValues();
@@ -444,6 +446,10 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     double carbsGoal,
     UserDataProvider userDataProvider
   ) {
+    // Sử dụng các mục tiêu dinh dưỡng từ FoodProvider thay vì UserDataProvider
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    final nutritionGoals = foodProvider.getNutritionGoals(context);
+    
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -477,34 +483,34 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
         fatGoal: fatGoal,
         carbsGoal: carbsGoal,
         nutritionInfo: _foodEntry.nutritionInfo ?? {},
-        cholesterolGoal: userDataProvider.nutritionGoals['cholesterol'] ?? 300.0,
-        omega3Goal: userDataProvider.nutritionGoals['omega3'] ?? 1.6,
-        fiberGoal: userDataProvider.nutritionGoals['fiber'] ?? 25.0,
-        waterGoal: userDataProvider.nutritionGoals['water'] ?? 2000.0,
-        sugarGoal: userDataProvider.nutritionGoals['sugar'] ?? 50.0,
-        saturatedFatGoal: userDataProvider.nutritionGoals['saturatedFat'] ?? 20.0,
-        caffeineGoal: userDataProvider.nutritionGoals['caffeine'] ?? 400.0,
-        alcoholGoal: userDataProvider.nutritionGoals['alcohol'] ?? 14.0,
-        vitaminDGoal: userDataProvider.nutritionGoals['vitaminD'] ?? 15.0,
-        vitaminB12Goal: userDataProvider.nutritionGoals['vitaminB12'] ?? 2.4,
-        vitaminCGoal: userDataProvider.nutritionGoals['vitaminC'] ?? 75.0,
-        vitaminBGoal: userDataProvider.nutritionGoals['vitaminB'] ?? 15.0,
-        ironGoal: userDataProvider.nutritionGoals['iron'] ?? 18.0,
-        calciumGoal: userDataProvider.nutritionGoals['calcium'] ?? 1000.0,
-        magnesiumGoal: userDataProvider.nutritionGoals['magnesium'] ?? 400.0,
-        potassiumGoal: userDataProvider.nutritionGoals['potassium'] ?? 4700.0,
+        cholesterolGoal: nutritionGoals['cholesterol'] ?? 300.0,
+        omega3Goal: nutritionGoals['omega3'] ?? 1.6,
+        fiberGoal: nutritionGoals['fiber'] ?? 25.0,
+        waterGoal: nutritionGoals['water'] ?? 2000.0,
+        sugarGoal: nutritionGoals['sugar'] ?? 50.0,
+        saturatedFatGoal: nutritionGoals['saturatedFat'] ?? 20.0,
+        caffeineGoal: nutritionGoals['caffeine'] ?? 400.0,
+        alcoholGoal: nutritionGoals['alcohol'] ?? 14.0,
+        vitaminDGoal: nutritionGoals['vitaminD'] ?? 15.0,
+        vitaminB12Goal: nutritionGoals['vitaminB12'] ?? 2.4,
+        vitaminCGoal: nutritionGoals['vitaminC'] ?? 75.0,
+        vitaminBGoal: nutritionGoals['vitaminB'] ?? 15.0,
+        ironGoal: nutritionGoals['iron'] ?? 18.0,
+        calciumGoal: nutritionGoals['calcium'] ?? 1000.0,
+        magnesiumGoal: nutritionGoals['magnesium'] ?? 400.0,
+        potassiumGoal: nutritionGoals['potassium'] ?? 4700.0,
         // Các vi chất bổ sung từ API USDA
-        vitaminAGoal: userDataProvider.nutritionGoals['vitaminA'] ?? 900.0,
-        vitaminEGoal: userDataProvider.nutritionGoals['vitaminE'] ?? 15.0,
-        vitaminKGoal: userDataProvider.nutritionGoals['vitaminK'] ?? 120.0,
-        thiaminGoal: userDataProvider.nutritionGoals['thiamin'] ?? 1.2,
-        riboflavinGoal: userDataProvider.nutritionGoals['riboflavin'] ?? 1.3,
-        niacinGoal: userDataProvider.nutritionGoals['niacin'] ?? 16.0,
-        phosphorusGoal: userDataProvider.nutritionGoals['phosphorus'] ?? 700.0,
-        seleniumGoal: userDataProvider.nutritionGoals['selenium'] ?? 55.0,
-        copperGoal: userDataProvider.nutritionGoals['copper'] ?? 0.9,
-        manganeseGoal: userDataProvider.nutritionGoals['manganese'] ?? 2.3,
-        transFatGoal: userDataProvider.nutritionGoals['transFat'] ?? 2.0,
+        vitaminAGoal: nutritionGoals['vitaminA'] ?? 900.0,
+        vitaminEGoal: nutritionGoals['vitaminE'] ?? 15.0,
+        vitaminKGoal: nutritionGoals['vitaminK'] ?? 120.0,
+        thiaminGoal: nutritionGoals['thiamin'] ?? 1.2,
+        riboflavinGoal: nutritionGoals['riboflavin'] ?? 1.3,
+        niacinGoal: nutritionGoals['niacin'] ?? 16.0,
+        phosphorusGoal: nutritionGoals['phosphorus'] ?? 700.0,
+        seleniumGoal: nutritionGoals['selenium'] ?? 55.0,
+        copperGoal: nutritionGoals['copper'] ?? 0.9,
+        manganeseGoal: nutritionGoals['manganese'] ?? 2.3,
+        transFatGoal: nutritionGoals['transFat'] ?? 2.0,
         useRadialGradient: true,
         backgroundColor: Colors.grey.shade50,
         showDetailedLabels: true,

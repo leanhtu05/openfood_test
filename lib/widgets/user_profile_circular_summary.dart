@@ -29,12 +29,18 @@ class UserProfileCircularSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Thông tin cá nhân',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Thông tin cá nhân',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  _buildSyncButton(context, userData),
+                ],
               ),
               const SizedBox(height: 16),
               
@@ -96,6 +102,47 @@ class UserProfileCircularSummary extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSyncButton(BuildContext context, UserDataProvider userData) {
+    return IconButton(
+      icon: const Icon(Icons.sync, color: AppColors.primary),
+      tooltip: 'Đồng bộ dữ liệu',
+      onPressed: () async {
+        // Hiển thị dialog loading
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text('Đang đồng bộ dữ liệu...'),
+              ],
+            ),
+          ),
+        );
+        
+        // Gọi API gửi dữ liệu
+        final result = await userData.sendToApi();
+        
+        // Đóng dialog loading
+        Navigator.of(context).pop();
+        
+        // Hiển thị kết quả
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result 
+                  ? 'Đồng bộ dữ liệu thành công!' 
+                  : 'Đồng bộ dữ liệu thất bại. Vui lòng thử lại sau.',
+            ),
+            backgroundColor: result ? Colors.green : Colors.red,
+          ),
+        );
+      },
     );
   }
 

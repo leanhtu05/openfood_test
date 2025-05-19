@@ -227,4 +227,14 @@ class ApiEndpoints {
   static const String replaceWeek = '/replace-week';
   static const String mealPlanHistory = '/meal-plan-history';
   static const String deleteMealPlan = '/meal-plan';
+  
+  // USDA Food API endpoints
+  static const String usdaSearch = '/usda/search';
+  static const String usdaFood = '/usda/food';
+  static const String usdaNutrition = '/usda/nutrition';
+  static const String usdaTranslate = '/usda/translate';
+  static const String usdaClearCache = '/usda/clear-cache';
+  
+  // Cấu hình
+  static const bool forceMockData = false;
 }
