@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "C:/Users/LENOVO/AndroidStudioProjects/openfood_test/windows"
+    "cmake.sourceDirectory": "C:/Users/LENOVO/AndroidStudioProjects/openfood_test/windows",
+    "java.configuration.updateBuildConfiguration": "disabled"
 }

@@ -16,18 +16,18 @@ subprojects {
                 namespace project.group ?: project.name
             }
             
-            // Thiết lập Java 8 cho tất cả các module
+            // Thiết lập Java 17 cho tất cả các module
             compileOptions {
-                sourceCompatibility JavaVersion.VERSION_1_8
-                targetCompatibility JavaVersion.VERSION_1_8
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
             }
         }
         
-        // Đảm bảo Kotlin tương thích với Java 8
+        // Đảm bảo Kotlin tương thích với Java 17
         plugins.withId('org.jetbrains.kotlin.android') {
             tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
                 kotlinOptions {
-                    jvmTarget = "1.8"
+                    jvmTarget = "17"
                 }
             }
         }
@@ -39,18 +39,18 @@ subprojects {
                 namespace project.group ?: project.name
             }
             
-            // Thiết lập Java 8 cho tất cả các module
+            // Thiết lập Java 17 cho tất cả các module
             compileOptions {
-                sourceCompatibility JavaVersion.VERSION_1_8
-                targetCompatibility JavaVersion.VERSION_1_8
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
             }
         }
         
-        // Đảm bảo Kotlin tương thích với Java 8
+        // Đảm bảo Kotlin tương thích với Java 17
         plugins.withId('org.jetbrains.kotlin.android') {
             tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
                 kotlinOptions {
-                    jvmTarget = "1.8"
+                    jvmTarget = "17"
                 }
             }
         }
