@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:openfood/screens/home_screen.dart';
 import 'package:openfood/screens/meal_screen.dart';
 import 'package:openfood/screens/exercise_log_screen.dart';
@@ -24,6 +25,14 @@ import 'providers/meal_plan_provider.dart';
 void main() async {
   // Đảm bảo WidgetsFlutterBinding được khởi tạo
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Khởi tạo Firebase
+  try {
+    await Firebase.initializeApp();
+    print('Firebase đã được khởi tạo thành công');
+  } catch (e) {
+    print('Lỗi khi khởi tạo Firebase: $e');
+  }
 
   // Khởi tạo ngôn ngữ tiếng Việt cho định dạng ngày tháng
   await initializeDateFormatting('vi_VN', null);
