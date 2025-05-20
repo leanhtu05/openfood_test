@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_data_provider.dart';
+import '../screens/sync_settings_screen.dart';
 
 class UserProfileSummaryCard extends StatelessWidget {
   const UserProfileSummaryCard({Key? key}) : super(key: key);
@@ -21,7 +22,13 @@ class UserProfileSummaryCard extends StatelessWidget {
               children: [
                 const Text('Thông tin cá nhân', 
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                _buildSyncButton(context, userData),
+                Row(
+                  children: [
+                    _buildSyncButton(context, userData),
+                    const SizedBox(width: 8),
+                    _buildSettingsButton(context),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -76,6 +83,22 @@ class UserProfileSummaryCard extends StatelessWidget {
                   : 'Đồng bộ dữ liệu thất bại. Vui lòng thử lại sau.',
             ),
             backgroundColor: result ? Colors.green : Colors.red,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSettingsButton(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.settings, size: 18),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      tooltip: 'Cài đặt đồng bộ',
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const SyncSettingsScreen(),
           ),
         );
       },

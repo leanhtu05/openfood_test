@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async'; // Thêm import cho Timer
 import '../services/user_profile_api.dart';
+import '../services/data_integration_service.dart';
 
 class UserDataProvider extends ChangeNotifier {
   // Khai báo các key cho SharedPreferences
@@ -24,6 +26,8 @@ class UserDataProvider extends ChangeNotifier {
   static const String _dietRestrictionKey = 'user_diet_restriction';
   static const String _dietPreferenceKey = 'user_diet_preference';
   static const String _healthConditionsKey = 'user_health_conditions';
+  static const String _syncEnabledKey = 'user_sync_enabled'; // Thêm key cho trạng thái đồng bộ
+  static const String _lastSyncTimeKey = 'user_last_sync_time';
 
   // Thông tin cơ bản
   String _gender = 'Nam';
@@ -68,9 +72,40 @@ class UserDataProvider extends ChangeNotifier {
     'alcohol': 14.0,
   };
 
+  // Timer cho đồng bộ định kỳ
+  Timer? _syncTimer;
+
+  // Trạng thái đồng bộ
+  bool _syncEnabled = true;
+  DateTime? _lastSyncTime;
+
+  // Thêm DataIntegrationService
+  final DataIntegrationService? _dataIntegrationService;
+
   // Constructor - Tải dữ liệu từ SharedPreferences khi khởi tạo
-  UserDataProvider() {
+  UserDataProvider() : 
+    // Inicializar DataIntegrationService con manejo de excepciones
+    _dataIntegrationService = _initDataIntegrationService() {
     _loadUserData();
+    // Bắt đầu đồng bộ định kỳ
+    startPeriodicSync();
+  }
+  
+  // Inicializar DataIntegrationService con manejo de excepciones
+  static DataIntegrationService? _initDataIntegrationService() {
+    try {
+      return DataIntegrationService();
+    } catch (e) {
+      debugPrint('Không thể khởi tạo DataIntegrationService: $e');
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    // Hủy timer khi provider bị hủy
+    _syncTimer?.cancel();
+    super.dispose();
   }
 
   // Getters
@@ -98,6 +133,32 @@ class UserDataProvider extends ChangeNotifier {
   double get tdeeProtein => _tdeeProtein;
   double get tdeeCarbs => _tdeeCarbs;
   double get tdeeFat => _tdeeFat;
+
+  // Getter cho trạng thái đồng bộ
+  bool get syncEnabled => _syncEnabled;
+
+  // Getter cho thời gian đồng bộ gần nhất
+  DateTime? get lastSyncTime => _lastSyncTime;
+
+  // Phương thức định dạng thời gian đồng bộ
+  String getFormattedLastSyncTime() {
+    if (_lastSyncTime == null) {
+      return 'Chưa đồng bộ';
+    }
+    
+    final now = DateTime.now();
+    final difference = now.difference(_lastSyncTime!);
+    
+    if (difference.inSeconds < 60) {
+      return 'Vừa mới đồng bộ';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} phút trước';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} giờ trước';
+    } else {
+      return '${difference.inDays} ngày trước';
+    }
+  }
 
   // Setters
   set gender(String value) {
@@ -412,9 +473,29 @@ class UserDataProvider extends ChangeNotifier {
       await prefs.setString(_dietPreferenceKey, _dietPreference);
       await prefs.setString(_healthConditionsKey, jsonEncode(_healthConditions));
       
+      // Tự động đồng bộ dữ liệu với API sau khi lưu
+      _sendDataToApiAutomatically();
+      
     } catch (e) {
       debugPrint('Lỗi khi lưu dữ liệu người dùng: $e');
     }
+  }
+  
+  // Phương thức để tự động gửi dữ liệu đến API
+  void _sendDataToApiAutomatically() {
+    // Nếu tắt đồng bộ, không gửi dữ liệu
+    if (!_syncEnabled) return;
+  
+    // Không chờ đợi kết quả để tránh làm chậm ứng dụng
+    Future.delayed(const Duration(milliseconds: 500), () {
+      sendToApi().then((success) {
+        if (success) {
+          debugPrint('Tự động đồng bộ dữ liệu thành công');
+        } else {
+          debugPrint('Tự động đồng bộ dữ liệu thất bại');
+        }
+      });
+    });
   }
   
   // Tải dữ liệu người dùng từ SharedPreferences
@@ -473,25 +554,129 @@ class UserDataProvider extends ChangeNotifier {
         });
       }
       
+      // Tải trạng thái đồng bộ
+      _syncEnabled = prefs.getBool(_syncEnabledKey) ?? true;
+      
+      // Tải thời gian đồng bộ gần nhất
+      final lastSyncTimeStr = prefs.getString(_lastSyncTimeKey);
+      if (lastSyncTimeStr != null) {
+        _lastSyncTime = DateTime.parse(lastSyncTimeStr);
+      }
+      
       notifyListeners();
+      
+      // Đồng bộ dữ liệu khi ứng dụng khởi động
+      _sendInitialDataToApi();
+      
     } catch (e) {
       debugPrint('Lỗi khi tải dữ liệu người dùng: $e');
     }
+  }
+  
+  // Gửi dữ liệu ban đầu khi ứng dụng khởi động
+  void _sendInitialDataToApi() {
+    // Nếu tắt đồng bộ, không gửi dữ liệu
+    if (!_syncEnabled) return;
+    
+    // Chờ 2 giây sau khi ứng dụng khởi động để đảm bảo kết nối mạng đã sẵn sàng
+    Future.delayed(const Duration(seconds: 2), () {
+      sendToApi().then((success) {
+        if (success) {
+          debugPrint('Đồng bộ dữ liệu ban đầu thành công');
+        } else {
+          debugPrint('Đồng bộ dữ liệu ban đầu thất bại');
+        }
+      });
+    });
   }
 
   // Gửi dữ liệu người dùng đến API
   Future<bool> sendToApi() async {
     try {
-      final result = await UserProfileApi.sendUserProfile(this);
+      // Thay thế bằng DataIntegrationService
+      if (_dataIntegrationService == null) {
+        debugPrint('DataIntegrationService chưa được khởi tạo');
+        return false;
+      }
+      
+      final result = await _dataIntegrationService!.syncUserProfileData(this);
+      
       if (result) {
-        debugPrint('Đã gửi dữ liệu người dùng thành công đến API');
+        debugPrint('Đã gửi dữ liệu người dùng thành công đến Firestore và API');
+        // Cập nhật thời gian đồng bộ gần nhất
+        _lastSyncTime = DateTime.now();
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString(_lastSyncTimeKey, _lastSyncTime!.toIso8601String());
+        });
+        notifyListeners();
       } else {
-        debugPrint('Gửi dữ liệu người dùng đến API thất bại');
+        debugPrint('Gửi dữ liệu người dùng thất bại');
       }
       return result;
     } catch (e) {
-      debugPrint('Lỗi khi gửi dữ liệu người dùng đến API: $e');
+      debugPrint('Lỗi khi gửi dữ liệu người dùng: $e');
       return false;
+    }
+  }
+
+  // Tải dữ liệu từ Firestore
+  Future<bool> loadFromFirestore() async {
+    try {
+      if (_dataIntegrationService == null) {
+        debugPrint('DataIntegrationService chưa được khởi tạo');
+        return false;
+      }
+      
+      final result = await _dataIntegrationService!.loadUserProfileFromFirestore(this);
+      if (result) {
+        debugPrint('Đã tải dữ liệu người dùng từ Firestore');
+      } else {
+        debugPrint('Không thể tải dữ liệu người dùng từ Firestore');
+      }
+      return result;
+    } catch (e) {
+      debugPrint('Lỗi khi tải dữ liệu người dùng từ Firestore: $e');
+      return false;
+    }
+  }
+
+  // Bắt đầu đồng bộ định kỳ mỗi 15 phút
+  void startPeriodicSync() {
+    // Hủy timer cũ nếu có
+    _syncTimer?.cancel();
+    
+    // Tạo timer mới để đồng bộ mỗi 15 phút
+    _syncTimer = Timer.periodic(const Duration(minutes: 15), (timer) {
+      sendToApi().then((success) {
+        if (success) {
+          debugPrint('Đồng bộ định kỳ thành công');
+        } else {
+          debugPrint('Đồng bộ định kỳ thất bại');
+        }
+      });
+    });
+    
+    debugPrint('Đã kích hoạt đồng bộ định kỳ mỗi 15 phút');
+  }
+
+  // Setter cho trạng thái đồng bộ
+  set syncEnabled(bool value) {
+    _syncEnabled = value;
+    notifyListeners();
+    
+    // Lưu trạng thái đồng bộ
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool(_syncEnabledKey, value);
+    });
+    
+    if (value) {
+      // Nếu bật đồng bộ, bắt đầu đồng bộ định kỳ
+      startPeriodicSync();
+      // Đồng bộ ngay lập tức
+      _sendDataToApiAutomatically();
+    } else {
+      // Nếu tắt đồng bộ, hủy timer đồng bộ định kỳ
+      _syncTimer?.cancel();
     }
   }
 } 

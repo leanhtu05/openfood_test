@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_data_provider.dart';
 import '../utils/constants.dart';
+import '../screens/sync_settings_screen.dart';
 
 class UserProfileCircularSummary extends StatelessWidget {
   const UserProfileCircularSummary({Key? key}) : super(key: key);
@@ -39,7 +40,13 @@ class UserProfileCircularSummary extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  _buildSyncButton(context, userData),
+                  Row(
+                    children: [
+                      _buildSyncButton(context, userData),
+                      const SizedBox(width: 8),
+                      _buildSettingsButton(context),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -140,6 +147,20 @@ class UserProfileCircularSummary extends StatelessWidget {
                   : 'Đồng bộ dữ liệu thất bại. Vui lòng thử lại sau.',
             ),
             backgroundColor: result ? Colors.green : Colors.red,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSettingsButton(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.settings, size: 20, color: AppColors.primary),
+      tooltip: 'Cài đặt đồng bộ',
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const SyncSettingsScreen(),
           ),
         );
       },
