@@ -1,0 +1,37 @@
+// Fetch daily nutrition summary
+Future<void> fetchDailyNutritionSummary(String date, {BuildContext? context}) async {
+  _isLoadingSummary = true;
+  notifyListeners();
+  
+  // Simulate delay
+  await Future.delayed(Duration(milliseconds: 800));
+  
+  // Get values
+  final nutritionValues = getNutritionTotals(date: date);
+  
+  _dailyNutritionSummary = {
+    "calories": {"value": nutritionValues['calories'] ?? 0, "goal": 2000},
+    "protein": {"value": nutritionValues['protein'] ?? 0, "goal": 100},
+    "fat": {"value": nutritionValues['fat'] ?? 0, "goal": 65},
+    "carbs": {"value": nutritionValues['carbs'] ?? 0, "goal": 250},
+  };
+  
+  _isLoadingSummary = false;
+  notifyListeners();
+}
+
+// Fetch daily meals
+Future<void> fetchDailyMeals(String date) async {
+  _isLoadingMeals = true;
+  notifyListeners();
+  
+  // Simulate delay
+  await Future.delayed(Duration(milliseconds: 800));
+  
+  // Get meals for the day
+  _dailyMeals = _foodEntries.where((entry) => 
+    entry.dateTime.toIso8601String().split('T')[0] == date).toList();
+  
+  _isLoadingMeals = false;
+  notifyListeners();
+} 
