@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class HeightSelectionPage extends StatefulWidget {
-  const HeightSelectionPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const HeightSelectionPage({
+    Key? key,
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<HeightSelectionPage> createState() => _HeightSelectionPageState();
@@ -35,9 +40,19 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
   }
 
   // Lưu dữ liệu vào provider
-  void _saveHeight() {
+  void _saveHeight(double height) {
     final userData = Provider.of<UserDataProvider>(context, listen: false);
-    userData.heightCm = heightCm;
+    userData.setHeight(height);
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật chiều cao thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   @override
@@ -56,40 +71,49 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo và Biểu tượng
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng đo chiều cao
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/height_icon.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.height,
-                                size: 100,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng đo chiều cao
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/height_icon.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.height,
+                                  size: 100,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.height,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 40),
                   
                   // Tiêu đề
                   Center(
                     child: Text(
-                      'Chiều cao của bạn là bao nhiêu?',
+                      widget.updateMode ? 'Cập nhật chiều cao' : 'Chiều cao của bạn là bao nhiêu?',
                       style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
@@ -279,10 +303,38 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                         setState(() {
                           heightCm = value;
                         });
-                        _saveHeight();
+                        _saveHeight(value);
                       },
                     ),
                   ),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

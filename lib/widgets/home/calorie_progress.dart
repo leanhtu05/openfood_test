@@ -49,9 +49,14 @@ class CalorieProgressSection extends StatelessWidget {
         foodProvider.getNutritionTotals(date: foodProvider.selectedDate)['calories']?.toInt() ?? 0;
         
     // Get calorie goal from user data provider
-    final actualCaloriesGoal = caloriesGoal ?? 
+    // Ensure actualCaloriesGoal is not zero to prevent division by zero errors
+    int tempCaloriesGoal = caloriesGoal ?? 
         userDataProvider.nutritionGoals['calories']?.toInt() ?? 
         userDataProvider.tdeeCalories.toInt();
+    
+    final actualCaloriesGoal = (tempCaloriesGoal == 0 || tempCaloriesGoal.isNaN || tempCaloriesGoal.isInfinite) 
+        ? 2000 // Default to 2000 if goal is 0, NaN, or Infinite
+        : tempCaloriesGoal;
         
     // Get exercise calories from exercise provider
     final actualExerciseCalories = exerciseCalories ?? 
@@ -61,10 +66,16 @@ class CalorieProgressSection extends StatelessWidget {
     final int remainingCalories = actualCaloriesGoal - actualConsumedCalories + actualExerciseCalories;
     
     // Calculate progress value (capped at 1.0 for progress bar)
-    final double progressValue = (actualConsumedCalories / actualCaloriesGoal).clamp(0.0, 1.0);
+    // Ensure actualCaloriesGoal is not zero for division
+    final double progressValue = (actualCaloriesGoal > 0)
+        ? (actualConsumedCalories / actualCaloriesGoal).clamp(0.0, 1.0)
+        : 0.0; // Default to 0.0 if actualCaloriesGoal is 0 or less
     
     // Calculate actual percentage for display (can be over 100%)
-    final int displayPercentage = ((actualConsumedCalories / actualCaloriesGoal) * 100).toInt();
+    // Ensure actualCaloriesGoal is not zero for division
+    final int displayPercentage = (actualCaloriesGoal > 0)
+        ? ((actualConsumedCalories / actualCaloriesGoal) * 100).toInt()
+        : 0; // Default to 0 if actualCaloriesGoal is 0 or less
     
     // Get nutrition data for macros from provider
     final nutritionTotals = foodProvider.getNutritionTotals(date: foodProvider.selectedDate);
@@ -75,17 +86,17 @@ class CalorieProgressSection extends StatelessWidget {
     final consumedFat = (nutritionTotals['fat'] ?? 0.0).round();
     
     // Get macro goals from user data provider
-    int proteinGoal;
-    int carbsGoal;
-    int fatGoal;
+    int tempProteinGoal;
+    int tempCarbsGoal;
+    int tempFatGoal;
     
     // If user has set nutrition goals, use them, otherwise calculate from TDEE
     if (userDataProvider.nutritionGoals.containsKey('protein') && 
         userDataProvider.nutritionGoals.containsKey('carbs') && 
         userDataProvider.nutritionGoals.containsKey('fat')) {
-      proteinGoal = userDataProvider.nutritionGoals['protein']!.toInt();
-      carbsGoal = userDataProvider.nutritionGoals['carbs']!.toInt();
-      fatGoal = userDataProvider.nutritionGoals['fat']!.toInt();
+      tempProteinGoal = userDataProvider.nutritionGoals['protein']!.toInt();
+      tempCarbsGoal = userDataProvider.nutritionGoals['carbs']!.toInt();
+      tempFatGoal = userDataProvider.nutritionGoals['fat']!.toInt();
     } else {
       // Calculate macro goals from TDEE
       final calculator = TDEECalculator(
@@ -99,10 +110,15 @@ class CalorieProgressSection extends StatelessWidget {
       );
       
       final macrosTarget = calculator.calculateMacroDistribution();
-      proteinGoal = macrosTarget['protein']!.round();
-      carbsGoal = macrosTarget['carbs']!.round();
-      fatGoal = macrosTarget['fat']!.round();
+      tempProteinGoal = macrosTarget['protein']!.round();
+      tempCarbsGoal = macrosTarget['carbs']!.round();
+      tempFatGoal = macrosTarget['fat']!.round();
     }
+
+    // Ensure macro goals are not zero to prevent division by zero
+    final proteinGoal = (tempProteinGoal == 0 || tempProteinGoal.isNaN || tempProteinGoal.isInfinite) ? 1 : tempProteinGoal;
+    final carbsGoal = (tempCarbsGoal == 0 || tempCarbsGoal.isNaN || tempCarbsGoal.isInfinite) ? 1 : tempCarbsGoal;
+    final fatGoal = (tempFatGoal == 0 || tempFatGoal.isNaN || tempFatGoal.isInfinite) ? 1 : tempFatGoal;
     
     // Calculate percentages for macro progress
     final proteinPercentage = ((consumedProtein / proteinGoal) * 100).round().clamp(0, 100);
@@ -198,7 +214,7 @@ class CalorieProgressSection extends StatelessWidget {
                 children: [
                   // Consumed calories
                   Flexible(
-                          flex: (progressValue * 100).toInt(),
+                          flex: (progressValue * 100).isFinite ? (progressValue * 100).toInt() : 0, // Check for isFinite
                     child: Container(
                       decoration: BoxDecoration(
                               color: displayPercentage > 100 ? Colors.red : AppColors.food,
@@ -209,7 +225,7 @@ class CalorieProgressSection extends StatelessWidget {
                   // Remaining calories
                   if (progressValue < 1.0)
                     Flexible(
-                      flex: ((1.0 - progressValue) * 100).toInt(),
+                      flex: ((1.0 - progressValue) * 100).isFinite ? ((1.0 - progressValue) * 100).toInt() : 100, // Check for isFinite
                       child: Container(color: Colors.transparent),
                     ),
                 ],

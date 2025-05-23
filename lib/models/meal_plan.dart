@@ -89,6 +89,34 @@ class MealPlan {
     
     return DateTime.now();
   }
+
+  // Method to convert MealPlan object to JSON map
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {};
+    
+    // Add weekly plan with day names as keys
+    data['weekly_plan'] = {};
+    weeklyPlan.forEach((day, plan) {
+      data['weekly_plan'][day] = {
+        'day_of_week': day,
+        'nutrition_summary': plan.nutritionSummary,
+        'meals': {}
+      };
+      
+      // Add meals for each day
+      plan.meals.forEach((mealType, meals) {
+        data['weekly_plan'][day]['meals'][mealType] = meals.map((meal) => {
+          'name': meal.name,
+          'description': meal.description,
+          'ingredients': meal.ingredients,
+          'nutrition': meal.nutrition,
+          'image_url': meal.imageUrl,
+        }).toList();
+      });
+    });
+    
+    return data;
+  }
 }
 
 class DayMealPlan {

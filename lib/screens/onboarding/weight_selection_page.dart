@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class WeightSelectionPage extends StatefulWidget {
-  const WeightSelectionPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const WeightSelectionPage({
+    Key? key, 
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<WeightSelectionPage> createState() => _WeightSelectionPageState();
@@ -32,9 +37,19 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
   }
   
   // Lưu dữ liệu vào provider
-  void _saveWeight() {
+  void _saveWeight(double weight) {
     final userData = Provider.of<UserDataProvider>(context, listen: false);
-    userData.weightKg = weightKg;
+    userData.setWeight(weight);
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật cân nặng thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
   
   double get bmi => weightKg / ((heightCm / 100) * (heightCm / 100));
@@ -70,40 +85,49 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo và Biểu tượng
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng cân
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/weight_scale.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.monitor_weight_outlined,
-                                size: 100,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng cân
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/weight_scale.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.monitor_weight_outlined,
+                                  size: 100,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.monitor_weight_outlined,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 30),
                   
                   // Tiêu đề
                   Center(
                     child: Text(
-                      'Cân nặng của bạn là bao nhiêu?',
+                      widget.updateMode ? 'Cập nhật cân nặng' : 'Cân nặng của bạn là bao nhiêu?',
                       style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
@@ -245,13 +269,14 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                               min: 40,
                               max: 150,
                               divisions: 110,
-                              value: weightKg,
+                              // Ensure weight value is within valid range
+                              value: weightKg < 40 ? 40 : (weightKg > 150 ? 150 : weightKg),
                               label: '${weightKg.toInt()} kg',
                               onChanged: (double value) {
                                 setState(() {
                                   weightKg = value;
                                 });
-                                _saveWeight();
+                                _saveWeight(value);
                               },
                             ),
                           ),
@@ -259,6 +284,34 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                       ),
                     ),
                   ),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

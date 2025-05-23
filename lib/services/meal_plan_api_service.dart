@@ -4,32 +4,290 @@ import 'package:http/http.dart' as http;
 import '../models/meal_plan.dart';
 import '../utils/constants.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/config.dart';
 
 class MealPlanApiService {
   // URL cơ sở của API
-  static const String baseUrl = ApiEndpoints.baseUrl;
+  static const String baseUrl = apiBaseUrl;
+  
+  // Thời gian chờ tối đa cho các API request
+  static const Duration apiTimeout = Duration(seconds: 15);
   
   // Phương thức kiểm tra kết nối với API
   static Future<bool> checkApiConnection() async {
-    // Nếu forceMockData được bật, luôn trả về false để sử dụng mock data
-    if (ApiEndpoints.forceMockData) {
-      print('API connection check skipped, using mock data as configured in constants');
-      return false;
-    }
-    
     try {
-      print('Đang kiểm tra kết nối API tại: $baseUrl');
-      final response = await http.get(Uri.parse('$baseUrl/'));
-      print('Kết quả kiểm tra kết nối: ${response.statusCode} - ${response.body}');
+      final response = await http.get(Uri.parse('$baseUrl/')).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => http.Response('Timeout', 408),
+      );
       return response.statusCode == 200;
     } catch (e) {
-      print('Lỗi kết nối API: $e');
+      print('API connection error: $e');
       return false;
     }
   }
   
-  // Tạo kế hoạch thực đơn cho cả tuần
+  // Kiểm tra tình trạng AI
+  static Future<Map<String, dynamic>> checkAIAvailability() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api-status')).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => http.Response('{"ai_available":false,"error":"Timeout"}', 408),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {'ai_available': false, 'error': 'Status code: ${response.statusCode}'};
+      }
+    } catch (e) {
+      print('AI status check error: $e');
+      return {'ai_available': false, 'error': e.toString()};
+    }
+  }
+  
+  // Tạo kế hoạch tuần cá nhân hóa
+  static Future<Map<String, dynamic>> generatePersonalizedWeeklyMealPlan({
+    required double caloriesTarget,
+    required double proteinTarget,
+    required double fatTarget,
+    required double carbsTarget,
+    List<String> preferences = const [],
+    List<String> allergies = const [],
+    String? cuisineStyle,
+    bool useAI = false,
+  }) async {
+    try {
+      // Chuẩn bị thông tin dinh dưỡng
+      final nutritionTarget = {
+        'calories_target': caloriesTarget,
+        'protein_target': proteinTarget,
+        'fat_target': fatTarget,
+        'carbs_target': carbsTarget,
+      };
+      
+      // Chuẩn bị URL với query parameters
+      final uri = Uri.parse('$baseUrl/generate-weekly-meal-personalized')
+        .replace(queryParameters: {
+          'user_id': 'flutter_app',
+          'use_ai': useAI.toString(),
+        });
+      
+      // Chuẩn bị request body
+      final requestBody = json.encode({
+        ...nutritionTarget,
+        'preferences': preferences,
+        'allergies': allergies,
+        'cuisine_style': cuisineStyle,
+      });
+      
+      // Gửi request
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: requestBody,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => http.Response('{"error":"Request timeout"}', 408),
+      );
+      
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        return responseData['meal_plan'];
+      } else {
+        final errorMsg = response.body;
+        print('API error: [${response.statusCode}] $errorMsg');
+        throw Exception('API Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Failed to generate meal plan: $e');
+      throw Exception('Failed to generate meal plan: $e');
+    }
+  }
+  
+  // Thay thế một ngày trong kế hoạch
+  static Future<Map<String, dynamic>> replaceDay({
+    required Map<String, dynamic> replaceRequest,
+    List<String> preferences = const [],
+    List<String> allergies = const [],
+    String? cuisineStyle,
+    bool useAI = false,
+  }) async {
+    try {
+      // Chuẩn bị URL với query parameters
+      final uri = Uri.parse('$baseUrl/replace-day-personalized')
+        .replace(queryParameters: {
+          'user_id': 'flutter_app',
+          'use_ai': useAI.toString(),
+        });
+      
+      // Chuẩn bị request body
+      final requestBody = json.encode({
+        ...replaceRequest,
+        'preferences': preferences,
+        'allergies': allergies,
+        'cuisine_style': cuisineStyle,
+      });
+      
+      // Gửi request
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: requestBody,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => http.Response('{"error":"Request timeout"}', 408),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final errorMsg = response.body;
+        print('API error: [${response.statusCode}] $errorMsg');
+        throw Exception('API Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Failed to replace day: $e');
+      throw Exception('Failed to replace day: $e');
+    }
+  }
+  
+  // Legacy method - Sử dụng demo API endpoint
   static Future<Map<String, dynamic>> generateWeeklyMealPlan({
+    required double caloriesTarget,
+    required double proteinTarget,
+    required double fatTarget,
+    required double carbsTarget,
+    bool useAI = false,
+  }) async {
+    try {
+      // Chuẩn bị thông tin dinh dưỡng
+      final nutritionTarget = {
+        'calories_target': caloriesTarget,
+        'protein_target': proteinTarget,
+        'fat_target': fatTarget,
+        'carbs_target': carbsTarget,
+      };
+      
+      // Sử dụng endpoint demo để tránh tác động đến API chính
+      final uri = Uri.parse('$baseUrl/generate-weekly-meal-demo')
+        .replace(queryParameters: {
+          'user_id': 'flutter_app',
+          'use_ai': useAI.toString(),
+        });
+      
+      // Gửi request
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(nutritionTarget),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => http.Response('{"error":"Request timeout"}', 408),
+      );
+      
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        return responseData['meal_plan'];
+      } else {
+        final errorMsg = response.body;
+        print('API error: [${response.statusCode}] $errorMsg');
+        throw Exception('API Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Failed to generate meal plan: $e');
+      throw Exception('Failed to generate meal plan: $e');
+    }
+  }
+  
+  // Lấy dữ liệu mẫu khi không thể kết nối API
+  static Future<Map<String, dynamic>> getMockMealPlan() async {
+    // Mô phỏng độ trễ mạng
+    await Future.delayed(Duration(seconds: 1));
+    
+    // Tạo dữ liệu giả
+    return {
+      'weekly_plan': {
+        'Monday': _createMockDayPlan('Thứ 2'),
+        'Tuesday': _createMockDayPlan('Thứ 3'),
+        'Wednesday': _createMockDayPlan('Thứ 4'),
+        'Thursday': _createMockDayPlan('Thứ 5'),
+        'Friday': _createMockDayPlan('Thứ 6'),
+        'Saturday': _createMockDayPlan('Thứ 7'),
+        'Sunday': _createMockDayPlan('Chủ Nhật'),
+      }
+    };
+  }
+  
+  // Hàm tạo dữ liệu giả cho một ngày
+  static Map<String, dynamic> _createMockDayPlan(String dayName) {
+    return {
+      'day_of_week': dayName,
+      'nutrition_summary': {
+        'calories': 2000,
+        'protein': 120,
+        'fat': 65,
+        'carbs': 250,
+        'fiber': 30,
+      },
+      'meals': {
+        'Bữa sáng': [
+          {
+            'name': 'Bữa sáng mẫu',
+            'description': 'Đây là dữ liệu mẫu khi không kết nối được với API.',
+            'ingredients': [
+              '2 quả trứng',
+              '1 lát bánh mì nguyên cám',
+              '1 quả chuối',
+            ],
+            'nutrition': {
+              'calories': 400,
+              'protein': 20,
+              'fat': 15,
+              'carbs': 50,
+            }
+          }
+        ],
+        'Bữa trưa': [
+          {
+            'name': 'Bữa trưa mẫu',
+            'description': 'Đây là dữ liệu mẫu khi không kết nối được với API.',
+            'ingredients': [
+              '100g cơm trắng',
+              '100g thịt gà',
+              'Rau xanh các loại',
+            ],
+            'nutrition': {
+              'calories': 600,
+              'protein': 40,
+              'fat': 20,
+              'carbs': 80,
+            }
+          }
+        ],
+        'Bữa tối': [
+          {
+            'name': 'Bữa tối mẫu',
+            'description': 'Đây là dữ liệu mẫu khi không kết nối được với API.',
+            'ingredients': [
+              '80g mì ăn liền',
+              '50g thịt bò',
+              'Rau củ các loại',
+            ],
+            'nutrition': {
+              'calories': 500,
+              'protein': 30,
+              'fat': 15,
+              'carbs': 70,
+            }
+          }
+        ],
+      }
+    };
+  }
+  
+  // Tạo kế hoạch thực đơn cho cả tuần
+  static Future<Map<String, dynamic>> legacyGenerateWeeklyMealPlan({
     required double caloriesTarget,
     required double proteinTarget,
     required double fatTarget,
@@ -38,6 +296,13 @@ class MealPlanApiService {
     bool useAI = true,
   }) async {
     try {
+      // Kiểm tra kết nối trước khi gọi API
+      final isConnected = await checkApiConnection();
+      if (!isConnected) {
+        debugPrint('Không có kết nối API, sử dụng dữ liệu mẫu');
+        return getMockMealPlan();
+      }
+      
       final url = '$baseUrl/generate-weekly-meal?user_id=$userId&use_ai=${useAI}';
       final body = {
         'calories_target': caloriesTarget,
@@ -46,8 +311,8 @@ class MealPlanApiService {
         'carbs_target': carbsTarget,
       };
       
-      print('Gọi API tạo kế hoạch tuần: $url');
-      print('Body: ${jsonEncode(body)}');
+      debugPrint('Gọi API tạo kế hoạch tuần: $url');
+      debugPrint('Body: ${jsonEncode(body)}');
       
       final response = await http.post(
         Uri.parse(url),
@@ -55,21 +320,22 @@ class MealPlanApiService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode(body),
-      );
+      ).timeout(apiTimeout);
       
-      print('Kết quả API tạo kế hoạch tuần: ${response.statusCode}');
+      debugPrint('Kết quả API tạo kế hoạch tuần: ${response.statusCode}');
       if (kDebugMode) {
-        print('Response body (truncated): ${response.body.substring(0, min(200, response.body.length))}...');
+        debugPrint('Response body (truncated): ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
       }
       
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('Lỗi khi tạo kế hoạch thực đơn: ${response.statusCode} - ${response.body}');
+        debugPrint('API trả về lỗi, sử dụng dữ liệu mẫu thay thế');
+        return getMockMealPlan();
       }
     } catch (e) {
-      print('Lỗi khi gọi API tạo kế hoạch thực đơn: $e');
-      rethrow;
+      debugPrint('Lỗi khi gọi API tạo kế hoạch thực đơn: $e');
+      return getMockMealPlan();
     }
   }
   
@@ -83,6 +349,13 @@ class MealPlanApiService {
     String userId = 'default',
   }) async {
     try {
+      // Kiểm tra kết nối trước khi gọi API
+      final isConnected = await checkApiConnection();
+      if (!isConnected) {
+        debugPrint('Không có kết nối API, sử dụng dữ liệu mẫu cho ngày');
+        return getMockDayPlan(day);
+      }
+      
       final url = '$baseUrl/replace-day?user_id=$userId';
       final body = {
         'day': day,
@@ -92,8 +365,8 @@ class MealPlanApiService {
         'carbs_target': carbsTarget,
       };
       
-      print('Gọi API thay thế kế hoạch ngày: $url');
-      print('Body: ${jsonEncode(body)}');
+      debugPrint('Gọi API thay thế kế hoạch ngày: $url');
+      debugPrint('Body: ${jsonEncode(body)}');
       
       final response = await http.post(
         Uri.parse(url),
@@ -101,22 +374,23 @@ class MealPlanApiService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode(body),
-      );
+      ).timeout(apiTimeout);
       
-      print('Kết quả API thay thế kế hoạch ngày: ${response.statusCode}');
+      debugPrint('Kết quả API thay thế kế hoạch ngày: ${response.statusCode}');
       if (kDebugMode) {
-        print('Response body (truncated): ${response.body.substring(0, min(200, response.body.length))}...');
+        debugPrint('Response body (truncated): ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
       }
       
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         return responseData;
       } else {
-        throw Exception('Lỗi khi thay thế kế hoạch thực đơn ngày: ${response.statusCode} - ${response.body}');
+        debugPrint('API trả về lỗi, sử dụng dữ liệu mẫu thay thế cho ngày');
+        return getMockDayPlan(day);
       }
     } catch (e) {
-      print('Lỗi khi gọi API thay thế kế hoạch thực đơn ngày: $e');
-      rethrow;
+      debugPrint('Lỗi khi gọi API thay thế kế hoạch thực đơn ngày: $e');
+      return getMockDayPlan(day);
     }
   }
   
@@ -295,96 +569,10 @@ class MealPlanApiService {
     }
   }
   
-  // Add this method below the deleteMealPlan method
-  static Future<Map<String, dynamic>> getMockMealPlan() async {
-    // This is a mock meal plan to use when the API is not available
-    final mockMealPlan = {
-      "id": "mock-plan-123",
-      "user_id": "default",
-      "created_at": DateTime.now().toIso8601String(),
-      "nutrition_targets": {
-        "calories_target": 2000,
-        "protein_target": 120,
-        "fat_target": 65,
-        "carbs_target": 250
-      },
-      "weekly_plan": {
-        "Monday": _createMockDayPlan("Thứ 2"),
-        "Tuesday": _createMockDayPlan("Thứ 3"),
-        "Wednesday": _createMockDayPlan("Thứ 4"),
-        "Thursday": _createMockDayPlan("Thứ 5"),
-        "Friday": _createMockDayPlan("Thứ 6"),
-        "Saturday": _createMockDayPlan("Thứ 7"),
-        "Sunday": _createMockDayPlan("Chủ nhật")
-      }
-    };
-    
+  // Helper function to get a mock day plan for a specific day
+  static Map<String, dynamic> getMockDayPlan(String day) {
     // Simulate API delay
-    await Future.delayed(Duration(seconds: 1));
-    
-    return mockMealPlan;
-  }
-  
-  // Helper method to create a mock day plan
-  static Map<String, dynamic> _createMockDayPlan(String dayName) {
-    return {
-      "meals": {
-        "Bữa sáng": [
-          {
-            "name": "Phở gà",
-            "description": "Phở với thịt gà, ăn kèm rau thơm và giá đỗ",
-            "nutrition": {
-              "calories": 450,
-              "protein": 25,
-              "fat": 10,
-              "carbs": 65,
-              "fiber": 3,
-              "sugar": 2
-            },
-            "ingredients": ["Bánh phở", "Thịt gà", "Nước dùng", "Hành", "Rau thơm", "Giá đỗ"],
-            "image_url": "https://example.com/pho.jpg"
-          }
-        ],
-        "Bữa trưa": [
-          {
-            "name": "Cơm gà",
-            "description": "Cơm trắng với thịt gà xé và rau cải luộc",
-            "nutrition": {
-              "calories": 550,
-              "protein": 30,
-              "fat": 15,
-              "carbs": 75,
-              "fiber": 4,
-              "sugar": 1
-            },
-            "ingredients": ["Cơm", "Thịt gà", "Rau cải", "Nước mắm", "Dầu ăn"],
-            "image_url": "https://example.com/com-ga.jpg"
-          }
-        ],
-        "Bữa tối": [
-          {
-            "name": "Bún chả",
-            "description": "Bún với thịt lợn nướng và nước chấm",
-            "nutrition": {
-              "calories": 500,
-              "protein": 25,
-              "fat": 18,
-              "carbs": 60,
-              "fiber": 3,
-              "sugar": 5
-            },
-            "ingredients": ["Bún", "Thịt lợn", "Giá đỗ", "Rau thơm", "Nước mắm", "Đường"],
-            "image_url": "https://example.com/bun-cha.jpg"
-          }
-        ]
-      },
-      "nutrition_summary": {
-        "calories": 1500,
-        "protein": 80,
-        "fat": 43,
-        "carbs": 200
-      }
-    };
+    return _createMockDayPlan(day);
   }
   
   // Helper function to get minimum of two numbers
@@ -396,29 +584,24 @@ class MealPlanApiService {
   static Future<Map<String, dynamic>> generateSingleMeal({
     required String mealType,
     required double caloriesTarget,
-    double? proteinTarget,
-    double? fatTarget,
-    double? carbsTarget,
     String userId = 'default',
-    bool useAI = true,
   }) async {
-    // Nếu đã quy định để sử dụng dữ liệu mẫu, hoặc giá trị mục tiêu còn thiếu
-    if (ApiEndpoints.forceMockData || proteinTarget == null || fatTarget == null || carbsTarget == null) {
-      return await _getMockSingleMeal(mealType, caloriesTarget);
+    try {
+      // Kiểm tra kết nối trước khi gọi API
+      final isConnected = await checkApiConnection();
+      if (!isConnected) {
+        debugPrint('Không có kết nối API, sử dụng dữ liệu mẫu cho bữa ăn');
+        return getMockMeal(mealType);
     }
     
-    try {
-      final url = '$baseUrl/generate-meal?user_id=$userId&use_ai=${useAI}';
+      final url = '$baseUrl/generate-meal?user_id=$userId';
       final body = {
         'meal_type': mealType,
         'calories_target': caloriesTarget,
-        'protein_target': proteinTarget,
-        'fat_target': fatTarget,
-        'carbs_target': carbsTarget,
       };
       
-      print('Gọi API tạo bữa ăn đơn lẻ: $url');
-      print('Body: ${jsonEncode(body)}');
+      debugPrint('Gọi API tạo bữa ăn đơn: $url');
+      debugPrint('Body: ${jsonEncode(body)}');
       
       final response = await http.post(
         Uri.parse(url),
@@ -426,103 +609,65 @@ class MealPlanApiService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode(body),
-      );
+      ).timeout(apiTimeout);
       
-      print('Kết quả API tạo bữa ăn đơn lẻ: ${response.statusCode}');
-      if (kDebugMode && response.body.isNotEmpty) {
-        print('Response body (truncated): ${response.body.substring(0, min(200, response.body.length))}...');
+      debugPrint('Kết quả API tạo bữa ăn: ${response.statusCode}');
+      if (kDebugMode) {
+        debugPrint('Response body (truncated): ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
       }
       
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('Lỗi khi tạo bữa ăn đơn lẻ: ${response.statusCode} - ${response.body}');
+        debugPrint('API trả về lỗi, sử dụng dữ liệu mẫu thay thế cho bữa ăn');
+        return getMockMeal(mealType);
       }
     } catch (e) {
-      print('Lỗi khi gọi API tạo bữa ăn đơn lẻ: $e');
-      return await _getMockSingleMeal(mealType, caloriesTarget);
+      debugPrint('Lỗi khi gọi API tạo bữa ăn: $e');
+      return getMockMeal(mealType);
     }
   }
   
-  // Tạo bữa ăn mẫu cho trường hợp không kết nối được API
-  static Future<Map<String, dynamic>> _getMockSingleMeal(String mealType, double caloriesTarget) async {
-    // Mô phỏng độ trễ của API
-    await Future.delayed(Duration(milliseconds: 500));
-    
-    // Các giá trị dinh dưỡng mục tiêu dựa trên tổng calo
-    final proteinRatio = 0.3; // 30% calo từ protein
-    final fatRatio = 0.35;    // 35% calo từ chất béo
-    final carbsRatio = 0.35;  // 35% calo từ carbs
-    
-    // 1g protein = 4 calo, 1g fat = 9 calo, 1g carbs = 4 calo
-    final proteinGrams = (caloriesTarget * proteinRatio / 4).round();
-    final fatGrams = (caloriesTarget * fatRatio / 9).round();
-    final carbsGrams = (caloriesTarget * carbsRatio / 4).round();
-    
-    // Tên các bữa ăn theo loại
-    Map<String, List<String>> mealNames = {
-      'Bữa sáng': [
-        'Bánh mì trứng ốp la',
-        'Phở gà',
-        'Bún riêu cua',
-        'Bánh cuốn nóng',
-        'Cháo trắng thịt bằm',
-      ],
-      'Bữa trưa': [
-        'Cơm gà xối mỡ',
-        'Bún chả Hà Nội',
-        'Cơm tấm sườn bì chả',
-        'Mì xào hải sản',
-        'Bún thịt nướng',
-      ],
-      'Bữa tối': [
-        'Canh chua cá lóc',
-        'Lẩu gà lá giang',
-        'Cá kho tộ',
-        'Thịt kho tàu',
-        'Gỏi cuốn tôm thịt',
-      ],
-    };
-    
-    // Lấy ngẫu nhiên tên bữa ăn từ danh sách theo loại
+  // Helper để lấy mẫu cho một bữa ăn
+  static Map<String, dynamic> getMockMeal(String mealType) {
+    // Tạo bữa ăn mẫu dựa trên loại bữa
     final random = Random();
-    final names = mealNames[mealType] ?? ['Bữa ăn tự chọn'];
-    final name = names[random.nextInt(names.length)];
-    
-    // Mô tả bữa ăn
-    final description = 'Món $name dinh dưỡng với $proteinGrams grams protein và $caloriesTarget calories.';
-    
-    // Danh sách nguyên liệu
-    final ingredients = [
-      'Nguyên liệu 1: 100g',
-      'Nguyên liệu 2: 50g',
-      'Nguyên liệu 3: 30g',
-      'Gia vị các loại vừa đủ',
+    final mealOptions = [
+      {
+        "name": "Cơm gà nướng",
+        "description": "Cơm với gà nướng và rau xào",
+        "ingredients": ["Gạo", "Thịt gà", "Rau củ", "Gia vị"],
+        "nutrition": {
+          "calories": random.nextInt(300) + 300.0,
+          "protein": random.nextInt(20) + 20.0,
+          "fat": random.nextInt(10) + 10.0,
+          "carbs": random.nextInt(30) + 40.0
+        }
+      },
+      {
+        "name": "Salad cá hồi",
+        "description": "Salad rau với cá hồi nướng",
+        "ingredients": ["Rau xà lách", "Cá hồi", "Dầu ô liu", "Chanh"],
+        "nutrition": {
+          "calories": random.nextInt(200) + 250.0,
+          "protein": random.nextInt(15) + 25.0,
+          "fat": random.nextInt(15) + 15.0,
+          "carbs": random.nextInt(15) + 10.0
+        }
+      },
+      {
+        "name": "Phở bò",
+        "description": "Phở với thịt bò và rau thơm",
+        "ingredients": ["Bánh phở", "Thịt bò", "Hành ngò", "Nước dùng"],
+        "nutrition": {
+          "calories": random.nextInt(300) + 400.0,
+          "protein": random.nextInt(20) + 30.0,
+          "fat": random.nextInt(10) + 10.0,
+          "carbs": random.nextInt(20) + 60.0
+        }
+      }
     ];
     
-    // Tạo thông tin dinh dưỡng với độ lệch ngẫu nhiên nhỏ
-    final nutritionVariance = 0.1; // 10% variance
-    
-    final caloriesActual = caloriesTarget * (1 + (random.nextDouble() * 2 - 1) * nutritionVariance);
-    final proteinActual = proteinGrams * (1 + (random.nextDouble() * 2 - 1) * nutritionVariance);
-    final fatActual = fatGrams * (1 + (random.nextDouble() * 2 - 1) * nutritionVariance);
-    final carbsActual = carbsGrams * (1 + (random.nextDouble() * 2 - 1) * nutritionVariance);
-    
-    // Tạo dữ liệu bữa ăn mẫu
-    return {
-      'name': name,
-      'description': description,
-      'ingredients': ingredients,
-      'nutrition': {
-        'calories': caloriesActual,
-        'protein': proteinActual,
-        'fat': fatActual,
-        'carbs': carbsActual,
-        'fiber': 5.0,
-        'sugar': 10.0,
-        'sodium': 500.0,
-      },
-      'meal_type': mealType,
-    };
+    return mealOptions[random.nextInt(mealOptions.length)];
   }
 } 

@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class DietGoalPage extends StatefulWidget {
-  const DietGoalPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const DietGoalPage({
+    Key? key,
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<DietGoalPage> createState() => _DietGoalPageState();
@@ -43,52 +48,62 @@ class _DietGoalPageState extends State<DietGoalPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // Nút quay lại
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.black),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                          },
+                      if (!widget.updateMode)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back, color: Colors.black),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 16),
                       
                       // Logo và Biểu tượng
-                      Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'DietAI',
-                              style: OnboardingStyles.appTitleStyle,
-                            ),
-                            const SizedBox(height: 24),
-                            
-                            // Biểu tượng mục tiêu
-                            SizedBox(
-                              width: OnboardingStyles.iconSize,
-                              height: OnboardingStyles.iconSize,
-                              child: Image.asset(
-                                'assets/images/target_icon.png',
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Icon(
-                                    Icons.track_changes,
-                                    size: 100,
-                                    color: OnboardingStyles.accentColor,
-                                  );
-                                },
+                      if (!widget.updateMode)
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'DietAI',
+                                style: OnboardingStyles.appTitleStyle,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 24),
+                              
+                              // Biểu tượng mục tiêu
+                              SizedBox(
+                                width: OnboardingStyles.iconSize,
+                                height: OnboardingStyles.iconSize,
+                                child: Image.asset(
+                                  'assets/images/target_icon.png',
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Icon(
+                                      Icons.track_changes,
+                                      size: 100,
+                                      color: OnboardingStyles.accentColor,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Center(
+                          child: Icon(
+                            Icons.track_changes,
+                            size: 80,
+                            color: OnboardingStyles.accentColor,
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 30),
                       
                       // Tiêu đề
                       Center(
                         child: Text(
-                          'Mục tiêu chính về chế độ ăn uống của bạn là gì?',
+                          widget.updateMode ? 'Cập nhật mục tiêu chế độ ăn' : 'Mục tiêu chính về chế độ ăn uống của bạn là gì?',
                           style: OnboardingStyles.pageTitleStyle,
                           textAlign: TextAlign.center,
                         ),
@@ -109,9 +124,9 @@ class _DietGoalPageState extends State<DietGoalPage> {
                       _buildGoalOption(
                         icon: Icons.spa,
                         emoji: '🌱',
-                        label: 'Sức khỏe được cải thiện',
-                        isSelected: selectedGoal == 'Sức khỏe được cải thiện',
-                        onTap: () => _selectGoal('Sức khỏe được cải thiện'),
+                        label: 'Duy trì cân nặng',
+                        isSelected: selectedGoal == 'Duy trì cân nặng',
+                        onTap: () => _selectGoal('Duy trì cân nặng'),
                       ),
                       
                       const SizedBox(height: 16),
@@ -123,6 +138,34 @@ class _DietGoalPageState extends State<DietGoalPage> {
                         isSelected: selectedGoal == 'Tăng cân',
                         onTap: () => _selectGoal('Tăng cân'),
                       ),
+                      
+                      // Add "Done" button when in update mode
+                      if (widget.updateMode) ...[
+                        const SizedBox(height: 30),
+                        Container(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: OnboardingStyles.primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            child: Text(
+                              'Hoàn thành',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -141,6 +184,16 @@ class _DietGoalPageState extends State<DietGoalPage> {
     });
     // Lưu mục tiêu vào provider
     Provider.of<UserDataProvider>(context, listen: false).setGoal(goal);
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật mục tiêu thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
   
   Widget _buildGoalOption({

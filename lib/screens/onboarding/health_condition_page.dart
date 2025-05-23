@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
-import 'onboarding_screen.dart';
+import '../../styles/onboarding_styles.dart';
 
 class HealthConditionPage extends StatefulWidget {
   const HealthConditionPage({Key? key}) : super(key: key);

@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
-import 'onboarding_screen.dart';
+import '../../styles/onboarding_styles.dart';
 
 class ActivityLevelPage extends StatefulWidget {
-  const ActivityLevelPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const ActivityLevelPage({
+    Key? key,
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   _ActivityLevelPageState createState() => _ActivityLevelPageState();
@@ -58,6 +63,16 @@ class _ActivityLevelPageState extends State<ActivityLevelPage> {
   void _saveActivityLevel(String level) {
     final userData = Provider.of<UserDataProvider>(context, listen: false);
     userData.setActivityLevel(level);
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật mức độ hoạt động thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   @override
@@ -76,34 +91,43 @@ class _ActivityLevelPageState extends State<ActivityLevelPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo và Biểu tượng
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng hoạt động
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/activity_level.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.directions_run,
-                                size: 100,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng hoạt động
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/activity_level.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.directions_run,
+                                  size: 100,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.directions_run,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 30),
                   
                   // Tiêu đề
@@ -111,7 +135,7 @@ class _ActivityLevelPageState extends State<ActivityLevelPage> {
                     child: Column(
                       children: [
                         Text(
-                          'Mức độ hoạt động của bạn?',
+                          widget.updateMode ? 'Cập nhật mức độ hoạt động' : 'Mức độ hoạt động của bạn?',
                           style: OnboardingStyles.pageTitleStyle,
                           textAlign: TextAlign.center,
                         ),
@@ -195,6 +219,34 @@ class _ActivityLevelPageState extends State<ActivityLevelPage> {
                       ),
                     );
                   }).toList(),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

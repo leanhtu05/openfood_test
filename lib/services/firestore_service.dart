@@ -23,12 +23,17 @@ class FirestoreService {
   // Lấy ID của người dùng hiện tại
   String? get _currentUserId => _auth.currentUser?.uid;
   
+  // Kiểm tra tình trạng đăng nhập và ném ra ngoại lệ nếu chưa đăng nhập
+  void _checkAuthentication() {
+    if (_auth.currentUser == null) {
+      throw Exception('Người dùng chưa đăng nhập');
+    }
+  }
+  
   // Lấy kế hoạch ăn uống theo tuần cho người dùng hiện tại
   Future<Map<String, dynamic>> getWeeklyMealPlan() async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
+      _checkAuthentication();
       
       // Kiểm tra nếu người dùng đã có kế hoạch ăn
       final userDoc = await _usersCollection.doc(_currentUserId).get();
@@ -49,7 +54,7 @@ class FirestoreService {
       
       return mealPlanDoc.data() ?? {};
     } catch (e) {
-      print('Lỗi khi lấy kế hoạch ăn: $e');
+      debugPrint('Lỗi khi lấy kế hoạch ăn: $e');
       throw e;
     }
   }
@@ -57,9 +62,7 @@ class FirestoreService {
   // Tạo kế hoạch ăn mới
   Future<Map<String, dynamic>> _generateNewMealPlan() async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
+      _checkAuthentication();
       
       // Lấy mẫu kế hoạch từ service khác
       // Ở đây, bạn có thể thay thế bằng API call thực tế hoặc tạo dữ liệu mẫu
@@ -82,7 +85,7 @@ class FirestoreService {
       final newDoc = await docRef.get();
       return newDoc.data() ?? {};
     } catch (e) {
-      print('Lỗi khi tạo kế hoạch ăn mới: $e');
+      debugPrint('Lỗi khi tạo kế hoạch ăn mới: $e');
       throw e;
     }
   }
@@ -90,9 +93,7 @@ class FirestoreService {
   // Cập nhật kế hoạch ăn
   Future<void> updateMealPlan(Map<String, dynamic> mealPlanData) async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
+      _checkAuthentication();
       
       final userDoc = await _usersCollection.doc(_currentUserId).get();
       String? mealPlanId = userDoc.data()?['current_meal_plan_id'];
@@ -106,7 +107,7 @@ class FirestoreService {
         'updated_at': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Lỗi khi cập nhật kế hoạch ăn: $e');
+      debugPrint('Lỗi khi cập nhật kế hoạch ăn: $e');
       throw e;
     }
   }
@@ -118,9 +119,7 @@ class FirestoreService {
     required Map<String, dynamic> newMeal,
   }) async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
+      _checkAuthentication();
       
       final userDoc = await _usersCollection.doc(_currentUserId).get();
       String? mealPlanId = userDoc.data()?['current_meal_plan_id'];
@@ -192,7 +191,7 @@ class FirestoreService {
       
       throw Exception('Không tìm thấy bữa ăn cần thay thế');
     } catch (e) {
-      print('Lỗi khi thay thế bữa ăn: $e');
+      debugPrint('Lỗi khi thay thế bữa ăn: $e');
       throw e;
     }
   }
@@ -200,17 +199,16 @@ class FirestoreService {
   // Lưu hồ sơ người dùng
   Future<void> saveUserProfile(Map<String, dynamic> userData) async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
+      _checkAuthentication();
       
-      await _usersCollection.doc(_currentUserId).set({
-        'profile': userData,
-        'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await _usersCollection.doc(_currentUserId).set(
+        userData,
+        SetOptions(merge: true),
+      );
       
+      debugPrint('Đã lưu hồ sơ người dùng');
     } catch (e) {
-      print('Lỗi khi lưu hồ sơ người dùng: $e');
+      debugPrint('Lỗi khi lưu hồ sơ người dùng: $e');
       throw e;
     }
   }
@@ -218,15 +216,21 @@ class FirestoreService {
   // Lấy hồ sơ người dùng
   Future<Map<String, dynamic>> getUserProfile() async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
+      _checkAuthentication();
+      
+      final docSnapshot = await _usersCollection.doc(_currentUserId).get();
+      
+      if (docSnapshot.exists) {
+        return docSnapshot.data() ?? {};
+      } else {
+        // Nếu người dùng chưa có hồ sơ, tạo một hồ sơ trống
+        await _usersCollection.doc(_currentUserId).set({
+          'created_at': FieldValue.serverTimestamp(),
+        });
+        return {};
       }
-      
-      final userDoc = await _usersCollection.doc(_currentUserId).get();
-      return userDoc.data()?['profile'] ?? {};
-      
     } catch (e) {
-      print('Lỗi khi lấy hồ sơ người dùng: $e');
+      debugPrint('Lỗi khi lấy hồ sơ người dùng: $e');
       throw e;
     }
   }

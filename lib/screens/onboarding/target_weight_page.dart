@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
-import 'onboarding_screen.dart';
+import '../../styles/onboarding_styles.dart';
 
 class TargetWeightPage extends StatefulWidget {
   const TargetWeightPage({Key? key}) : super(key: key);
@@ -248,7 +248,7 @@ class _TargetWeightPageState extends State<TargetWeightPage> {
                       activeTrackColor: OnboardingStyles.primaryColor,
                     inactiveTrackColor: Colors.grey.shade300,
                       thumbColor: OnboardingStyles.primaryColor,
-                      overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
+                      overlayColor: OnboardingStyles.primaryColor.withAlpha(51),
                       valueIndicatorColor: OnboardingStyles.primaryColor,
                       valueIndicatorTextStyle: const TextStyle(
                         color: Colors.white,

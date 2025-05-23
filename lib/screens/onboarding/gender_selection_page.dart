@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class GenderSelectionPage extends StatefulWidget {
-  const GenderSelectionPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const GenderSelectionPage({
+    Key? key,
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<GenderSelectionPage> createState() => _GenderSelectionPageState();
@@ -26,6 +31,22 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
       }
     });
   }
+  
+  // Update gender
+  void _updateGender(String gender) {
+    // Cập nhật vào UserDataProvider
+    Provider.of<UserDataProvider>(context, listen: false).gender = gender;
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật giới tính thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,40 +64,49 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo và Biểu tượng
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng giới tính
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/gender_icon.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.wc,
-                                size: 100,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng giới tính
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/gender_icon.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.wc,
+                                  size: 100,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.wc,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 40),
                   
                   // Tiêu đề
                   Center(
                     child: Text(
-                      'Giới tính của bạn là gì?',
+                      widget.updateMode ? 'Cập nhật giới tính' : 'Giới tính của bạn là gì?',
                       style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
@@ -97,7 +127,7 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                             });
                             
                             // Cập nhật vào UserDataProvider
-                            Provider.of<UserDataProvider>(context, listen: false).gender = 'Nam';
+                            _updateGender('Nam');
                           },
                           child: Container(
                             decoration: BoxDecoration(
@@ -147,7 +177,7 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                             });
                             
                             // Cập nhật vào UserDataProvider
-                            Provider.of<UserDataProvider>(context, listen: false).gender = 'Nữ';
+                            _updateGender('Nữ');
                           },
                           child: Container(
                             decoration: BoxDecoration(
@@ -196,6 +226,34 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                     style: OnboardingStyles.captionStyle,
                     textAlign: TextAlign.center,
                   ),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

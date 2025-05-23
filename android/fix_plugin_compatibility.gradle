@@ -6,7 +6,11 @@
 def pluginsToFix = [
     'shared_preferences_android',
     'audio_waveforms',
-    'app_settings'
+    'app_settings',
+    'firebase_core',
+    'firebase_auth',
+    'cloud_firestore',
+    'cloud_functions'
     // Thêm các plugin khác nếu cần
 ]
 
@@ -15,19 +19,19 @@ subprojects { subproject ->
     if (pluginsToFix.contains(subproject.name)) {
         subproject.afterEvaluate {
             if (subproject.plugins.hasPlugin('com.android.library') || subproject.plugins.hasPlugin('com.android.application')) {
-                // Thiết lập Java 11 cho plugin này
+                // Thiết lập Java 17 cho plugin này
                 subproject.android {
                     compileOptions {
-                        sourceCompatibility JavaVersion.VERSION_11
-                        targetCompatibility JavaVersion.VERSION_11
+                        sourceCompatibility JavaVersion.VERSION_17
+                        targetCompatibility JavaVersion.VERSION_17
                     }
                 }
                 
-                // Nếu plugin sử dụng Kotlin, đồng bộ Kotlin với Java 11
+                // Nếu plugin sử dụng Kotlin, đồng bộ Kotlin với Java 17
                 if (subproject.plugins.hasPlugin('kotlin-android') || subproject.plugins.hasPlugin('org.jetbrains.kotlin.android')) {
                     subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
                         kotlinOptions {
-                            jvmTarget = "11"
+                            jvmTarget = "17"
                         }
                     }
                 }

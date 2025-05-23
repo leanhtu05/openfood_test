@@ -12,14 +12,16 @@ import 'screens/food_search_screen.dart';
 import 'screens/food_detail_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/tdee_calculator_screen.dart';
-import 'screens/onboarding/age_page.dart';
-import 'screens/onboarding/height_page.dart';
-import 'screens/onboarding/weight_page.dart';
 import 'screens/onboarding/activity_level_page.dart';
-import 'screens/onboarding/goal_page.dart';
 import 'screens/onboarding/weight_gain_pace_page.dart';
 import '../screens/meal_recording_screen.dart';
 import 'screens/diet_plan_screen.dart';
+import 'screens/onboarding/age_selection_page.dart';
+import 'screens/onboarding/height_selection_page.dart';
+import 'screens/onboarding/weight_selection_page.dart';
+import 'screens/onboarding/diet_goal_page.dart';
+import 'screens/settings_screen.dart';
+import 'screens/auth/auth_screen.dart';
 
 
 Map<String, WidgetBuilder> routes = {
@@ -35,15 +37,25 @@ Map<String, WidgetBuilder> routes = {
   FoodRecognitionScreen.routeName: (context) => FoodRecognitionScreen(),
   FoodSearchScreen.routeName: (context) => FoodSearchScreen(),
   '/onboarding': (context) => const OnboardingScreen(),
-  '/age': (context) => const AgePage(),
-  '/height': (context) => const HeightPage(),
-  '/weight': (context) => const WeightPage(),
+  '/age': (context) => const AgeSelectionPage(),
+  '/height': (context) => const HeightSelectionPage(),
+  '/weight': (context) => const WeightSelectionPage(),
   '/activity-level': (context) => const ActivityLevelPage(),
-  '/goal': (context) => const GoalPage(),
+  '/goal': (context) => const DietGoalPage(),
   '/weight-gain-pace': (context) => const WeightGainPacePage(),
   '/tdee-calculator': (context) => const TDEECalculatorScreen(),
   '/meal-recording': (context) => const MealRecordingScreen(initialDate: null),
   '/diet-plan': (context) => const DietPlanScreen(),
+  '/settings': (context) => SettingsScreen(),
+  '/auth': (context) {
+    final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
+    final isLoginMode = args?['isLoginMode'] ?? true;
+    final onAuthSuccess = args?['onAuthSuccess'] as VoidCallback?;
+    return AuthScreen(
+      isLoginMode: isLoginMode,
+      onAuthSuccess: onAuthSuccess,
+    );
+  },
 };
 
 Route<dynamic>? generateRoute(RouteSettings settings) {
@@ -65,6 +77,13 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
   if (settings.name == '/food-search') {
     return MaterialPageRoute(
       builder: (context) => FoodSearchScreen(),
+    );
+  }
+  
+  if (settings.name == '/meal_detail') {
+    final mealId = settings.arguments as String?;
+    return MaterialPageRoute(
+      builder: (context) => MealScreen(mealId: mealId),
     );
   }
   

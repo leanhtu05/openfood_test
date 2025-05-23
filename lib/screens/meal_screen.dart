@@ -6,6 +6,10 @@ import '../utils/constants.dart';
 import '../screens/food_logging_screen.dart';
 
 class MealScreen extends StatefulWidget {
+  final String? mealId;
+
+  const MealScreen({Key? key, this.mealId}) : super(key: key);
+  
   @override
   _MealScreenState createState() => _MealScreenState();
 }
@@ -15,11 +19,27 @@ class _MealScreenState extends State<MealScreen> {
   int _selectedNavIndex = 3;
 
   @override
+  void initState() {
+    super.initState();
+    // Nếu có mealId truyền vào, có thể thực hiện logic lấy dữ liệu tại đây
+    if (widget.mealId != null) {
+      _loadMealData(widget.mealId!);
+    }
+  }
+  
+  // Phương thức mẫu để load dữ liệu bữa ăn từ ID
+  void _loadMealData(String mealId) {
+    // TODO: Implement loading meal data from database or API
+    print('Loading meal data for ID: $mealId');
+    // Có thể sử dụng Provider, Firebase hoặc API khác để lấy dữ liệu
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('DietAI'),
+        title: Text(widget.mealId != null ? 'Chi tiết bữa ăn' : 'DietAI'),
         leading: IconButton(
           icon: Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),

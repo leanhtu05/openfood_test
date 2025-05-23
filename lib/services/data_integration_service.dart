@@ -10,19 +10,20 @@ class DataIntegrationService {
   final FirestoreService _firestoreService = FirestoreService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
-  // Đồng bộ dữ liệu hồ sơ người dùng từ UserDataProvider lên cả Firestore và FastAPI
+  // Đồng bộ dữ liệu hồ sơ người dùng từ UserDataProvider lên Firestore và FastAPI
+  // Chỉ khi đã đăng nhập, nếu không thì trả về true để không hiện lỗi
   Future<bool> syncUserProfileData(UserDataProvider userData) async {
     try {
       // Kiểm tra đăng nhập
       if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể đồng bộ');
-        return false;
+        debugPrint('Chưa đăng nhập, không thể đồng bộ. Chỉ lưu dữ liệu local');
+        return true; // Trả về true vì không phải lỗi, chỉ là không đồng bộ
       }
       
       // Tạo dữ liệu người dùng
       final profileData = _createUserProfileData(userData);
       
-      // Lưu vào Firestore
+      // Lưu vào Firestore khi đã đăng nhập
       await _firestoreService.saveUserProfile(profileData);
       debugPrint('Đã lưu hồ sơ người dùng vào Firestore');
       
@@ -35,7 +36,6 @@ class DataIntegrationService {
       }
       
       // Nếu lưu vào Firestore thành công, coi như đồng bộ thành công
-      // ngay cả khi FastAPI thất bại
       return true;
     } catch (e) {
       debugPrint('Lỗi khi đồng bộ dữ liệu người dùng: $e');
@@ -43,19 +43,20 @@ class DataIntegrationService {
     }
   }
   
-  // Đồng bộ dữ liệu từ Firestore xuống UserDataProvider
+  // Tải dữ liệu hồ sơ từ Firestore vào UserDataProvider
+  // Chỉ tải khi đã đăng nhập, nếu không thì trả về false để dùng dữ liệu local
   Future<bool> loadUserProfileFromFirestore(UserDataProvider userData) async {
     try {
       // Kiểm tra đăng nhập
       if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể tải dữ liệu');
-        return false;
+        debugPrint('Chưa đăng nhập, sẽ sử dụng dữ liệu local');
+        return false; // Trả về false để provider biết cần dùng dữ liệu local
       }
       
       // Lấy dữ liệu từ Firestore
       final profileData = await _firestoreService.getUserProfile();
       if (profileData.isEmpty) {
-        debugPrint('Không có dữ liệu hồ sơ trong Firestore');
+        debugPrint('Không có dữ liệu hồ sơ trong Firestore, sẽ sử dụng dữ liệu local');
         return false;
       }
       
@@ -70,13 +71,13 @@ class DataIntegrationService {
     }
   }
   
-  // Đồng bộ kế hoạch ăn lên Firestore
+  // Đồng bộ kế hoạch ăn lên Firestore chỉ khi đã đăng nhập
   Future<bool> syncMealPlanToFirestore(Map<String, dynamic> mealPlanData) async {
     try {
       // Kiểm tra đăng nhập
       if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể đồng bộ kế hoạch ăn');
-        return false;
+        debugPrint('Chưa đăng nhập, không thể đồng bộ kế hoạch ăn. Chỉ lưu dữ liệu local');
+        return true; // Trả về true vì không phải lỗi, chỉ là không đồng bộ
       }
       
       // Cập nhật lên Firestore
@@ -86,6 +87,43 @@ class DataIntegrationService {
       return true;
     } catch (e) {
       debugPrint('Lỗi khi đồng bộ kế hoạch ăn: $e');
+      return false;
+    }
+  }
+  
+  // Lấy dữ liệu người dùng từ Firestore chỉ khi đã đăng nhập
+  Future<Map<String, dynamic>> getUserProfile() async {
+    try {
+      // Kiểm tra đăng nhập
+      if (_auth.currentUser == null) {
+        debugPrint('Chưa đăng nhập, không thể lấy dữ liệu hồ sơ từ Firestore');
+        return {}; // Trả về map rỗng để provider biết cần dùng dữ liệu local
+      }
+      
+      // Lấy dữ liệu từ Firestore
+      final profileData = await _firestoreService.getUserProfile();
+      return profileData;
+    } catch (e) {
+      debugPrint('Lỗi khi lấy dữ liệu hồ sơ từ Firestore: $e');
+      return {};
+    }
+  }
+  
+  // Lưu dữ liệu người dùng vào Firestore chỉ khi đã đăng nhập
+  Future<bool> saveUserProfile(Map<String, dynamic> profileData) async {
+    try {
+      // Kiểm tra đăng nhập
+      if (_auth.currentUser == null) {
+        debugPrint('Chưa đăng nhập, không thể lưu dữ liệu hồ sơ lên Firestore');
+        return true; // Trả về true để không hiện lỗi, vì đây không phải lỗi thực sự
+      }
+      
+      // Lưu vào Firestore
+      await _firestoreService.saveUserProfile(profileData);
+      debugPrint('Đã lưu hồ sơ người dùng vào Firestore');
+      return true;
+    } catch (e) {
+      debugPrint('Lỗi khi lưu dữ liệu hồ sơ lên Firestore: $e');
       return false;
     }
   }

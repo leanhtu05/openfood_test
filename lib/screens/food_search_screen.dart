@@ -1228,7 +1228,9 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
                   ),
                   SizedBox(height: 4),
                   // Hiển thị các giá trị dinh dưỡng cơ bản dưới dạng chip nhỏ
-                  Row(
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
                     children: [
                       if (food['protein'] != null && food['protein'] > 0)
                         _buildNutrientChip('P: ${food['protein']}g', Colors.blue),

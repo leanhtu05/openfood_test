@@ -23,7 +23,7 @@ class TDEECalculatorScreen extends StatelessWidget {
     );
 
     final bmr = calculator.calculateBMR();
-    final tdee = calculator.calculateTDEE();
+    final tdee = calculator.calculateBaseTDEE();
     final dailyCalories = calculator.calculateDailyCalories();
     final macros = calculator.calculateMacroDistribution();
     

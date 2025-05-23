@@ -11,6 +11,10 @@ import 'package:uuid/uuid.dart';
 import 'package:provider/provider.dart';
 import '../providers/food_provider.dart';
 import '../providers/user_data_provider.dart';
+import '../providers/user_auth_provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../main.dart' as main_app;
 
 // Extension to make text smaller
 extension TextScaling on Text {
@@ -64,7 +68,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   MealPlan? _mealPlan;
-  final FirestoreService _firestoreService = FirestoreService();
+  FirestoreService? _firestoreService;
+  bool _isFirebaseInitialized = false;
   
   final List<String> _daysOfWeek = [
     'T.2', 'T.3', 'T.4', 'T.5', 'T.6', 'T.7', 'CN'
@@ -78,15 +83,172 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   void initState() {
     super.initState();
     
-    // Tải dữ liệu người dùng từ Firestore
-    _loadUserProfile();
+    // Kiểm tra biến từ main.dart
+    if (main_app.isFirebaseInitialized) {
+      print('✅ main.dart: Firebase đã được khởi tạo');
+      _isFirebaseInitialized = true;
+    } else {
+      print('❌ main.dart: Firebase chưa được khởi tạo');
+    }
     
-    // Tải kế hoạch ăn
-    _loadMealPlan();
+    // Khởi tạo Firebase và các service trước
+    _initializeFirebaseServices();
+  }
+  
+  // Hàm khởi tạo Firebase services
+  Future<void> _initializeFirebaseServices() async {
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+    
+    try {
+      // Kiểm tra nếu Firebase đã được khởi tạo
+      Firebase.app();
+      print('✅ Firebase đã được khởi tạo');
+      
+      // Khởi tạo FirestoreService
+      _firestoreService = FirestoreService();
+      _isFirebaseInitialized = true;
+      
+      // Tiếp tục tải dữ liệu
+      _loadUserProfile();
+      _loadMealPlan();
+    } catch (e) {
+      print('❌ Firebase chưa được khởi tạo: $e');
+      
+      // Log lỗi chi tiết
+      _logFirebaseError(e);
+      
+      // Thử khởi tạo Firebase với options tường minh
+      try {
+        print('🔄 Đang thử khởi tạo Firebase với options tường minh...');
+        
+        // Tạo Firebase options tường minh
+        const androidApiKey = 'AIzaSyAgUhHU8wSJgO5MVNy95tMT07NEjzMOfz0'; // Thay thế bằng API key thực
+        const projectId = 'openfood-test';  // Thay thế bằng project ID thực
+        const messagingSenderId = '622073990105';  // Thay thế bằng sender ID thực
+        const appId = '1:622073990105:android:7ca0800c7e00e32ec4909d';  // Thay thế bằng App ID thực
+        
+        // Lấy package name thực tế
+        final packageName = await _getPackageName();
+        print('📱 Package name từ getPackageName: $packageName');
+        
+        // Tạo options
+        final options = FirebaseOptions(
+          apiKey: androidApiKey,
+          appId: appId,
+          messagingSenderId: messagingSenderId,
+          projectId: projectId,
+        );
+        
+        // In ra options để debug
+        print('🔥 Khởi tạo Firebase với options: $options');
+        
+        // Thử khởi tạo Firebase với options
+        await Firebase.initializeApp(options: options);
+        
+        print('✅ Đã khởi tạo Firebase thành công từ DietPlanScreen');
+        
+        // Gán biến toàn cục
+        main_app.isFirebaseInitialized = true;
+        _isFirebaseInitialized = true;
+        
+        // Khởi tạo FirestoreService
+        _firestoreService = FirestoreService();
+        
+        // Tiếp tục tải dữ liệu
+        _loadUserProfile();
+        _loadMealPlan();
+        
+        return;
+      } catch (initError) {
+        print('❌ Không thể khởi tạo Firebase: $initError');
+        _logFirebaseError(initError);
+        
+        // Thử khởi tạo không cần options
+        try {
+          print('🔄 Đang thử khởi tạo Firebase không cần options...');
+          await Firebase.initializeApp();
+          print('✅ Đã khởi tạo Firebase thành công không cần options');
+          
+          // Gán biến toàn cục
+          main_app.isFirebaseInitialized = true;
+          _isFirebaseInitialized = true;
+          
+          // Khởi tạo FirestoreService
+          _firestoreService = FirestoreService();
+          
+          // Tiếp tục tải dữ liệu
+          _loadUserProfile();
+          _loadMealPlan();
+          
+          return;
+        } catch (noOptionsError) {
+          print('❌ Không thể khởi tạo Firebase không cần options: $noOptionsError');
+          _logFirebaseError(noOptionsError);
+        }
+      }
+      
+      setState(() {
+        _isFirebaseInitialized = false;
+        _hasError = true;
+        _errorMessage = 'Firebase chưa được khởi tạo.\n\nNguyên nhân có thể là:\n'
+            '1. Package name không khớp với cấu hình Firebase\n'
+            '2. File google-services.json không đúng hoặc bị thiếu\n'
+            '3. Các options không đúng\n\n'
+            'Chi tiết lỗi: ${_getReadableErrorMessage(e.toString())}';
+        _isLoading = false;
+      });
+      
+      // Tải mock data khi Firebase không khả dụng
+      _loadMockData();
+    }
+  }
+  
+  // Ghi log lỗi Firebase chi tiết
+  void _logFirebaseError(dynamic error) {
+    try {
+      final errorString = error.toString();
+      final stackTrace = StackTrace.current.toString();
+      
+      print('🔴 === FIREBASE ERROR LOG ===');
+      print('🔴 Error: $errorString');
+      print('🔴 Stack trace: $stackTrace');
+      
+      // Lấy thông tin thiết bị và ứng dụng
+      _getPackageName().then((packageName) {
+        print('🔴 Package Name: $packageName');
+        print('🔴 === END ERROR LOG ===');
+      });
+      
+      // Trong thực tế bạn có thể lưu log vào file hoặc gửi lên server
+    } catch (e) {
+      print('Không thể ghi log lỗi: $e');
+    }
+  }
+  
+  // Lấy thông báo lỗi dễ đọc
+  String _getReadableErrorMessage(String errorString) {
+    if (errorString.contains('no Firebase App')) {
+      return 'Firebase chưa được khởi tạo';
+    } else if (errorString.contains('failed to get project configuration')) {
+      return 'Không thể lấy cấu hình Firebase - kiểm tra file google-services.json';
+    } else if (errorString.contains('The application\'s package id')) {
+      return 'Package name không khớp với cấu hình Firebase';
+    } else {
+      // Trả về 100 ký tự đầu tiên của lỗi để tránh quá dài
+      return errorString.length > 100 ? errorString.substring(0, 100) + '...' : errorString;
+    }
   }
   
   // Tải dữ liệu người dùng từ Firestore
   Future<void> _loadUserProfile() async {
+    if (!_isFirebaseInitialized || _firestoreService == null) {
+      print('⚠️ Bỏ qua _loadUserProfile vì Firebase chưa được khởi tạo');
+      return;
+    }
+    
     try {
       final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
       
@@ -103,6 +265,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   }
   
   Future<void> _loadMealPlan() async {
+    if (!_isFirebaseInitialized || _firestoreService == null) {
+      print('⚠️ Firebase chưa được khởi tạo, chuyển sang dùng mock data');
+      _loadMockData();
+      return;
+    }
+    
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -112,28 +280,59 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     try {
       Map<String, dynamic> result;
       
+      // Check if we're authenticated
+      final authProvider = Provider.of<UserAuthProvider>(context, listen: false);
+      if (!authProvider.isAuthenticated) {
+        throw Exception('Người dùng chưa đăng nhập');
+      }
+      
       // Lấy dữ liệu từ Firestore
       try {
-        result = await _firestoreService.getWeeklyMealPlan();
+        result = await _firestoreService!.getWeeklyMealPlan();
         print('Đã tải kế hoạch từ Firestore');
         
         // Đồng bộ kế hoạch ăn đã lấy được với API và Firestore
         _syncMealPlanData(result);
       } catch (firestoreError) {
-        print('Lỗi Firestore: $firestoreError - Chuyển sang dùng mock data');
+        print('Lỗi Firestore: $firestoreError - Chuyển sang dùng API');
         
         // Nếu không thể lấy từ Firestore, thử lấy từ API
         try {
+          // Kiểm tra kết nối API
           final isConnected = await MealPlanApiService.checkApiConnection();
           
           if (isConnected) {
-            // Get real API data
+            // Kiểm tra tình trạng AI
+            final aiStatus = await MealPlanApiService.checkAIAvailability();
+            final useAI = aiStatus['ai_available'] ?? false;
+            
+            // Get user nutrition goals or use defaults
+            final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+            final caloriesTarget = userDataProvider.tdeeCalories > 0 
+                ? userDataProvider.tdeeCalories 
+                : 2000.0;
+            final proteinTarget = userDataProvider.tdeeProtein > 0 
+                ? userDataProvider.tdeeProtein 
+                : 120.0;
+            final fatTarget = userDataProvider.tdeeFat > 0 
+                ? userDataProvider.tdeeFat 
+                : 65.0;
+            final carbsTarget = userDataProvider.tdeeCarbs > 0 
+                ? userDataProvider.tdeeCarbs
+                : 250.0;
+            
+            // Lấy các tùy chọn dinh dưỡng cá nhân
+            final preferences = userDataProvider.preferences;
+            final allergies = userDataProvider.allergies;
+            final cuisineStyle = userDataProvider.cuisineStyle;
+            
+            // Sử dụng demo API endpoint để tránh tác động đến API chính
             result = await MealPlanApiService.generateWeeklyMealPlan(
-              caloriesTarget: 2000,
-              proteinTarget: 120,
-              fatTarget: 65,
-              carbsTarget: 250,
-              useAI: true,
+              caloriesTarget: caloriesTarget,
+              proteinTarget: proteinTarget,
+              fatTarget: fatTarget,
+              carbsTarget: carbsTarget,
+              useAI: useAI,
             );
             
             // Đồng bộ kế hoạch ăn mới với Firestore
@@ -157,33 +356,43 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       print('Error loading meal plan: $e');
       
       // Try to load mock data as fallback
-      try {
-        final mockResult = await MealPlanApiService.getMockMealPlan();
-        if (mounted) {
-          setState(() {
-            _mealPlan = MealPlan.fromJson(mockResult);
-            _isLoading = false;
-          });
-        }
-      } catch (mockError) {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _hasError = true;
-            _errorMessage = 'Không thể tải kế hoạch thực đơn: $e';
-          });
-        }
+      _loadMockData();
+    }
+  }
+  
+  // Load mock data when Firebase is not available
+  Future<void> _loadMockData() async {
+    try {
+      final mockResult = await MealPlanApiService.getMockMealPlan();
+      if (mounted) {
+        setState(() {
+          _mealPlan = MealPlan.fromJson(mockResult);
+          _isLoading = false;
+        });
+      }
+    } catch (mockError) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Không thể tải dữ liệu mẫu: $mockError';
+        });
       }
     }
   }
   
   // Đồng bộ dữ liệu kế hoạch ăn với Firestore
   Future<void> _syncMealPlanData(Map<String, dynamic> mealPlanData) async {
+    if (!_isFirebaseInitialized || _firestoreService == null) {
+      print('⚠️ Bỏ qua _syncMealPlanData vì Firebase chưa được khởi tạo');
+      return;
+    }
+    
     try {
-      await _firestoreService.updateMealPlan(mealPlanData);
-      print('Đã đồng bộ kế hoạch ăn lên Firestore');
+      await _firestoreService!.updateMealPlan(mealPlanData);
+      print('✅ Đã đồng bộ kế hoạch ăn lên Firestore');
     } catch (e) {
-      print('Lỗi khi đồng bộ kế hoạch ăn lên Firestore: $e');
+      print('❌ Lỗi khi đồng bộ kế hoạch ăn lên Firestore: $e');
     }
   }
 
@@ -200,13 +409,28 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               ? _buildLoadingState()
               : _hasError 
                   ? _buildErrorState() 
-                  : _buildContent(),
+                  : _buildBody(),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _loadMealPlan,
-          backgroundColor: Colors.green,
-          child: Icon(Icons.refresh),
-          tooltip: 'Tải lại',
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton(
+              heroTag: "checkFirestore",
+              onPressed: _checkFirestoreData,
+              backgroundColor: Colors.blue,
+              mini: true,
+              child: Icon(Icons.data_usage),
+              tooltip: 'Kiểm tra dữ liệu Firebase',
+            ),
+            SizedBox(height: 8),
+            FloatingActionButton(
+              heroTag: "reload",
+              onPressed: _loadMealPlan,
+              backgroundColor: Colors.green,
+              child: Icon(Icons.refresh),
+              tooltip: 'Tải lại',
+            ),
+          ],
         ),
       ),
     );
@@ -232,18 +456,55 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         children: [
           Icon(Icons.error_outline, color: Colors.red, size: 48),
           SizedBox(height: 16),
-          Text(_errorMessage, textAlign: TextAlign.center),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Text(_errorMessage, textAlign: TextAlign.center),
+          ),
+          SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: _loadMealPlan,
+                child: Text('Thử lại'),
+              ),
+              SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: _checkFirebaseConnection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                ),
+                child: Text('Kiểm tra Firebase'),
+              ),
+            ],
+          ),
           SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _loadMealPlan,
-            child: Text('Thử lại'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: _checkPackageName,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueGrey,
+                ),
+                child: Text('Kiểm tra Package Name'),
+              ),
+              SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: _checkFirestoreData,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                ),
+                child: Text('Kiểm tra dữ liệu Firestore'),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
   
-  Widget _buildContent() {
+  Widget _buildBody() {
     if (_mealPlan == null) {
       return Center(child: Text('Không có dữ liệu kế hoạch thực đơn'));
     }
@@ -661,50 +922,108 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
     
     try {
-      // Chuyển sang sử dụng Firestore để thay thế bữa ăn
-      if (_mealPlan != null) {
-        final selectedDay = _englishDays[_selectedDayIndex];
-        
-        // Tạo một bữa ăn mới (ở đây bạn có thể tạo hoặc lấy từ API)
-        // Ví dụ đơn giản: Sử dụng API để tạo một bữa ăn mới
-        final mealData = await MealPlanApiService.generateSingleMeal(
-          mealType: mealType,
-          caloriesTarget: 500, // Mục tiêu calo cho bữa ăn mới
-        );
-        
-        // Thay thế bữa ăn trong Firestore
-        final updatedPlan = await _firestoreService.replaceMeal(
-          day: selectedDay,
-          mealType: mealType,
-          newMeal: mealData,
-        );
-        
-        // Cập nhật UI với kế hoạch mới
-        setState(() {
-          _mealPlan = MealPlan.fromJson(updatedPlan);
-        });
+      // Check if we're authenticated
+      final authProvider = Provider.of<UserAuthProvider>(context, listen: false);
+      if (!authProvider.isAuthenticated) {
+        throw Exception('Người dùng chưa đăng nhập');
+      }
+      
+      // Lấy ngày đang chọn
+      final selectedDay = _englishDays[_selectedDayIndex];
+      final selectedDayName = _convertToAPIDay(selectedDay);
+      
+      // Get user nutrition goals or use defaults
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final caloriesTarget = userDataProvider.tdeeCalories > 0 
+          ? userDataProvider.tdeeCalories 
+          : 2000.0;
+      final proteinTarget = userDataProvider.tdeeProtein > 0 
+          ? userDataProvider.tdeeProtein 
+          : 120.0;
+      final fatTarget = userDataProvider.tdeeFat > 0 
+          ? userDataProvider.tdeeFat 
+          : 65.0;
+      final carbsTarget = userDataProvider.tdeeCarbs > 0 
+          ? userDataProvider.tdeeCarbs
+          : 250.0;
+      
+      // Chuẩn bị request data
+      final replaceRequest = {
+        'day_of_week': selectedDayName,
+        'calories_target': caloriesTarget,
+        'protein_target': proteinTarget,
+        'fat_target': fatTarget,
+        'carbs_target': carbsTarget,
+      };
+      
+      // Kiểm tra tình trạng AI
+      final aiStatus = await MealPlanApiService.checkAIAvailability();
+      final useAI = aiStatus['ai_available'] ?? false;
+      
+      // Các tùy chọn cá nhân
+      final preferences = userDataProvider.preferences;
+      final allergies = userDataProvider.allergies;
+      final cuisineStyle = userDataProvider.cuisineStyle;
+      
+      // Sử dụng phương thức replaceDayMealPlan thay vì replaceDay
+      final response = await MealPlanApiService.replaceDayMealPlan(
+        day: selectedDayName,
+        caloriesTarget: caloriesTarget,
+        proteinTarget: proteinTarget,
+        fatTarget: fatTarget,
+        carbsTarget: carbsTarget,
+      );
+      
+      if (response != null && response.containsKey('day_meal_plan')) {
+        // Cập nhật meal plan trong Firestore
+        if (_mealPlan != null) {
+          final updatedPlan = Map<String, dynamic>.from(_mealPlan!.toJson());
+          updatedPlan['weekly_plan'][selectedDay] = response['day_meal_plan'];
+          
+          // Cập nhật Firestore
+          await _firestoreService!.updateMealPlan(updatedPlan);
+          
+          // Cập nhật UI
+          setState(() {
+            _mealPlan = MealPlan.fromJson(updatedPlan);
+          });
+        }
         
         // Thông báo thành công
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã thay thế $mealType thành công!'),
+            content: Text('Đã thay thế $mealType thành công${useAI ? " với AI" : ""}!'),
             backgroundColor: Colors.green,
           ),
         );
+      } else {
+        throw Exception('Không nhận được dữ liệu thay thế hợp lệ');
       }
     } catch (e) {
       print('Lỗi khi thay thế bữa ăn: $e');
       
-      // Hiển thị lỗi và tải lại
+      // Hiển thị lỗi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Không thể thay thế bữa ăn. Đang tải lại...'),
+          content: Text('Không thể thay thế bữa ăn: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
-      
-      // Tải lại kế hoạch
-      _loadMealPlan();
+    }
+  }
+  
+  // Hàm chuyển đổi định dạng ngày sang định dạng API
+  String _convertToAPIDay(String day) {
+    // API sử dụng định dạng "Thứ 2", "Thứ 3", v.v.
+    switch (day) {
+      case 'Monday': return 'Thứ 2';
+      case 'Tuesday': return 'Thứ 3';
+      case 'Wednesday': return 'Thứ 4';
+      case 'Thursday': return 'Thứ 5';
+      case 'Friday': return 'Thứ 6';
+      case 'Saturday': return 'Thứ 7';
+      case 'Sunday': return 'Chủ Nhật';
+      default: return day;
     }
   }
   
@@ -758,5 +1077,379 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ),
       ),
     );
+  }
+
+  // Hàm kiểm tra package name
+  Future<void> _checkPackageName() async {
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+      
+      // In ra thông tin package name và các thông tin quan trọng khác
+      print('🔍 Đang kiểm tra thông tin ứng dụng...');
+      
+      // Lấy package name từ nhiều nguồn khác nhau để so sánh
+      final packageInfoPackageName = await _getPackageName();
+      print('📱 Package Name từ PackageInfo: $packageInfoPackageName');
+      
+      // Lấy package name từ toString() của context
+      final contextPackageName = context.toString().contains('package:') 
+          ? context.toString().split('package:')[1].split('/')[0]
+          : 'không xác định';
+      print('📱 Package Name từ context: $contextPackageName');
+      
+      // So sánh các package name
+      final packageNameMismatch = packageInfoPackageName != contextPackageName && 
+                                 packageInfoPackageName != 'unknown' && 
+                                 contextPackageName != 'không xác định';
+      
+      if (packageNameMismatch) {
+        print('⚠️ CẢNH BÁO: Phát hiện có nhiều package name khác nhau!');
+        print('⚠️ Điều này có thể gây lỗi khi khởi tạo Firebase.');
+      }
+      
+      // Kiểm tra Firebase
+      try {
+        final app = Firebase.app();
+        print('🔥 Firebase app name: ${app.name}');
+        print('🔥 Firebase options: ${app.options}');
+        print('🔥 Firebase project ID: ${app.options.projectId}');
+        print('🔥 Firebase Google app ID: ${app.options.appId}');
+        
+        // Kiểm tra xem options đã đúng chưa
+        final String firebaseAppId = app.options.appId;
+        final String firebaseProjectId = app.options.projectId;
+        
+        final bool isCorrectConfig = firebaseAppId.contains('622073990105') && 
+                                    (firebaseProjectId == 'openfood-test' || 
+                                     firebaseProjectId == 'openfood-test-d26ae');
+        
+        // Hiển thị thông tin
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Package Name: $packageInfoPackageName\n'
+              'Context Package: $contextPackageName\n'
+              'Firebase cấu hình: ${isCorrectConfig ? 'Đúng ✅' : 'Sai ❌'}\n'
+              'Project ID: ${app.options.projectId}',
+            ),
+            backgroundColor: isCorrectConfig ? Colors.green : Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      } catch (e) {
+        print('❌ Firebase chưa được khởi tạo: $e');
+        
+        // Tạo Firebase options tường minh
+        const androidApiKey = 'AIzaSyAgUhHU8wSJgO5MVNy95tMT07NEjzMOfz0';
+        const projectId = 'openfood-test';
+        const messagingSenderId = '622073990105';
+        const appId = '1:622073990105:android:7ca0800c7e00e32ec4909d';
+        
+        // Tạo options với package name đúng
+        final options = FirebaseOptions(
+          apiKey: androidApiKey,
+          appId: appId,
+          messagingSenderId: messagingSenderId,
+          projectId: projectId,
+          // Fix package name nếu cần
+          androidClientId: packageInfoPackageName.isEmpty || packageInfoPackageName == 'unknown' 
+              ? null 
+              : '${packageInfoPackageName}.android_client',
+        );
+        
+        // Hiển thị options sẽ sử dụng
+        print('🔥 Sẽ khởi tạo Firebase với options: $options');
+        
+        // Try initialize Firebase
+        try {
+          await Firebase.initializeApp(options: options);
+          print('✅ Đã khởi tạo Firebase thành công với options tường minh!');
+          
+          // Reload everything
+          _initializeFirebaseServices();
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã khởi tạo Firebase thành công!\nĐang tải lại dữ liệu...'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } catch (initError) {
+          print('❌ Không thể khởi tạo Firebase với options: $initError');
+          
+          // Thử khởi tạo không cần options
+          try {
+            await Firebase.initializeApp();
+            print('✅ Đã khởi tạo Firebase thành công không cần options!');
+            
+            // Reload everything
+            _initializeFirebaseServices();
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Đã khởi tạo Firebase thành công!\nĐang tải lại dữ liệu...'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          } catch (noOptionsError) {
+            print('❌ Không thể khởi tạo Firebase không cần options: $noOptionsError');
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Package Name: $packageInfoPackageName\n'
+                  'Context Package: $contextPackageName\n'
+                  'Lỗi: Không thể khởi tạo Firebase\n'
+                  'Lỗi cụ thể: ${_getReadableErrorMessage(noOptionsError.toString())}',
+                ),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 10),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Lỗi khi kiểm tra package name: $e');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi kiểm tra: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  
+  // Hàm lấy package name (sử dụng package_info_plus)
+  Future<String> _getPackageName() async {
+    try {
+      // Get package info
+      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      
+      // Print all package information for debugging
+      print('📦 App Name: ${packageInfo.appName}');
+      print('📦 Package Name: ${packageInfo.packageName}');
+      print('📦 Version: ${packageInfo.version}');
+      print('📦 Build Number: ${packageInfo.buildNumber}');
+      
+      return packageInfo.packageName;
+    } catch (e) {
+      print('❌ Lỗi khi lấy package info: $e');
+      return 'unknown';
+    }
+  }
+
+  // Hàm kiểm tra kết nối Firebase
+  Future<void> _checkFirebaseConnection() async {
+    try {
+      // Kiểm tra lại xem Firebase đã được khởi tạo chưa
+      try {
+        Firebase.app();
+        print('✅ Firebase.app() hoạt động');
+        
+        if (_firestoreService == null) {
+          _firestoreService = FirestoreService();
+          _isFirebaseInitialized = true;
+          print('✅ Đã khởi tạo FirestoreService');
+        }
+        
+        // Thử gọi một phương thức của FirestoreService để kiểm tra kết nối
+        try {
+          final userProfile = await _firestoreService!.getUserProfile();
+          print('✅ Đã kết nối thành công với Firebase');
+          print('Firebase user profile: ${userProfile.toString()}');
+          
+          setState(() {
+            _hasError = false;
+            _isLoading = false;
+          });
+          
+          // Tải lại dữ liệu nếu kiểm tra thành công
+          _loadMealPlan();
+        } catch (e) {
+          print('❌ Lỗi khi lấy thông tin người dùng: $e');
+          
+          // Thử kiểm tra cấu hình Firebase
+          try {
+            await _checkPackageName();
+          } catch (checkError) {
+            print('❌ Lỗi khi kiểm tra package name: $checkError');
+          }
+          
+          throw e;
+        }
+      } catch (e) {
+        print('❌ Firebase chưa được khởi tạo hoặc cấu hình chưa đúng: $e');
+        
+        // Thử khởi tạo lại Firebase
+        try {
+          print('🔄 Đang thử khởi tạo lại Firebase...');
+          await Firebase.initializeApp();
+          print('✅ Đã khởi tạo Firebase thành công');
+          
+          // Gán biến toàn cục
+          main_app.isFirebaseInitialized = true;
+          _isFirebaseInitialized = true;
+          
+          // Khởi tạo FirestoreService và tải lại dữ liệu
+          _firestoreService = FirestoreService();
+          _loadMealPlan();
+          
+          setState(() {
+            _hasError = false;
+            _isLoading = false;
+          });
+          
+          return;
+        } catch (initError) {
+          print('❌ Không thể khởi tạo Firebase: $initError');
+          throw initError;
+        }
+      }
+    } catch (e) {
+      print('❌ Lỗi kết nối Firebase: $e');
+      setState(() {
+        _hasError = true;
+        _errorMessage = 'Không thể kết nối với Firebase: ${_getReadableErrorMessage(e.toString())}';
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Hàm kiểm tra dữ liệu Firestore
+  Future<void> _checkFirestoreData() async {
+    try {
+      // Kiểm tra xem Firebase đã được khởi tạo chưa
+      try {
+        final app = Firebase.app();
+        print('✅ Firebase.app() hoạt động, app name: ${app.name}');
+        
+        if (_firestoreService == null) {
+          _firestoreService = FirestoreService();
+          _isFirebaseInitialized = true;
+          print('✅ Đã khởi tạo FirestoreService');
+        }
+        
+        // Kiểm tra trạng thái đăng nhập
+        final authProvider = Provider.of<UserAuthProvider>(context, listen: false);
+        final isLoggedIn = authProvider.isAuthenticated;
+        print('👤 Trạng thái đăng nhập: ${isLoggedIn ? "Đã đăng nhập" : "Chưa đăng nhập"}');
+        
+        // Kiểm tra nếu đã đăng nhập thì thử lấy dữ liệu người dùng
+        Map<String, dynamic> userData = {};
+        if (isLoggedIn) {
+          try {
+            userData = await _firestoreService!.getUserProfile();
+            print('✅ Đã lấy được dữ liệu người dùng từ Firestore');
+            print('Dữ liệu: ${userData.toString()}');
+          } catch (e) {
+            print('❌ Lỗi khi lấy dữ liệu người dùng: $e');
+            userData = {'error': e.toString()};
+          }
+        }
+        
+        // Thử lấy dữ liệu kế hoạch ăn
+        Map<String, dynamic> mealPlanData = {};
+        try {
+          if (isLoggedIn) {
+            mealPlanData = await _firestoreService!.getWeeklyMealPlan();
+            print('✅ Đã lấy được dữ liệu kế hoạch ăn từ Firestore');
+            print('Dữ liệu: ${mealPlanData.toString().substring(0, mealPlanData.toString().length > 200 ? 200 : mealPlanData.toString().length)}...');
+          } else {
+            mealPlanData = {'error': 'Chưa đăng nhập nên không thể lấy kế hoạch ăn'};
+          }
+        } catch (e) {
+          print('❌ Lỗi khi lấy dữ liệu kế hoạch ăn: $e');
+          mealPlanData = {'error': e.toString()};
+        }
+        
+        // Hiển thị kết quả
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Trạng thái dữ liệu Firebase'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Firebase đã khởi tạo: ${_isFirebaseInitialized ? "✅" : "❌"}'),
+                  SizedBox(height: 8),
+                  Text('Đã đăng nhập: ${isLoggedIn ? "✅" : "❌"}'),
+                  SizedBox(height: 16),
+                  
+                  Text('Dữ liệu người dùng:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (userData.isEmpty)
+                    Text('Không có dữ liệu', style: TextStyle(color: Colors.red))
+                  else if (userData.containsKey('error'))
+                    Text('Lỗi: ${userData['error']}', style: TextStyle(color: Colors.red))
+                  else
+                    ...userData.entries.take(5).map((e) => Padding(
+                      padding: const EdgeInsets.only(left: 16.0, top: 4.0),
+                      child: Text('${e.key}: ${e.value}'),
+                    )),
+                    
+                  SizedBox(height: 16),
+                  Text('Dữ liệu kế hoạch ăn:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (mealPlanData.isEmpty)
+                    Text('Không có dữ liệu', style: TextStyle(color: Colors.red))
+                  else if (mealPlanData.containsKey('error'))
+                    Text('Lỗi: ${mealPlanData['error']}', style: TextStyle(color: Colors.red))
+                  else
+                    Text('Đã nhận được dữ liệu kế hoạch ăn từ Firebase', style: TextStyle(color: Colors.green)),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Đóng'),
+              ),
+              if (isLoggedIn && (_mealPlan == null || mealPlanData.isNotEmpty))
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _loadMealPlan();
+                  },
+                  child: Text('Tải kế hoạch ăn'),
+                ),
+            ],
+          ),
+        );
+      } catch (e) {
+        print('❌ Firebase chưa được khởi tạo: $e');
+        
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Lỗi Firebase'),
+            content: Text('Firebase chưa được khởi tạo hoặc có lỗi: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Đóng'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _checkFirebaseConnection();
+                },
+                child: Text('Kiểm tra kết nối'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Lỗi chung khi kiểm tra dữ liệu Firestore: $e');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi kiểm tra: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 } 

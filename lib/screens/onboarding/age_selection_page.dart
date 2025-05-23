@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class AgeSelectionPage extends StatefulWidget {
-  const AgeSelectionPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const AgeSelectionPage({
+    Key? key, 
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<AgeSelectionPage> createState() => _AgeSelectionPageState();
@@ -28,6 +33,16 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
   // Lưu dữ liệu vào provider
   void _saveAge(int age) {
     Provider.of<UserDataProvider>(context, listen: false).setAge(age);
+    
+    // If in update mode, show a success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật tuổi thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
   
   @override
@@ -46,40 +61,49 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo và Biểu tượng
-                  Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng bánh sinh nhật
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/birthday_cake.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.cake,
-                                size: 80,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng bánh sinh nhật
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/birthday_cake.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.cake,
+                                  size: 80,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.cake,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 30),
                   
                   // Tiêu đề
                   Center(
                     child: Text(
-                      'Bạn bao nhiêu tuổi?',
+                      widget.updateMode ? 'Cập nhật tuổi của bạn' : 'Bạn bao nhiêu tuổi?',
                       style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
@@ -229,6 +253,34 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
                       ),
                     ],
                   ),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

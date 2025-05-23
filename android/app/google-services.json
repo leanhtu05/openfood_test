@@ -12,7 +12,20 @@
           "package_name": "com.example.openfood_test"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "77790054986-n09hs5hmcr08pkp1d67jfbj8o1575t2i.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.openfood_test",
+            "certificate_hash": "14d93bd3c31b7a429de9ca7ccf39da18dc487239"
+          }
+        },
+        {
+          "client_id": "77790054986-k5k59ridlb5sp4v8tcr7emfec8kgt5d3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyChQQ4XTIY5lbgIrQJsXcy7Wp_0Y_uQyQw"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "77790054986-k5k59ridlb5sp4v8tcr7emfec8kgt5d3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

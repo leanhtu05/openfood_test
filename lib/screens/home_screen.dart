@@ -24,6 +24,10 @@ import '../models/food_entry.dart';
 import '../screens/meal_recording_screen.dart';
 import '../screens/diet_plan_screen.dart';
 import '../providers/user_data_provider.dart';
+import 'profile_screen.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -319,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: AppColors.primaryLight.withOpacity(0.2),
               shape: BoxShape.circle,
@@ -327,10 +331,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Icon(
               Icons.eco,
               color: AppColors.primary,
-              size: 24,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Flexible(
             child: Text(
               'DietAI',
@@ -344,6 +348,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
       actions: [
+        // Thêm nút kiểm tra Firebase
+        IconButton(
+          icon: Icon(Icons.verified_user, color: AppColors.primary),
+          tooltip: 'Kiểm tra trạng thái Firebase',
+          onPressed: () {
+            _checkFirebaseDataStatus();
+          },
+        ),
         // Thêm nút Diet Plan
         IconButton(
           icon: Icon(Icons.restaurant_menu, color: AppColors.primary),
@@ -360,10 +372,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.refresh, color: Colors.white, size: 16),
                     SizedBox(width: 8),
-                    Text('Đang làm mới dữ liệu...'),
+                    Flexible(
+                      child: Text('Đang làm mới dữ liệu...'),
+                    ),
                   ],
                 ),
                 duration: Duration(seconds: 1),
@@ -891,7 +906,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Icon ghi lại hiển thị MealRecordingScreen
         return MealRecordingScreen(initialDate: _selectedDate);
       case 3:
+        return _buildHomeContent();
       case 4:
+        return ProfileScreen();
       default:
         return _buildHomeContent();
     }
@@ -1310,6 +1327,177 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
     
     print('Đã cập nhật thông tin nước: $_consumedWater / $_waterGoal ml');
+  }
+
+  void _checkFirebaseDataStatus() {
+    // Lấy các provider cần thiết
+    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+    final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+    final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+    
+    try {
+      // Kiểm tra trạng thái Firebase trực tiếp
+      bool isFirebaseInitialized = false;
+      bool isAuthenticated = false;
+      User? currentUser;
+      String? userId = "Chưa đăng nhập";
+      
+      try {
+        // Kiểm tra Firebase đã khởi tạo chưa
+        final app = Firebase.app();
+        isFirebaseInitialized = true;
+        print('Firebase app name: ${app.name}');
+        
+        // Kiểm tra trạng thái đăng nhập
+        currentUser = FirebaseAuth.instance.currentUser;
+        isAuthenticated = currentUser != null;
+        userId = currentUser?.uid;
+        
+        print('Firebase authenticated: $isAuthenticated');
+        if (isAuthenticated) {
+          print('User ID: $userId');
+          print('Email: ${currentUser?.email}');
+          print('Display name: ${currentUser?.displayName}');
+          print('Email verified: ${currentUser?.emailVerified}');
+          print('Authentication providers: ${currentUser?.providerData.map((p) => p.providerId).join(', ')}');
+        }
+      } catch (e) {
+        print('Error checking Firebase: $e');
+      }
+      
+      // Đồng bộ với UserDataProvider
+      bool providerFirebaseAvailable = userDataProvider.isFirebaseAvailable();
+      bool providerAuthenticated = userDataProvider.isUserAuthenticated();
+      String providerUserId = userDataProvider.getCurrentUserId() ?? "Chưa đăng nhập";
+      DateTime? lastSync = userDataProvider.lastSyncTime;
+      
+      // Các thông tin người dùng
+      final name = userDataProvider.name;
+      final gender = userDataProvider.gender;
+      final age = userDataProvider.age;
+      final heightCm = userDataProvider.heightCm;
+      final weightKg = userDataProvider.weightKg;
+      
+      // Hiển thị dialog với thông tin
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                isFirebaseInitialized ? Icons.cloud_done : Icons.cloud_off,
+                color: isFirebaseInitialized ? Colors.green : Colors.red,
+              ),
+              SizedBox(width: 8),
+              Text('Trạng thái Firebase')
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Firebase đã khởi tạo: ${isFirebaseInitialized ? "✅" : "❌"}'),
+                Text('Firebase đã đăng nhập: ${isAuthenticated ? "✅" : "❌"}'),
+                Text('Firebase user ID: $userId'),
+                if (isAuthenticated && currentUser != null) ...[
+                  Container(
+                    width: double.infinity,
+                    child: Text(
+                      'Email: ${currentUser.email ?? "Không có email"}',
+                      softWrap: true,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    width: double.infinity,
+                    child: Text(
+                      'Họ tên: ${currentUser.displayName ?? "Chưa cập nhật họ tên"}',
+                      softWrap: true,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+                
+                Divider(),
+                
+                Text('Provider Firebase khả dụng: ${providerFirebaseAvailable ? "✅" : "❌"}'),
+                Text('Provider đã đăng nhập: ${providerAuthenticated ? "✅" : "❌"}'),
+                Text('Provider user ID: $providerUserId'),
+                Text('Đồng bộ lần cuối: ${lastSync?.toString() ?? "Chưa đồng bộ"}'),
+                
+                Divider(),
+                
+                Text('Thông tin người dùng:', style: TextStyle(fontWeight: FontWeight.bold)),
+                if (name.isNotEmpty) Text('Tên: $name'),
+                Text('Giới tính: $gender'),
+                Text('Tuổi: $age'),
+                Text('Chiều cao: $heightCm cm'),
+                Text('Cân nặng: $weightKg kg'),
+                
+                Divider(),
+                Text('Thông tin dinh dưỡng:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Mục tiêu calo: ${_caloriesGoal} kcal'),
+                Text('Đã tiêu thụ: ${_consumedCalories} kcal'),
+                Text('Mục tiêu nước: ${waterProvider.waterGoal} ml'),
+                Text('Đã uống: ${waterProvider.totalWaterToday} ml'),
+                
+                Divider(),
+                Text('Thông tin bài tập:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Số bài tập hôm nay: ${exerciseProvider.selectedDateExercises.length}'),
+                Text('Tổng calo đốt: ${totalExerciseCalories} kcal'),
+                
+                Divider(),
+                Text('Thông tin món ăn:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Số món ăn hôm nay: ${foodProvider.todayEntries.length}'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Đóng'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Tải lại dữ liệu từ Firebase
+                userDataProvider.loadFromFirestore().then((_) {
+                  // Đồng bộ dữ liệu lên Firebase
+                  userDataProvider.sendToApi();
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Đã đồng bộ dữ liệu với Firebase'),
+                      backgroundColor: Colors.green,
+                    )
+                  );
+                  Navigator.of(context).pop();
+                }).catchError((error) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Lỗi đồng bộ: $error'),
+                      backgroundColor: Colors.red,
+                    )
+                  );
+                  Navigator.of(context).pop();
+                });
+              },
+              child: Text('Đồng bộ lại'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      // Hiển thị lỗi nếu có
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi kiểm tra Firebase: $e'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 }
 
