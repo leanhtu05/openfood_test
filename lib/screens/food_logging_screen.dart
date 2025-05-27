@@ -32,6 +32,7 @@ import '../services/voice_recording_service.dart';
 import '../services/barcode_scanner_service.dart';
 import '../services/food_entry_service.dart';
 import '../services/food_ai_service.dart';
+import '../providers/user_data_provider.dart';
 
 // Enum cho trạng thái nhận diện thực phẩm
 enum RecognitionStatus {
@@ -48,11 +49,13 @@ class FoodLoggingScreen extends StatefulWidget {
   final String? initialDate;
   // Thêm tham số initialMealType để nhận loại bữa ăn được chọn
   final String? initialMealType;
+  final VoidCallback? onDataChanged;
   
   const FoodLoggingScreen({
     Key? key, 
     this.initialDate,
     this.initialMealType,
+    this.onDataChanged,
   }) : super(key: key);
 
   @override
@@ -361,6 +364,10 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       );
       
       foodProvider.updateHomeScreenWithNewEntry(context, entry);
+      
+      syncCaloriesAndGoalsAfterAdd(context);
+      
+      if (widget.onDataChanged != null) widget.onDataChanged!();
       
       Navigator.pop(context, {
         'foodEntriesUpdated': true,
@@ -732,5 +739,17 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
+  }
+
+  // Sau khi thêm món ăn thành công, cập nhật lại calo và mục tiêu nếu HomeScreen đang mounted
+  void syncCaloriesAndGoalsAfterAdd(BuildContext context) {
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      foodProvider.notifyListeners();
+      userDataProvider.notifyListeners();
+    } catch (e) {
+      print('Lỗi khi đồng bộ calo và mục tiêu: $e');
+    }
   }
 } 

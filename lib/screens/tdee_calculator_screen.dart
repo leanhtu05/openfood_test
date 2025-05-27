@@ -251,6 +251,20 @@ class TDEECalculatorScreen extends StatelessWidget {
                       fat: macros['fat']!,
                     );
                     
+                    // Cập nhật mục tiêu dinh dưỡng
+                    userData.updateNutritionGoals({
+                      'calories': dailyCalories.toDouble(),
+                      'protein': macros['protein']!,
+                      'carbs': macros['carbs']!,
+                      'fat': macros['fat']!,
+                    });
+                    
+                    // Đảm bảo lưu thông tin
+                    await userData.saveUserData();
+                    
+                    // Đồng bộ với Firestore nếu đã đăng nhập
+                    await userData.sendToApi();
+                    
                     // Đảm bảo onboarding đã hoàn thành
                     await OnboardingService.setOnboardingComplete();
                     

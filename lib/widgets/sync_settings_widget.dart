@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_data_provider.dart';
-import '../services/user_profile_api.dart';
+import '../services/api_service.dart';
 
 class SyncSettingsWidget extends StatelessWidget {
   const SyncSettingsWidget({Key? key}) : super(key: key);
@@ -85,7 +85,7 @@ class SyncSettingsWidget extends StatelessWidget {
                 
                 // Thông tin về lần đồng bộ gần nhất
                 Text(
-                  'API URL: ${UserProfileApi.getApiUrl()}',
+                  'API URL: ${ApiService.userProfileUrl}',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 

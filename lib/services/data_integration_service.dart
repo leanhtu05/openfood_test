@@ -3,207 +3,178 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firestore_service.dart';
-import 'user_profile_api.dart';
 import '../providers/user_data_provider.dart';
+import 'api_service.dart';
 
+/// Service to integrate data between local storage, Firestore, and API
 class DataIntegrationService {
-  final FirestoreService _firestoreService = FirestoreService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService = FirestoreService();
   
-  // Đồng bộ dữ liệu hồ sơ người dùng từ UserDataProvider lên Firestore và FastAPI
-  // Chỉ khi đã đăng nhập, nếu không thì trả về true để không hiện lỗi
+  // Get current user ID
+  String? get userId => _auth.currentUser?.uid;
+  
+  // Sync user profile data to API only
   Future<bool> syncUserProfileData(UserDataProvider userData) async {
-    try {
-      // Kiểm tra đăng nhập
-      if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể đồng bộ. Chỉ lưu dữ liệu local');
-        return true; // Trả về true vì không phải lỗi, chỉ là không đồng bộ
-      }
-      
-      // Tạo dữ liệu người dùng
-      final profileData = _createUserProfileData(userData);
-      
-      // Lưu vào Firestore khi đã đăng nhập
-      await _firestoreService.saveUserProfile(profileData);
-      debugPrint('Đã lưu hồ sơ người dùng vào Firestore');
-      
-      // Gửi lên FastAPI
-      final apiResult = await UserProfileApi.sendUserProfile(userData);
-      if (apiResult) {
-        debugPrint('Đã gửi hồ sơ người dùng lên FastAPI');
-      } else {
-        debugPrint('Không thể gửi hồ sơ người dùng lên FastAPI');
-      }
-      
-      // Nếu lưu vào Firestore thành công, coi như đồng bộ thành công
-      return true;
-    } catch (e) {
-      debugPrint('Lỗi khi đồng bộ dữ liệu người dùng: $e');
+    if (userId == null) {
+      debugPrint('❌ Cannot sync user profile: No authenticated user found');
       return false;
     }
-  }
-  
-  // Tải dữ liệu hồ sơ từ Firestore vào UserDataProvider
-  // Chỉ tải khi đã đăng nhập, nếu không thì trả về false để dùng dữ liệu local
-  Future<bool> loadUserProfileFromFirestore(UserDataProvider userData) async {
+    
     try {
-      // Kiểm tra đăng nhập
-      if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, sẽ sử dụng dữ liệu local');
-        return false; // Trả về false để provider biết cần dùng dữ liệu local
-      }
+      // Chuẩn bị đầy đủ dữ liệu người dùng để đồng bộ
+      final Map<String, dynamic> fullUserData = {
+        'user_id': userId,
+        'name': userData.name,
+        'gender': userData.gender,
+        'age': userData.age,
+        'height_cm': userData.heightCm,
+        'weight_kg': userData.weightKg,
+        'activity_level': userData.activityLevel,
+        'goal': userData.goal,
+        'pace': userData.pace,
+        'target_weight_kg': userData.targetWeightKg,
+        'event': userData.event,
+        'event_date': {
+          'day': userData.eventDay,
+          'month': userData.eventMonth,
+          'year': userData.eventYear,
+        },
+        'diet_restrictions': userData.dietRestrictions,
+        'diet_preference': userData.dietPreference,
+        'health_conditions': userData.healthConditions,
+        'nutrition_goals': userData.nutritionGoals,
+        'daily_calories': userData.dailyCalories,
+        'tdee': {
+          'calories': userData.tdeeCalories,
+          'protein': userData.tdeeProtein,
+          'carbs': userData.tdeeCarbs,
+          'fat': userData.tdeeFat,
+        },
+        'preferences': userData.preferences,
+        'allergies': userData.allergies,
+        'cuisine_style': userData.cuisineStyle,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
       
-      // Lấy dữ liệu từ Firestore
-      final profileData = await _firestoreService.getUserProfile();
-      if (profileData.isEmpty) {
-        debugPrint('Không có dữ liệu hồ sơ trong Firestore, sẽ sử dụng dữ liệu local');
+      // Sử dụng phương thức để đồng bộ đầy đủ dữ liệu qua API
+      final result = await ApiService.syncFullUserData(userId!, fullUserData);
+      
+      if (result) {
+        debugPrint('✅ Đã đồng bộ đầy đủ dữ liệu người dùng thành công qua API');
+        return true;
+      } else {
+        debugPrint('❌ Đồng bộ đầy đủ dữ liệu người dùng thất bại');
+        
+        // Thử lại với endpoint khác
+        try {
+          final fallbackResult = await ApiService.sendUserProfileData(fullUserData);
+          if (fallbackResult) {
+            debugPrint('✅ Đã đồng bộ dữ liệu người dùng thành công qua API (fallback)');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('❌ Lỗi khi đồng bộ dữ liệu người dùng (fallback): $e');
+        }
+        
         return false;
       }
-      
-      // Cập nhật vào UserDataProvider
-      _updateUserDataFromProfile(userData, profileData);
-      debugPrint('Đã tải dữ liệu hồ sơ từ Firestore');
-      
-      return true;
     } catch (e) {
-      debugPrint('Lỗi khi tải dữ liệu hồ sơ từ Firestore: $e');
+      debugPrint('❌ Error syncing user profile: $e');
       return false;
     }
   }
   
-  // Đồng bộ kế hoạch ăn lên Firestore chỉ khi đã đăng nhập
-  Future<bool> syncMealPlanToFirestore(Map<String, dynamic> mealPlanData) async {
+  // Get user profile from API only
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    if (userId == null) {
+      debugPrint('❌ Cannot get user profile: No authenticated user found');
+      return null;
+    }
+    
     try {
-      // Kiểm tra đăng nhập
-      if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể đồng bộ kế hoạch ăn. Chỉ lưu dữ liệu local');
-        return true; // Trả về true vì không phải lỗi, chỉ là không đồng bộ
+      // Get data from API
+      final apiData = await ApiService.getUserProfile(userId!);
+      if (apiData != null && apiData.isNotEmpty) {
+        debugPrint('✅ Got user profile from API');
+        return apiData;
       }
       
-      // Cập nhật lên Firestore
-      await _firestoreService.updateMealPlan(mealPlanData);
-      debugPrint('Đã đồng bộ kế hoạch ăn lên Firestore');
-      
-      return true;
+      debugPrint('⚠️ User profile not found in API');
+      return null;
     } catch (e) {
-      debugPrint('Lỗi khi đồng bộ kế hoạch ăn: $e');
+      debugPrint('❌ Error getting user profile from API: $e');
+      return null;
+    }
+  }
+  
+  // Sync meal plan to FastAPI only
+  Future<bool> syncMealPlanToAPI(Map<String, dynamic> mealPlanData) async {
+    try {
+      // Send to FastAPI only
+      final apiResult = await ApiService.sendMealPlan(mealPlanData);
+      
+      if (apiResult) {
+        debugPrint('✅ Successfully sent meal plan to FastAPI');
+      } else {
+        debugPrint('❌ Failed to send meal plan to FastAPI');
+      }
+      
+      return apiResult;
+    } catch (e) {
+      debugPrint('❌ Error syncing meal plan: $e');
       return false;
     }
   }
   
-  // Lấy dữ liệu người dùng từ Firestore chỉ khi đã đăng nhập
-  Future<Map<String, dynamic>> getUserProfile() async {
+  // Get meal plan from API only
+  Future<Map<String, dynamic>> getMealPlan() async {
     try {
-      // Kiểm tra đăng nhập
-      if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể lấy dữ liệu hồ sơ từ Firestore');
-        return {}; // Trả về map rỗng để provider biết cần dùng dữ liệu local
+      // Get user ID
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) {
+        debugPrint('⚠️ No authenticated user, returning empty meal plan');
+        return {};
       }
       
-      // Lấy dữ liệu từ Firestore
-      final profileData = await _firestoreService.getUserProfile();
-      return profileData;
+      // Get from API
+      final apiData = await ApiService.getMealPlan(userId);
+      if (apiData != null && apiData.isNotEmpty) {
+        debugPrint('✅ Got meal plan from API');
+        return apiData;
+      }
+      
+      debugPrint('⚠️ No meal plan found in API');
+      return {};
     } catch (e) {
-      debugPrint('Lỗi khi lấy dữ liệu hồ sơ từ Firestore: $e');
+      debugPrint('❌ Error getting meal plan from API: $e');
       return {};
     }
   }
   
-  // Lưu dữ liệu người dùng vào Firestore chỉ khi đã đăng nhập
-  Future<bool> saveUserProfile(Map<String, dynamic> profileData) async {
+  // Sync food entry to FastAPI only
+  Future<bool> syncFoodEntry(dynamic foodEntry) async {
     try {
-      // Kiểm tra đăng nhập
-      if (_auth.currentUser == null) {
-        debugPrint('Chưa đăng nhập, không thể lưu dữ liệu hồ sơ lên Firestore');
-        return true; // Trả về true để không hiện lỗi, vì đây không phải lỗi thực sự
+      final userId = _auth.currentUser?.uid;
+      if (userId == null) {
+        debugPrint('⚠️ No authenticated user, can\'t sync food entry');
+        return false;
       }
       
-      // Lưu vào Firestore
-      await _firestoreService.saveUserProfile(profileData);
-      debugPrint('Đã lưu hồ sơ người dùng vào Firestore');
-      return true;
+      // Send to FastAPI only
+      final apiResult = await ApiService.sendFoodEntry(foodEntry, userId);
+      
+      if (apiResult) {
+        debugPrint('✅ Added food entry to API');
+      } else {
+        debugPrint('❌ Failed to add food entry to API');
+      }
+      
+      return apiResult;
     } catch (e) {
-      debugPrint('Lỗi khi lưu dữ liệu hồ sơ lên Firestore: $e');
+      debugPrint('❌ Error syncing food entry: $e');
       return false;
-    }
-  }
-  
-  // Tạo đối tượng dữ liệu từ UserDataProvider
-  Map<String, dynamic> _createUserProfileData(UserDataProvider userData) {
-    return {
-      'gender': userData.gender,
-      'age': userData.age,
-      'height_cm': userData.heightCm,
-      'weight_kg': userData.weightKg,
-      'activity_level': userData.activityLevel,
-      'goal': userData.goal,
-      'pace': userData.pace,
-      'nutrition_goals': userData.nutritionGoals,
-      'target_weight_kg': userData.targetWeightKg,
-      'event': userData.event,
-      'event_date': {
-        'day': userData.eventDay,
-        'month': userData.eventMonth,
-        'year': userData.eventYear,
-      },
-      'diet_restrictions': userData.dietRestrictions,
-      'diet_preference': userData.dietPreference,
-      'health_conditions': userData.healthConditions,
-      'tdee': {
-        'calories': userData.tdeeCalories,
-        'protein': userData.tdeeProtein,
-        'carbs': userData.tdeeCarbs,
-        'fat': userData.tdeeFat,
-      },
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-  }
-  
-  // Cập nhật UserDataProvider từ dữ liệu Firestore
-  void _updateUserDataFromProfile(UserDataProvider userData, Map<String, dynamic> profileData) {
-    // Chỉ cập nhật các trường có dữ liệu
-    if (profileData['gender'] != null) userData.setGender(profileData['gender']);
-    if (profileData['age'] != null) userData.setAge(profileData['age']);
-    if (profileData['height_cm'] != null) userData.setHeight(profileData['height_cm'].toDouble());
-    if (profileData['weight_kg'] != null) userData.setWeight(profileData['weight_kg'].toDouble());
-    if (profileData['activity_level'] != null) userData.setActivityLevel(profileData['activity_level']);
-    if (profileData['goal'] != null) userData.setGoal(profileData['goal']);
-    if (profileData['pace'] != null) userData.setPace(profileData['pace'].toDouble());
-    
-    if (profileData['nutrition_goals'] != null && profileData['nutrition_goals'] is Map) {
-      Map<String, dynamic> nutritionGoals = Map<String, dynamic>.from(profileData['nutrition_goals']);
-      userData.updateNutritionGoals(nutritionGoals.map((key, value) => MapEntry(key, (value as num).toDouble())));
-    }
-    
-    if (profileData['target_weight_kg'] != null) userData.targetWeightKg = profileData['target_weight_kg'].toDouble();
-    if (profileData['event'] != null) userData.event = profileData['event'];
-    
-    if (profileData['event_date'] != null && profileData['event_date'] is Map) {
-      final eventDate = profileData['event_date'];
-      if (eventDate['day'] != null) userData.eventDay = eventDate['day'];
-      if (eventDate['month'] != null) userData.eventMonth = eventDate['month'];
-      if (eventDate['year'] != null) userData.eventYear = eventDate['year'];
-    }
-    
-    if (profileData['diet_restrictions'] != null && profileData['diet_restrictions'] is List) {
-      userData.dietRestrictions = List<String>.from(profileData['diet_restrictions']);
-    }
-    
-    if (profileData['diet_preference'] != null) userData.dietPreference = profileData['diet_preference'];
-    
-    if (profileData['health_conditions'] != null && profileData['health_conditions'] is List) {
-      userData.healthConditions = List<String>.from(profileData['health_conditions']);
-    }
-    
-    // Cập nhật TDEE nếu có
-    if (profileData['tdee'] != null && profileData['tdee'] is Map) {
-      final tdee = profileData['tdee'];
-      userData.updateTDEEValues(
-        calories: (tdee['calories'] ?? 0).toDouble(),
-        protein: (tdee['protein'] ?? 0).toDouble(),
-        carbs: (tdee['carbs'] ?? 0).toDouble(),
-        fat: (tdee['fat'] ?? 0).toDouble(),
-      );
     }
   }
 } 

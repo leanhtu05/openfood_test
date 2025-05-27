@@ -102,10 +102,15 @@ class TDEECalculator {
 
   /// Tính tổng lượng calo cần tiêu thụ mỗi ngày
   double calculateDailyCalories() {
+    print('[TDEE DEBUG] gender=$gender, age=$age, heightCm=$heightCm, weightKg=$weightKg, activityLevel=$activityLevel, goal=$goal, pace=$pace');
+    if (weightKg <= 0 || heightCm <= 0 || age <= 0) {
+      print('[TDEE DEBUG] Lỗi: Thông tin đầu vào không hợp lệ (weight, height, age)');
+      return 0.0;
+    }
     return calculateBaseTDEE() + calculateCalorieSurplusDeficit();
   }
 
-  /// Tính phân chia macros theo khuyến nghị (protein, carbs, fat)
+  /// Tính phân phối macros theo khuyến nghị (protein, carbs, fat)
   Map<String, double> calculateMacroDistribution() {
     final dailyCalories = calculateDailyCalories();
     
@@ -138,30 +143,17 @@ class TDEECalculator {
     };
   }
 
+  // Tính TDEE dựa trên các thông số người dùng
   static Map<String, double> calculateTDEE({
     required double weight,
     required double height,
     required int age,
     required String gender,
     required String activityLevel,
-    required String goal,
+    String goal = 'Duy trì cân nặng',
     double pace = 0.5,
   }) {
-    // Log input values for debugging
-    print('TDEE Calculator Input - Weight: $weight kg, Height: $height cm, Age: $age, Gender: $gender');
-    print('TDEE Calculator Input - Activity Level: $activityLevel, Goal: $goal, Pace: $pace');
-    
-    if (weight <= 0 || height <= 0 || age <= 0) {
-      print('TDEE Calculator Error: Invalid input values (weight, height, or age is zero or negative)');
-      return {
-        'calories': 0.0,
-        'protein': 0.0,
-        'fat': 0.0,
-        'carbs': 0.0,
-      };
-    }
-
-    // Calculate BMR using Mifflin-St Jeor equation
+    // Tính BMR (Basal Metabolic Rate) theo công thức Mifflin-St Jeor
     double bmr;
     if (gender == 'Nam') {
       bmr = 10 * weight + 6.25 * height - 5 * age + 5;
@@ -169,106 +161,94 @@ class TDEECalculator {
       bmr = 10 * weight + 6.25 * height - 5 * age - 161;
     }
 
-    // Apply activity multiplier
-    double activityMultiplier = _getActivityMultiplier(activityLevel);
+    // Nhân hệ số hoạt động để tính TDEE
+    double activityMultiplier = getActivityMultiplier(activityLevel);
     double tdee = bmr * activityMultiplier;
-    print('TDEE Calculator - BMR: $bmr, Activity Multiplier: $activityMultiplier, Base TDEE: $tdee');
 
-    // Adjust TDEE based on goal
-    double adjustedTDEE = _adjustTDEEForGoal(tdee, goal, pace);
+    // Làm tròn TDEE
+    tdee = double.parse(tdee.toStringAsFixed(1));
 
-    // Calculate macronutrients
-    double protein = weight * _getProteinMultiplier(goal);
-    double fat = _calculateFat(adjustedTDEE);
-    double carbs = _calculateCarbs(adjustedTDEE, protein, fat);
+    // Tính toán macros dựa trên TDEE
+    Map<String, double> macros = calculateMacrosFromTDEE(tdee);
 
-    // Ensure minimum values
-    if (protein < 0) protein = 0;
-    if (fat < 0) fat = 0;
-    if (carbs < 0) carbs = 0;
-    if (adjustedTDEE < 0) adjustedTDEE = 0;
-
-    // Log final calculated values
-    print('TDEE Calculator Results - Calories: $adjustedTDEE, Protein: $protein g, Fat: $fat g, Carbs: $carbs g');
-
+    // Trả về kết quả
     return {
-      'calories': adjustedTDEE,
-      'protein': protein,
-      'fat': fat,
-      'carbs': carbs,
+      'calories': tdee,
+      'protein': macros['protein']!,
+      'carbs': macros['carbs']!,
+      'fat': macros['fat']!,
     };
   }
 
-  // Helper method to get activity multiplier based on activity level
-  static double _getActivityMultiplier(String activityLevel) {
+  // Phương thức mới để tính toán calo điều chỉnh theo mục tiêu
+  static double calculateAdjustedCalories({
+    required double tdee,
+    required String goal,
+    required double pace,
+  }) {
+    double adjustedCalories = tdee;
+    
+    // Nếu mục tiêu là giảm cân, giảm lượng calo
+    if (goal == 'Giảm cân') {
+      // Giảm calo dựa trên pace (tốc độ giảm cân)
+      // Giả sử pace 0.5 tương đương với giảm 500 calo/ngày
+      int calorieDeficit = (pace * 1000).toInt();
+      adjustedCalories = tdee - calorieDeficit;
+      
+      // Đảm bảo không giảm quá 50% TDEE để đảm bảo sức khỏe
+      if (adjustedCalories < tdee * 0.5) {
+        adjustedCalories = tdee * 0.5;
+      }
+    } 
+    // Nếu mục tiêu là tăng cân, tăng lượng calo
+    else if (goal == 'Tăng cân') {
+      // Tăng calo dựa trên pace (tốc độ tăng cân)
+      // Giả sử pace 0.5 tương đương với tăng 500 calo/ngày
+      int calorieSurplus = (pace * 1000).toInt();
+      adjustedCalories = tdee + calorieSurplus;
+    }
+    // Nếu mục tiêu là duy trì cân nặng, giữ nguyên TDEE
+    
+    return adjustedCalories;
+  }
+
+  // Tính hệ số hoạt động dựa trên mức độ hoạt động
+  static double getActivityMultiplier(String activityLevel) {
     switch (activityLevel) {
       case 'Ít vận động':
-        return 1.2; // Hoạt động ít
+        return 1.2;
       case 'Hoạt động nhẹ':
-        return 1.375; // Tập luyện nhẹ 1-3 lần/tuần
+        return 1.375;
       case 'Hoạt động vừa phải':
-        return 1.55; // Tập luyện vừa phải 3-5 lần/tuần
-      case 'Rất năng động':
-        return 1.725; // Tập luyện mạnh 6-7 lần/tuần
-      case 'Vận động viên':
-        return 1.9; // Vận động viên, tập luyện 2 lần/ngày
+        return 1.55;
+      case 'Hoạt động nhiều':
+        return 1.725;
+      case 'Hoạt động rất nhiều':
+        return 1.9;
       default:
-        print('Activity level không nhận diện được: "$activityLevel", dùng hệ số mặc định 1.55');
         return 1.55; // Mặc định là hoạt động vừa phải
     }
   }
 
-  // Helper method to adjust TDEE based on goal and pace
-  static double _adjustTDEEForGoal(double tdee, String goal, double pace) {
-    // 1kg mỡ = khoảng 7700 calo
-    double adjustment = 0;
+  // Tính phân phối macros dựa trên TDEE và mục tiêu
+  static Map<String, double> calculateMacrosFromTDEE(double tdeeCalories) {
+    // Nếu không có TDEE, sử dụng giá trị mặc định
+    double calories = tdeeCalories > 0 ? tdeeCalories : 2000;
     
-    if (goal == 'Tăng cân') {
-      // Thặng dư calo để tăng cân
-      adjustment = pace * 7700 / 7; // Calo thặng dư mỗi ngày
-    } else if (goal == 'Giảm cân') {
-      // Thâm hụt calo để giảm cân
-      adjustment = -pace * 7700 / 7; // Calo thâm hụt mỗi ngày
-    }
+    // Tính toán macros theo tỉ lệ cơ bản: 30% protein, 40% carbs, 30% fat
+    double protein = (calories * 0.3) / 4; // 4 calo/gram protein
+    double carbs = (calories * 0.4) / 4;   // 4 calo/gram carbs
+    double fat = (calories * 0.3) / 9;     // 9 calo/gram fat
     
-    print('TDEE Goal Adjustment - Goal: $goal, Pace: $pace, Adjustment: $adjustment calories');
-    return tdee + adjustment;
-  }
-
-  // Helper method to get protein multiplier based on goal
-  static double _getProteinMultiplier(String goal) {
-    switch (goal) {
-      case 'Tăng cân':
-        return 2.0; // 2g protein per kg bodyweight
-      case 'Giảm cân':
-        return 2.2; // 2.2g protein per kg bodyweight
-      default:
-        return 1.8; // 1.8g protein per kg bodyweight for maintenance
-    }
-  }
-
-  // Helper method to calculate fat in grams
-  static double _calculateFat(double tdee) {
-    // Fat is about 30% of total calories
-    double fatCalories = tdee * 0.3;
-    // 1g fat = 9 calories
-    return fatCalories / 9;
-  }
-
-  // Helper method to calculate carbs in grams
-  static double _calculateCarbs(double tdee, double protein, double fat) {
-    // Calculate remaining calories after protein and fat
-    double proteinCalories = protein * 4; // 1g protein = 4 calories
-    double fatCalories = fat * 9; // 1g fat = 9 calories
-    double remainingCalories = tdee - proteinCalories - fatCalories;
+    // Làm tròn các giá trị
+    protein = double.parse(protein.toStringAsFixed(1));
+    carbs = double.parse(carbs.toStringAsFixed(1));
+    fat = double.parse(fat.toStringAsFixed(1));
     
-    // If remaining calories are negative, return 0 carbs
-    if (remainingCalories <= 0) {
-      print('TDEE Calculator Warning: Negative remaining calories for carbs: $remainingCalories');
-      return 0;
-    }
-    
-    // 1g carbs = 4 calories
-    return remainingCalories / 4;
+    return {
+      'protein': protein,
+      'carbs': carbs,
+      'fat': fat,
+    };
   }
 } 

@@ -47,16 +47,24 @@ class CalorieProgressSection extends StatelessWidget {
     // Get actual calorie data from providers
     final actualConsumedCalories = consumedCalories ?? 
         foodProvider.getNutritionTotals(date: foodProvider.selectedDate)['calories']?.toInt() ?? 0;
-        
-    // Get calorie goal from user data provider
-    // Ensure actualCaloriesGoal is not zero to prevent division by zero errors
-    int tempCaloriesGoal = caloriesGoal ?? 
-        userDataProvider.nutritionGoals['calories']?.toInt() ?? 
-        userDataProvider.tdeeCalories.toInt();
     
-    final actualCaloriesGoal = (tempCaloriesGoal == 0 || tempCaloriesGoal.isNaN || tempCaloriesGoal.isInfinite) 
-        ? 2000 // Default to 2000 if goal is 0, NaN, or Infinite
-        : tempCaloriesGoal;
+    // Luôn sử dụng giá trị từ getConsistentCalorieGoal để đảm bảo tính nhất quán
+    final actualCaloriesGoal = userDataProvider.getConsistentCalorieGoal();
+    
+    // Debug log để xác định nguồn của mục tiêu calo
+    String source = "unknown";
+    if (userDataProvider.goal == 'Giảm cân' && userDataProvider.nutritionGoals.containsKey('calories') && userDataProvider.nutritionGoals['calories']! > 0) {
+      source = "adjusted_nutrition_goals";
+    } else if (userDataProvider.tdeeCalories > 0) {
+      source = "tdee";
+    } else if (userDataProvider.nutritionGoals.containsKey('calories') && userDataProvider.nutritionGoals['calories']! > 0) {
+      source = "nutrition_goals";
+    } else if (userDataProvider.dailyCalories > 0) {
+      source = "daily_calories";
+    } else {
+      source = "default_value";
+    }
+    print('CalorieProgressSection: Mục tiêu calo = $actualCaloriesGoal (nguồn: $source)');
         
     // Get exercise calories from exercise provider
     final actualExerciseCalories = exerciseCalories ?? 

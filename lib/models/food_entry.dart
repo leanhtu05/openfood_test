@@ -201,4 +201,9 @@ class FoodEntry {
       'items': items.map((item) => item.toJson()).toList(),
     };
   }
+
+  // Tạo một bản sao của FoodEntry với ID mới
+  FoodEntry updateId(String newId) {
+    return copyWith(id: newId);
+  }
 } 

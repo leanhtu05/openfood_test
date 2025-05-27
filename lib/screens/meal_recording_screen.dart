@@ -22,8 +22,9 @@ import '../screens/food_history_screen.dart';
 
 class MealRecordingScreen extends StatefulWidget {
   final String? initialDate;
+  final VoidCallback? onDataChanged;
   
-  const MealRecordingScreen({Key? key, this.initialDate}) : super(key: key);
+  const MealRecordingScreen({Key? key, this.initialDate, this.onDataChanged}) : super(key: key);
 
   @override
   _MealRecordingScreenState createState() => _MealRecordingScreenState();
@@ -150,6 +151,8 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       if (mounted) {
         setState(() {});
       }
+      
+      if (widget.onDataChanged != null) widget.onDataChanged!();
     } catch (e) {
       print('Lỗi khi tải dữ liệu bữa ăn: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1006,4 +1009,28 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
  
 
   // Removed meal plan related function
+
+  // Sau khi thêm hoặc xóa món ăn, cập nhật lại calo và mục tiêu nếu HomeScreen đang mounted
+  void loadMealDataAndSync(BuildContext context) {
+    loadMealData();
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      // Nếu HomeScreen đang mounted, gọi cập nhật
+      if (Navigator.canPop(context)) {
+        // Tìm HomeScreen trong stack và gọi cập nhật nếu có thể
+        // (Hoặc có thể dùng callback hoặc Provider để trigger)
+      }
+      // Cập nhật trực tiếp qua Provider
+      if (foodProvider != null && userDataProvider != null) {
+        // Nếu có HomeScreen, nên dùng callback, còn không thì cập nhật trực tiếp
+        // (Giả sử có các hàm tương tự ở đây)
+        // Nếu không, có thể trigger notifyListeners để HomeScreen tự cập nhật
+        foodProvider.notifyListeners();
+        userDataProvider.notifyListeners();
+      }
+    } catch (e) {
+      print('Lỗi khi đồng bộ calo và mục tiêu: $e');
+    }
+  }
 }

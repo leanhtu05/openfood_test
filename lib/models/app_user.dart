@@ -48,14 +48,43 @@ class AppUser {
   // Create from Firestore document
   factory AppUser.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    
+    // Xử lý trường createdAt
+    DateTime createdAt;
+    if (data['createdAt'] is Timestamp) {
+      createdAt = (data['createdAt'] as Timestamp).toDate();
+    } else if (data['createdAt'] is String) {
+      try {
+        createdAt = DateTime.parse(data['createdAt']);
+      } catch (e) {
+        createdAt = DateTime.now();
+      }
+    } else {
+      createdAt = DateTime.now();
+    }
+    
+    // Xử lý trường lastLoginAt
+    DateTime lastLoginAt;
+    if (data['lastLoginAt'] is Timestamp) {
+      lastLoginAt = (data['lastLoginAt'] as Timestamp).toDate();
+    } else if (data['lastLoginAt'] is String) {
+      try {
+        lastLoginAt = DateTime.parse(data['lastLoginAt']);
+      } catch (e) {
+        lastLoginAt = DateTime.now();
+      }
+    } else {
+      lastLoginAt = DateTime.now();
+    }
+    
     return AppUser(
       uid: doc.id,
       displayName: data['displayName'],
       email: data['email'],
       photoURL: data['photoURL'],
       isAnonymous: data['isAnonymous'] ?? false,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      lastLoginAt: (data['lastLoginAt'] as Timestamp).toDate(),
+      createdAt: createdAt,
+      lastLoginAt: lastLoginAt,
       settings: data['settings'],
       preferences: data['preferences'],
     );

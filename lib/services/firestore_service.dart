@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/meal_plan.dart';
@@ -7,558 +8,509 @@ import 'package:openfood/models/food_entry.dart';
 import 'package:openfood/models/exercise.dart';
 import 'package:openfood/models/water_entry.dart';
 import 'package:flutter/foundation.dart';
+import 'api_service.dart';
+import '../utils/firebase_helpers.dart';
 
+/// Service to interact with Firestore
+/// QUAN TRỌNG: Firebase chỉ được sử dụng để đọc dữ liệu, không ghi trực tiếp
+/// Tất cả các thao tác ghi dữ liệu phải thông qua API
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // Lấy tham chiếu tới collection meal_plans
-  CollectionReference<Map<String, dynamic>> get _mealPlansCollection =>
-      _firestore.collection('meal_plans');
   
-  // Lấy tham chiếu tới collection users
-  CollectionReference<Map<String, dynamic>> get _usersCollection =>
-      _firestore.collection('users');
-      
-  // Lấy ID của người dùng hiện tại
-  String? get _currentUserId => _auth.currentUser?.uid;
+  // Get current user ID
+  String? get userId => _auth.currentUser?.uid;
   
-  // Kiểm tra tình trạng đăng nhập và ném ra ngoại lệ nếu chưa đăng nhập
-  void _checkAuthentication() {
-    if (_auth.currentUser == null) {
-      throw Exception('Người dùng chưa đăng nhập');
-    }
+  // Get user document reference
+  DocumentReference? get userDocRef {
+    final uid = userId;
+    return uid != null ? _firestore.collection('users').doc(uid) : null;
   }
   
-  // Lấy kế hoạch ăn uống theo tuần cho người dùng hiện tại
-  Future<Map<String, dynamic>> getWeeklyMealPlan() async {
+  // Get user profile from Firestore
+  Future<Map<String, dynamic>> getUserProfile() async {
     try {
-      _checkAuthentication();
-      
-      // Kiểm tra nếu người dùng đã có kế hoạch ăn
-      final userDoc = await _usersCollection.doc(_currentUserId).get();
-      String? mealPlanId = userDoc.data()?['current_meal_plan_id'];
-      
-      // Nếu không có, tạo một kế hoạch mới
-      if (mealPlanId == null) {
-        return await _generateNewMealPlan();
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return {};
       }
       
-      // Lấy kế hoạch ăn từ Firestore
-      final mealPlanDoc = await _mealPlansCollection.doc(mealPlanId).get();
-      
-      if (!mealPlanDoc.exists) {
-        // Nếu không tồn tại, tạo mới
-        return await _generateNewMealPlan();
-      }
-      
-      return mealPlanDoc.data() ?? {};
-    } catch (e) {
-      debugPrint('Lỗi khi lấy kế hoạch ăn: $e');
-      throw e;
-    }
-  }
-  
-  // Tạo kế hoạch ăn mới
-  Future<Map<String, dynamic>> _generateNewMealPlan() async {
-    try {
-      _checkAuthentication();
-      
-      // Lấy mẫu kế hoạch từ service khác
-      // Ở đây, bạn có thể thay thế bằng API call thực tế hoặc tạo dữ liệu mẫu
-      final newPlanData = await MealPlanApiService.getMockMealPlan();
-      
-      // Lưu vào Firestore
-      final docRef = await _mealPlansCollection.add({
-        'user_id': _currentUserId,
-        'created_at': FieldValue.serverTimestamp(),
-        'weekly_plan': newPlanData['weekly_plan'],
-      });
-      
-      // Cập nhật ID kế hoạch hiện tại cho người dùng
-      await _usersCollection.doc(_currentUserId).set({
-        'current_meal_plan_id': docRef.id,
-        'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      
-      // Lấy dữ liệu vừa tạo
-      final newDoc = await docRef.get();
-      return newDoc.data() ?? {};
-    } catch (e) {
-      debugPrint('Lỗi khi tạo kế hoạch ăn mới: $e');
-      throw e;
-    }
-  }
-  
-  // Cập nhật kế hoạch ăn
-  Future<void> updateMealPlan(Map<String, dynamic> mealPlanData) async {
-    try {
-      _checkAuthentication();
-      
-      final userDoc = await _usersCollection.doc(_currentUserId).get();
-      String? mealPlanId = userDoc.data()?['current_meal_plan_id'];
-      
-      if (mealPlanId == null) {
-        throw Exception('Không tìm thấy kế hoạch ăn');
-      }
-      
-      await _mealPlansCollection.doc(mealPlanId).update({
-        'weekly_plan': mealPlanData['weekly_plan'],
-        'updated_at': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint('Lỗi khi cập nhật kế hoạch ăn: $e');
-      throw e;
-    }
-  }
-  
-  // Thay thế một bữa ăn cụ thể trong kế hoạch
-  Future<Map<String, dynamic>> replaceMeal({
-    required String day,
-    required String mealType,
-    required Map<String, dynamic> newMeal,
-  }) async {
-    try {
-      _checkAuthentication();
-      
-      final userDoc = await _usersCollection.doc(_currentUserId).get();
-      String? mealPlanId = userDoc.data()?['current_meal_plan_id'];
-      
-      if (mealPlanId == null) {
-        throw Exception('Không tìm thấy kế hoạch ăn');
-      }
-      
-      // Lấy kế hoạch ăn hiện tại
-      final mealPlanDoc = await _mealPlansCollection.doc(mealPlanId).get();
-      final mealPlanData = mealPlanDoc.data() ?? {};
-      
-      // Cập nhật bữa ăn cụ thể
-      if (mealPlanData.containsKey('weekly_plan') && 
-          mealPlanData['weekly_plan'] is Map &&
-          mealPlanData['weekly_plan'].containsKey(day)) {
-        
-        // Thay thế bữa ăn trong weekly_plan[day].meals[mealType][0]
-        var weeklyPlan = Map<String, dynamic>.from(mealPlanData['weekly_plan']);
-        var dayPlan = Map<String, dynamic>.from(weeklyPlan[day]);
-        var meals = Map<String, dynamic>.from(dayPlan['meals']);
-        
-        if (meals.containsKey(mealType) && meals[mealType] is List) {
-          var mealsList = List.from(meals[mealType]);
-          
-          if (mealsList.isNotEmpty) {
-            mealsList[0] = newMeal;
-            meals[mealType] = mealsList;
-            dayPlan['meals'] = meals;
-            weeklyPlan[day] = dayPlan;
-            
-            // Cập nhật lại nutrition summary cho ngày đó
-            double totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0;
-            
-            meals.forEach((mealTypeKey, mealList) {
-              if (mealList is List && mealList.isNotEmpty) {
-                for (var meal in mealList) {
-                  if (meal is Map && meal.containsKey('nutrition')) {
-                    var nutrition = meal['nutrition'];
-                    totalCalories += (nutrition['calories'] ?? 0).toDouble();
-                    totalProtein += (nutrition['protein'] ?? 0).toDouble();
-                    totalFat += (nutrition['fat'] ?? 0).toDouble();
-                    totalCarbs += (nutrition['carbs'] ?? 0).toDouble();
-                  }
-                }
-              }
-            });
-            
-            dayPlan['nutrition_summary'] = {
-              'calories': totalCalories,
-              'protein': totalProtein,
-              'fat': totalFat,
-              'carbs': totalCarbs,
-            };
-            
-            weeklyPlan[day] = dayPlan;
-            
-            // Lưu cập nhật vào Firestore
-            await _mealPlansCollection.doc(mealPlanId).update({
-              'weekly_plan': weeklyPlan,
-              'updated_at': FieldValue.serverTimestamp(),
-            });
-            
-            // Trả về kế hoạch đã cập nhật
-            return {'weekly_plan': weeklyPlan};
+      // Kiểm tra Google Play Services
+      final isGooglePlayAvailable = await FirebaseHelpers.isGooglePlayServicesAvailable();
+      if (!isGooglePlayAvailable) {
+        debugPrint('⚠️ Google Play Services không khả dụng, sẽ thử lấy dữ liệu từ API');
+        // Thử lấy dữ liệu từ API
+        try {
+          final apiData = await ApiService.getUserProfile(uid);
+          if (apiData != null) {
+            debugPrint('✅ Đã lấy dữ liệu người dùng từ API');
+            return apiData;
           }
+        } catch (e) {
+          debugPrint('❌ Lỗi khi lấy dữ liệu từ API: $e');
+        }
+        return {};
+      }
+      
+      final docSnapshot = await _firestore.collection('users').doc(uid).get();
+      
+      if (docSnapshot.exists) {
+        final data = docSnapshot.data();
+        if (data != null) {
+          debugPrint('✅ Got user profile from Firestore');
+          
+          // Xử lý các trường thời gian để đảm bảo tương thích
+          final processedData = FirebaseHelpers.processFirestoreData(data);
+          return processedData;
         }
       }
       
-      throw Exception('Không tìm thấy bữa ăn cần thay thế');
+      debugPrint('⚠️ User profile not found in Firestore');
+      return {};
     } catch (e) {
-      debugPrint('Lỗi khi thay thế bữa ăn: $e');
-      throw e;
+      debugPrint('❌ Error getting user profile from Firestore: $e');
+      return {};
     }
   }
   
-  // Lưu hồ sơ người dùng
-  Future<void> saveUserProfile(Map<String, dynamic> userData) async {
-    try {
-      _checkAuthentication();
-      
-      await _usersCollection.doc(_currentUserId).set(
-        userData,
-        SetOptions(merge: true),
-      );
-      
-      debugPrint('Đã lưu hồ sơ người dùng');
-    } catch (e) {
-      debugPrint('Lỗi khi lưu hồ sơ người dùng: $e');
-      throw e;
-    }
+  // Phương thức xử lý các trường thời gian
+  Map<String, dynamic> _processTimestampFields(Map<String, dynamic> data) {
+    // Sử dụng helper class mới
+    return FirebaseHelpers.processFirestoreData(data);
   }
   
-  // Lấy hồ sơ người dùng
-  Future<Map<String, dynamic>> getUserProfile() async {
+  // Phương thức chuyển đổi an toàn giữa String và Timestamp
+  dynamic safeConvertTimestamp(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    
+    return FirebaseHelpers.toTimestamp(value);
+  }
+  
+  // Get weekly meal plan from Firestore
+  Future<Map<String, dynamic>> getWeeklyMealPlan() async {
     try {
-      _checkAuthentication();
-      
-      final docSnapshot = await _usersCollection.doc(_currentUserId).get();
-      
-      if (docSnapshot.exists) {
-        return docSnapshot.data() ?? {};
-      } else {
-        // Nếu người dùng chưa có hồ sơ, tạo một hồ sơ trống
-        await _usersCollection.doc(_currentUserId).set({
-          'created_at': FieldValue.serverTimestamp(),
-        });
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
         return {};
       }
-    } catch (e) {
-      debugPrint('Lỗi khi lấy hồ sơ người dùng: $e');
-      throw e;
-    }
-  }
-
-  // ==================== USER METHODS ====================
-
-  // Lưu thông tin người dùng
-  Future<void> saveUserData({
-    required String userId,
-    required Map<String, dynamic> userData,
-  }) async {
-    try {
-      await _firestore.collection('users').doc(userId).set(userData, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Lỗi khi lưu thông tin người dùng: $e');
-      throw e;
-    }
-  }
-
-  // Lấy thông tin người dùng
-  Future<Map<String, dynamic>?> getUserData(String userId) async {
-    try {
-      DocumentSnapshot doc = await _firestore.collection('users').doc(userId).get();
-      return doc.exists ? doc.data() as Map<String, dynamic> : null;
-    } catch (e) {
-      debugPrint('Lỗi khi lấy thông tin người dùng: $e');
-      throw e;
-    }
-  }
-
-  // ==================== FOOD METHODS ====================
-
-  // Lấy danh sách thực phẩm
-  Future<List<FoodItem>> getAllFoodItems() async {
-    try {
-      QuerySnapshot snapshot = await _firestore.collection('food_items').get();
-      return snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        return FoodItem.fromJson(data);
-      }).toList();
-    } catch (e) {
-      debugPrint('Lỗi khi lấy danh sách thực phẩm: $e');
-      return [];
-    }
-  }
-
-  // Tìm kiếm thực phẩm
-  Future<List<FoodItem>> searchFoodItems(String query) async {
-    try {
-      // Chuyển đổi query thành chữ thường để tìm kiếm không phân biệt hoa thường
-      String lowercaseQuery = query.toLowerCase();
       
-      QuerySnapshot snapshot = await _firestore.collection('food_items').get();
-      
-      // Lọc kết quả dựa trên query
-      return snapshot.docs
-          .map((doc) => FoodItem.fromJson(doc.data() as Map<String, dynamic>))
-          .where((food) => 
-              food.name.toLowerCase().contains(lowercaseQuery) || 
-              (food.brand != null && food.brand!.toLowerCase().contains(lowercaseQuery)))
-          .toList();
-    } catch (e) {
-      debugPrint('Lỗi khi tìm kiếm thực phẩm: $e');
-      return [];
-    }
-  }
-
-  // Thêm bản ghi thực phẩm
-  Future<String> addFoodEntry(FoodEntry entry) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
+      // Kiểm tra Google Play Services
+      final isGooglePlayAvailable = await FirebaseHelpers.isGooglePlayServicesAvailable();
+      if (!isGooglePlayAvailable) {
+        debugPrint('⚠️ Google Play Services không khả dụng, sẽ thử lấy dữ liệu từ API');
+        // Thử lấy dữ liệu từ API
+        try {
+          final apiData = await ApiService.getUserMealPlan(uid);
+          if (apiData != null) {
+            debugPrint('✅ Đã lấy kế hoạch ăn từ API');
+            return apiData;
+          }
+        } catch (e) {
+          debugPrint('❌ Lỗi khi lấy kế hoạch ăn từ API: $e');
+        }
+        return {};
       }
       
-      DocumentReference docRef = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
+      // Thử lấy từ latest_meal_plans trước
+      final latestDocSnapshot = await _firestore.collection('latest_meal_plans').doc(uid).get();
+      
+      if (latestDocSnapshot.exists) {
+        final data = latestDocSnapshot.data();
+        if (data != null) {
+          debugPrint('✅ Got meal plan from latest_meal_plans');
+          return FirebaseHelpers.processFirestoreData(data);
+        }
+      }
+      
+      // Nếu không tìm thấy trong latest_meal_plans, thử tìm trong meal_plans
+      final docSnapshot = await _firestore.collection('meal_plans').doc(uid).get();
+      
+      if (docSnapshot.exists) {
+        final data = docSnapshot.data();
+        if (data != null) {
+          debugPrint('✅ Got meal plan from meal_plans');
+          return FirebaseHelpers.processFirestoreData(data);
+        }
+      }
+      
+      debugPrint('⚠️ Meal plan not found in both collections');
+      return {};
+    } catch (e) {
+      debugPrint('❌ Error getting meal plan from Firestore: $e');
+      return {};
+    }
+  }
+  
+  // Get food entries for a specific date
+  Future<List<Map<String, dynamic>>> getFoodEntries(String date) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return [];
+      }
+      
+      final querySnapshot = await _firestore
           .collection('food_entries')
-          .add(entry.toJson());
-      
-      return docRef.id;
-    } catch (e) {
-      debugPrint('Lỗi khi thêm bản ghi thực phẩm: $e');
-      throw e;
-    }
-  }
-
-  // Lấy bản ghi thực phẩm theo ngày
-  Future<List<FoodEntry>> getFoodEntriesByDate(DateTime date) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      // Tạo ngày bắt đầu và kết thúc
-      DateTime startOfDay = DateTime(date.year, date.month, date.day);
-      DateTime endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
-      
-      QuerySnapshot snapshot = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('food_entries')
-          .where('dateTime', isGreaterThanOrEqualTo: startOfDay.toIso8601String())
-          .where('dateTime', isLessThanOrEqualTo: endOfDay.toIso8601String())
-          .get();
-      
-      return snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        return FoodEntry.fromJson(data);
-      }).toList();
-    } catch (e) {
-      debugPrint('Lỗi khi lấy bản ghi thực phẩm: $e');
-      return [];
-    }
-  }
-
-  // Cập nhật bản ghi thực phẩm
-  Future<void> updateFoodEntry(FoodEntry entry) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('food_entries')
-          .doc(entry.id)
-          .update(entry.toJson());
-    } catch (e) {
-      debugPrint('Lỗi khi cập nhật bản ghi thực phẩm: $e');
-      throw e;
-    }
-  }
-
-  // Xóa bản ghi thực phẩm
-  Future<void> deleteFoodEntry(String entryId) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('food_entries')
-          .doc(entryId)
-          .delete();
-    } catch (e) {
-      debugPrint('Lỗi khi xóa bản ghi thực phẩm: $e');
-      throw e;
-    }
-  }
-
-  // ==================== EXERCISE METHODS ====================
-
-  // Thêm bản ghi tập luyện
-  Future<String> addExerciseEntry(Exercise exercise) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      DocumentReference docRef = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('exercise_entries')
-          .add(exercise.toJson());
-      
-      return docRef.id;
-    } catch (e) {
-      debugPrint('Lỗi khi thêm bản ghi tập luyện: $e');
-      throw e;
-    }
-  }
-
-  // Lấy bản ghi tập luyện theo ngày
-  Future<List<Exercise>> getExerciseEntriesByDate(String date) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      QuerySnapshot snapshot = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('exercise_entries')
+          .where('user_id', isEqualTo: uid)
           .where('date', isEqualTo: date)
           .get();
       
-      return snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        return Exercise.fromJson(data);
-      }).toList();
+      if (querySnapshot.docs.isNotEmpty) {
+        debugPrint('✅ Got ${querySnapshot.docs.length} food entries from Firestore');
+        return querySnapshot.docs.map((doc) => doc.data()).toList();
+      }
+      
+      debugPrint('⚠️ No food entries found for date $date');
+      return [];
     } catch (e) {
-      debugPrint('Lỗi khi lấy bản ghi tập luyện: $e');
+      debugPrint('❌ Error getting food entries from Firestore: $e');
       return [];
     }
   }
-
-  // ==================== WATER METHODS ====================
-
-  // Thêm bản ghi uống nước
-  Future<String> addWaterEntry(WaterEntry entry) async {
+  
+  // Get exercise entries for a specific date
+  Future<List<Map<String, dynamic>>> getExerciseEntries(String date) async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return [];
       }
       
-      Map<String, dynamic> entryData = {
-        'id': entry.id,
-        'amount': entry.amount,
-        'timestamp': entry.timestamp.millisecondsSinceEpoch,
-      };
+      final querySnapshot = await _firestore
+          .collection('exercise_entries')
+          .where('user_id', isEqualTo: uid)
+          .where('date', isEqualTo: date)
+          .get();
       
-      DocumentReference docRef = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
+      if (querySnapshot.docs.isNotEmpty) {
+        debugPrint('✅ Got ${querySnapshot.docs.length} exercise entries from Firestore');
+        return querySnapshot.docs.map((doc) => doc.data()).toList();
+      }
+      
+      debugPrint('⚠️ No exercise entries found for date $date');
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error getting exercise entries from Firestore: $e');
+      return [];
+    }
+  }
+  
+  // Get water entries for a specific date
+  Future<List<Map<String, dynamic>>> getWaterEntries(String date) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return [];
+      }
+      
+      final querySnapshot = await _firestore
           .collection('water_entries')
-          .add(entryData);
+          .where('user_id', isEqualTo: uid)
+          .where('date', isEqualTo: date)
+          .get();
       
+      if (querySnapshot.docs.isNotEmpty) {
+        debugPrint('✅ Got ${querySnapshot.docs.length} water entries from Firestore');
+        return querySnapshot.docs.map((doc) => doc.data()).toList();
+      }
+      
+      debugPrint('⚠️ No water entries found for date $date');
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error getting water entries from Firestore: $e');
+      return [];
+    }
+  }
+  
+  // Get user favorites
+  Future<List<Map<String, dynamic>>> getUserFavorites() async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return [];
+      }
+      
+      final querySnapshot = await _firestore
+          .collection('favorites')
+          .where('user_id', isEqualTo: uid)
+          .get();
+      
+      if (querySnapshot.docs.isNotEmpty) {
+        debugPrint('✅ Got ${querySnapshot.docs.length} favorites from Firestore');
+        return querySnapshot.docs.map((doc) => doc.data()).toList();
+      }
+      
+      debugPrint('⚠️ No favorites found');
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error getting favorites from Firestore: $e');
+      return [];
+    }
+  }
+  
+  // Stream weekly meal plan để tương thích với code cũ
+  Stream<Map<String, dynamic>> streamWeeklyMealPlan() {
+    final uid = userId;
+    if (uid == null) {
+      // Return empty stream if no user is authenticated
+      return Stream.value({});
+    }
+    
+    // Sử dụng StreamController để kết hợp 2 streams
+    final StreamController<Map<String, dynamic>> controller = StreamController<Map<String, dynamic>>();
+    
+    // Lắng nghe sự thay đổi từ latest_meal_plans
+    StreamSubscription? latestSubscription;
+    StreamSubscription? regularSubscription;
+    
+    latestSubscription = _firestore.collection('latest_meal_plans').doc(uid).snapshots().listen(
+      (latestSnapshot) {
+        if (latestSnapshot.exists && latestSnapshot.data() != null) {
+          debugPrint('✅ Streaming meal plan from latest_meal_plans');
+          controller.add(latestSnapshot.data()!);
+        } else {
+          debugPrint('⚠️ No data in latest_meal_plans, trying meal_plans');
+          
+          // Hủy đăng ký từ stream hiện tại
+          regularSubscription?.cancel();
+          
+          // Đăng ký stream từ meal_plans
+          regularSubscription = _firestore.collection('meal_plans').doc(uid).snapshots().listen(
+            (snapshot) {
+              if (snapshot.exists && snapshot.data() != null) {
+                debugPrint('✅ Streaming meal plan from meal_plans');
+                controller.add(snapshot.data()!);
+              } else {
+                debugPrint('⚠️ No data found in both collections');
+                controller.add({});
+              }
+            },
+            onError: (error) {
+              debugPrint('❌ Error streaming from meal_plans: $error');
+              controller.addError(error);
+            }
+          );
+        }
+      },
+      onError: (error) {
+        debugPrint('❌ Error streaming from latest_meal_plans: $error');
+        controller.addError(error);
+      }
+    );
+    
+    // Đảm bảo hủy tất cả subscriptions khi stream bị đóng
+    controller.onCancel = () {
+      latestSubscription?.cancel();
+      regularSubscription?.cancel();
+    };
+    
+    return controller.stream;
+  }
+  
+  // Update meal plan để tương thích với code cũ
+  Future<void> updateMealPlan(Map<String, dynamic> mealPlanData) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return;
+      }
+      
+      // Sử dụng API để cập nhật meal plan
+      final success = await ApiService.sendMealPlan({
+        'user_id': uid,
+        'meal_plan': mealPlanData
+      });
+      
+      if (success) {
+        debugPrint('✅ Meal plan updated via API');
+      } else {
+        debugPrint('⚠️ Failed to update meal plan via API');
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating meal plan: $e');
+    }
+  }
+  
+  // Save user profile để tương thích với code cũ
+  Future<void> saveUserProfile(Map<String, dynamic> userData) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ No authenticated user found');
+        return;
+      }
+      
+      // Chuẩn bị dữ liệu trước khi gửi lên Firebase - đảm bảo tất cả Timestamp được chuyển thành chuỗi
+      final preparedData = FirebaseHelpers.prepareAnyDataForJson(userData);
+      
+      // Sử dụng API để cập nhật user profile
+      final success = await ApiService.sendUserProfileToFirestore(uid, preparedData);
+      
+      if (success) {
+        debugPrint('✅ User profile updated via API');
+      } else {
+        debugPrint('⚠️ Failed to update user profile via API');
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating user profile: $e');
+    }
+  }
+  
+  // Thêm mới một bản ghi thức ăn
+  Future<String> addFoodEntry(FoodEntry entry) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        throw Exception('Không có người dùng đăng nhập');
+      }
+      
+      // Chuẩn bị dữ liệu để lưu vào Firestore
+      final data = entry.toJson();
+      data['user_id'] = uid;
+      
+      // Xử lý các trường thời gian
+      final preparedData = FirebaseHelpers.prepareDataForFirestore(data);
+      
+      // Tạo một ID mới nếu không có
+      final docRef = _firestore.collection('food_entries').doc();
+      await docRef.set(preparedData);
+      
+      debugPrint('✅ Đã thêm bản ghi thức ăn vào Firestore với ID: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      debugPrint('Lỗi khi thêm bản ghi uống nước: $e');
+      debugPrint('❌ Lỗi khi thêm bản ghi thức ăn vào Firestore: $e');
       throw e;
     }
   }
-
-  // Lấy bản ghi uống nước theo ngày
-  Future<List<WaterEntry>> getWaterEntriesByDate(DateTime date) async {
+  
+  // Cập nhật một bản ghi thức ăn
+  Future<void> updateFoodEntry(FoodEntry entry) async {
     try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
+      final uid = userId;
+      if (uid == null) {
+        throw Exception('Không có người dùng đăng nhập');
       }
       
-      // Tạo thời điểm bắt đầu và kết thúc của ngày
-      DateTime startOfDay = DateTime(date.year, date.month, date.day);
-      DateTime endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+      // Kiểm tra ID
+      if (entry.id.isEmpty) {
+        throw Exception('ID bản ghi thức ăn không hợp lệ');
+      }
       
-      // Chuyển đổi thành millisecondsSinceEpoch để truy vấn
-      int startTimestamp = startOfDay.millisecondsSinceEpoch;
-      int endTimestamp = endOfDay.millisecondsSinceEpoch;
+      // Chuẩn bị dữ liệu để lưu vào Firestore
+      final data = entry.toJson();
+      data['user_id'] = uid;
       
-      QuerySnapshot snapshot = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('water_entries')
-          .where('timestamp', isGreaterThanOrEqualTo: startTimestamp)
-          .where('timestamp', isLessThanOrEqualTo: endTimestamp)
+      // Xử lý các trường thời gian
+      final preparedData = FirebaseHelpers.prepareDataForFirestore(data);
+      
+      // Cập nhật bản ghi
+      await _firestore.collection('food_entries').doc(entry.id).update(preparedData);
+      
+      debugPrint('✅ Đã cập nhật bản ghi thức ăn trong Firestore với ID: ${entry.id}');
+    } catch (e) {
+      debugPrint('❌ Lỗi khi cập nhật bản ghi thức ăn trong Firestore: $e');
+      throw e;
+    }
+  }
+  
+  // Thêm mới một bản ghi tập luyện
+  Future<String> addExerciseEntry(Exercise entry) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        throw Exception('Không có người dùng đăng nhập');
+      }
+      
+      // Chuẩn bị dữ liệu để lưu vào Firestore
+      final data = entry.toJson();
+      data['user_id'] = uid;
+      
+      // Xử lý các trường thời gian
+      final preparedData = FirebaseHelpers.prepareDataForFirestore(data);
+      
+      // Tạo một ID mới nếu không có
+      final docRef = _firestore.collection('exercise_entries').doc();
+      await docRef.set(preparedData);
+      
+      debugPrint('✅ Đã thêm bản ghi tập luyện vào Firestore với ID: ${docRef.id}');
+      return docRef.id;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi thêm bản ghi tập luyện vào Firestore: $e');
+      throw e;
+    }
+  }
+  
+  // Thêm mới một bản ghi nước
+  Future<String> addWaterEntry(WaterEntry entry) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        throw Exception('Không có người dùng đăng nhập');
+      }
+      
+      // Chuẩn bị dữ liệu để lưu vào Firestore
+      final data = entry.toJson();
+      data['user_id'] = uid;
+      
+      // Xử lý các trường thời gian
+      final preparedData = FirebaseHelpers.prepareDataForFirestore(data);
+      
+      // Tạo một ID mới nếu không có
+      final docRef = _firestore.collection('water_entries').doc();
+      await docRef.set(preparedData);
+      
+      debugPrint('✅ Đã thêm bản ghi nước vào Firestore với ID: ${docRef.id}');
+      return docRef.id;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi thêm bản ghi nước vào Firestore: $e');
+      throw e;
+    }
+  }
+  
+  // Lấy danh sách bản ghi thức ăn theo ngày
+  Future<List<FoodEntry>> getFoodEntriesByDate(DateTime date) async {
+    try {
+      final uid = userId;
+      if (uid == null) {
+        debugPrint('❌ Không có người dùng đăng nhập');
+        return [];
+      }
+      
+      // Chuyển đổi ngày thành chuỗi theo định dạng yyyy-MM-dd
+      final dateString = "${date.year.toString()}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+      
+      // Truy vấn Firestore
+      final querySnapshot = await _firestore
+          .collection('food_entries')
+          .where('user_id', isEqualTo: uid)
+          .where('date', isEqualTo: dateString)
           .get();
       
-      return snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        return WaterEntry(
-          id: data['id'],
-          amount: data['amount'],
-          timestamp: DateTime.fromMillisecondsSinceEpoch(data['timestamp']),
-        );
-      }).toList();
-    } catch (e) {
-      debugPrint('Lỗi khi lấy bản ghi uống nước: $e');
+      if (querySnapshot.docs.isNotEmpty) {
+        debugPrint('✅ Đã lấy ${querySnapshot.docs.length} bản ghi thức ăn từ Firestore cho ngày $dateString');
+        
+        // Chuyển đổi từ document sang FoodEntry
+        return querySnapshot.docs.map((doc) {
+          final data = FirebaseHelpers.processFirestoreData(doc.data());
+          data['id'] = doc.id; // Đảm bảo ID được bao gồm
+          return FoodEntry.fromJson(data);
+        }).toList();
+      }
+      
+      debugPrint('⚠️ Không tìm thấy bản ghi thức ăn cho ngày $dateString');
       return [];
-    }
-  }
-
-  // ==================== FAVORITES METHODS ====================
-
-  // Thêm món ăn vào danh sách yêu thích
-  Future<void> addToFavorites(String itemId, String name, String type) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('favorites')
-          .add({
-            'id': DateTime.now().millisecondsSinceEpoch.toString(),
-            'itemId': itemId,
-            'name': name,
-            'type': type,
-            'addedAt': DateTime.now().toIso8601String(),
-          });
     } catch (e) {
-      debugPrint('Lỗi khi thêm vào yêu thích: $e');
-      throw e;
-    }
-  }
-
-  // Lấy danh sách món ăn yêu thích
-  Future<List<Map<String, dynamic>>> getFavorites() async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      QuerySnapshot snapshot = await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('favorites')
-          .orderBy('addedAt', descending: true)
-          .get();
-      
-      return snapshot.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
-    } catch (e) {
-      debugPrint('Lỗi khi lấy danh sách yêu thích: $e');
+      debugPrint('❌ Lỗi khi lấy bản ghi thức ăn từ Firestore: $e');
       return [];
-    }
-  }
-
-  // Xóa khỏi danh sách yêu thích
-  Future<void> removeFromFavorites(String favoriteId) async {
-    try {
-      if (_currentUserId == null) {
-        throw Exception('Người dùng chưa đăng nhập');
-      }
-      
-      await _firestore
-          .collection('users')
-          .doc(_currentUserId)
-          .collection('favorites')
-          .doc(favoriteId)
-          .delete();
-    } catch (e) {
-      debugPrint('Lỗi khi xóa khỏi yêu thích: $e');
-      throw e;
     }
   }
 } 

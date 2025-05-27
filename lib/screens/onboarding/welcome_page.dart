@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'onboarding_screen.dart';
+import '../auth/auth_screen.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({Key? key}) : super(key: key);
@@ -63,18 +64,24 @@ class WelcomePage extends StatelessWidget {
                         ),
                         
                         // Icon não bộ và mạch điện
-                        Image.asset(
-                          'assets/images/brain_circuits.png',
-                          width: 120,
-                          height: 120,
+                        // Image.asset(
+                        //   'assets/images/brain_circuits.png',
+                        //   width: 120,
+                        //   height: 120,
+                        //   color: Colors.white,
+                        //   errorBuilder: (context, error, stackTrace) {
+                        //     return const Icon(
+                        //       Icons.psychology,
+                        //       size: 120,
+                        //       color: Colors.white,
+                        //     );
+                        //   },
+                        // ),
+                        // Thay thế bằng icon mặc định
+                        const Icon(
+                          Icons.psychology,
+                          size: 120,
                           color: Colors.white,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(
-                              Icons.psychology,
-                              size: 120,
-                              color: Colors.white,
-                            );
-                          },
                         ),
                       ],
                     ),
@@ -85,14 +92,16 @@ class WelcomePage extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Image.asset(
-                        'assets/images/confetti.png',
-                        width: 24,
-                        height: 24,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(Icons.celebration, size: 24, color: Colors.amber);
-                        },
-                      ),
+                      // Image.asset(
+                      //   'assets/images/confetti.png',
+                      //   width: 24,
+                      //   height: 24,
+                      //   errorBuilder: (context, error, stackTrace) {
+                      //     return const Icon(Icons.celebration, size: 24, color: Colors.amber);
+                      //   },
+                      // ),
+                      // Thay thế bằng icon mặc định
+                      const Icon(Icons.celebration, size: 24, color: Colors.amber),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
@@ -140,6 +149,39 @@ class WelcomePage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       elevation: 0,
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Đăng nhập button
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AuthScreen(
+                            isLoginMode: true,
+                            onAuthSuccess: () {
+                              // Chuyển đến màn hình chính khi đăng nhập thành công
+                              Navigator.of(context).pushNamedAndRemoveUntil(
+                                '/home',
+                                (route) => false
+                              );
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.login, color: Colors.white),
+                    label: const Text('Đăng nhập'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OnboardingStyles.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
                   ),
                   

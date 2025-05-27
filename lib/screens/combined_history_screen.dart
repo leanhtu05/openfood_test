@@ -775,14 +775,7 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image(
-            image: AssetImage('assets/images/confetti.png'),
-            width: 24,
-            height: 24,
-            errorBuilder: (context, error, stackTrace) {
-              return Icon(Icons.celebration, size: 24, color: Colors.amber);
-            },
-          ),
+          Icon(Icons.celebration, size: 24, color: Colors.amber),
           SizedBox(width: 8),
           Icon(Icons.water_drop, color: Colors.blue, size: 18),
           Icon(Icons.fitness_center, color: Colors.orange, size: 18),

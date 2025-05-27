@@ -18,6 +18,7 @@ import 'onboarding/height_selection_page.dart';
 import 'onboarding/weight_selection_page.dart';
 import 'onboarding/activity_level_page.dart';
 import 'onboarding/diet_goal_page.dart';
+import '../services/auth_service.dart';
 
 // Add extension to add custom properties to UserDataProvider
 extension UserDataProviderExtension on UserDataProvider {
@@ -63,6 +64,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     
     try {
       final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      // Kiểm tra và đồng bộ dữ liệu từ Firebase nếu cần
+      if (authService.isAuthenticated) {
+        // Đồng bộ dữ liệu từ Firebase vào UserDataProvider
+        try {
+          await authService.syncUserDataToProvider(userDataProvider);
+          print('✅ Đã đồng bộ dữ liệu từ Firebase vào UserDataProvider trong ProfileScreen');
+        } catch (e) {
+          print('⚠️ Lỗi khi đồng bộ dữ liệu từ Firebase: $e');
+          // Tiếp tục sử dụng dữ liệu hiện có trong UserDataProvider
+        }
+      }
       
       // Cập nhật thông tin cá nhân từ Provider
       final weight = userDataProvider.weightKg;
@@ -72,6 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final activity = userDataProvider.activityLevel;
       final goal = userDataProvider.goal;
       final pace = userDataProvider.pace;
+      final userName = userDataProvider.name;
       
       // Tính toán TDEE và các giá trị dinh dưỡng
       final calculator = TDEECalculator(
@@ -86,7 +101,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       
       // Tính toán TDEE và nhu cầu calo hàng ngày
       final tdee = calculator.calculateBaseTDEE();
-      final dailyCalories = calculator.calculateDailyCalories();
+      
+      // Sử dụng giá trị từ getConsistentCalorieGoal() để đảm bảo tính nhất quán
+      final dailyCalories = userDataProvider.getConsistentCalorieGoal();
       
       // Tạo giả lịch sử cân nặng nếu không có dữ liệu thực
       final spotList = <FlSpot>[];
@@ -111,15 +128,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _weight = weight;
         _age = age;
-        _name = userDataProvider.name.isNotEmpty ? userDataProvider.name : "Lê Anh Tú";
+        _name = userName.isNotEmpty ? userName : "Người dùng";
         _tdee = tdee;
-        _targetCalories = dailyCalories;
+        _targetCalories = dailyCalories.toDouble();
         _weeklyWeightChange = pace;
         _weightHistory = spotList;
         _isLoading = false;
       });
+      
+      print('✅ Đã tải dữ liệu người dùng thành công trong ProfileScreen');
+      print('👤 Tên: $_name, Tuổi: $_age, Cân nặng: $_weight kg');
+      print('🔥 TDEE: $_tdee kcal, Mục tiêu: $_targetCalories kcal');
     } catch (e) {
-      print('Lỗi khi tải dữ liệu người dùng: $e');
+      print('❌ Lỗi khi tải dữ liệu người dùng: $e');
       setState(() {
         _isLoading = false;
       });
@@ -190,7 +211,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Weight info
-                Column(
+                Flexible(
+                  flex: 1,
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.scale, size: 32, color: AppColors.textPrimary),
@@ -203,10 +226,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ],
+                  ),
                 ),
                 
                 // User info with avatar
-                Row(
+                Flexible(
+                  flex: 2,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                   children: [
                     CircleAvatar(
                       radius: 24,
@@ -214,7 +241,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Icon(Icons.person, size: 24, color: Colors.grey.shade700),
                     ),
                     SizedBox(width: 12),
-                    Column(
+                      Flexible(
+                        child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -223,6 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                           ),
+                              overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           "$_age",
@@ -232,8 +261,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                       ],
+                        ),
                     ),
                   ],
+                  ),
                 ),
                 
                 // Settings button
@@ -694,6 +725,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
+            SizedBox(height: 16),
+            // Thêm nút tính toán lại TDEE
+            ListTile(
+              leading: Icon(Icons.refresh, color: Colors.green),
+              title: Text('Tính toán lại TDEE'),
+              subtitle: Text('Cập nhật lại mục tiêu calo dựa trên thông tin hiện tại'),
+              onTap: () async {
+                // Hiển thị dialog xác nhận
+                final shouldRecalculate = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text('Tính toán lại TDEE'),
+                    content: Text(
+                      'Bạn có muốn tính toán lại mục tiêu calo dựa trên thông tin hiện tại không?\n\n'
+                      'Thao tác này sẽ cập nhật mục tiêu calo và các chỉ số dinh dưỡng của bạn.'
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: Text('Hủy'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: Text('Tính toán lại'),
+                      ),
+                    ],
+                  ),
+                ) ?? false;
+                
+                if (shouldRecalculate) {
+                  // Lấy UserDataProvider
+                  final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+                  
+                  // Hiển thị loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                  
+                  // Tính toán lại TDEE
+                  await _recalculateTDEEAfterWeightUpdate(userDataProvider, _weight);
+                  
+                  // Đóng loading indicator
+                  Navigator.of(context).pop();
+                  
+                  // Hiển thị kết quả
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Đã cập nhật mục tiêu calo: ${userDataProvider.tdeeCalories.round()} kcal'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+            ),
           ],
         ),
       ),
@@ -747,7 +837,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 print('Không thể lưu cân nặng lên Firestore: $e');
               }
               
-              // Recalculate TDEE based on new weight
+              // Recalculate TDEE after weight update
               _recalculateTDEEAfterWeightUpdate(userDataProvider, newWeight);
               
               // Cập nhật lại dữ liệu trên giao diện
@@ -775,38 +865,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Recalculate TDEE after weight update
   Future<void> _recalculateTDEEAfterWeightUpdate(UserDataProvider userDataProvider, double newWeight) async {
-    // Get user data
-    final gender = userDataProvider.gender;
-    final age = userDataProvider.age;
-    final heightCm = userDataProvider.heightCm;
-    final activityLevel = userDataProvider.activityLevel;
-    final goal = userDataProvider.goal;
-    final pace = userDataProvider.pace;
+    // Sử dụng phương thức forceRecalculateTDEE để tính toán lại TDEE từ đầu
+    await userDataProvider.forceRecalculateTDEE();
     
-    // Calculate TDEE and daily calories
-    final calculator = TDEECalculator(
-      gender: gender,
-      age: age,
-      heightCm: heightCm,
-      weightKg: newWeight,  // Use the new weight
-      activityLevel: activityLevel,
-      goal: goal,
-      pace: pace,
-    );
+    // Đồng bộ dữ liệu đầy đủ với backend sau khi cập nhật TDEE
+    await userDataProvider.sendToApi();
     
-    final tdee = calculator.calculateBaseTDEE();
-    final dailyCalories = calculator.calculateDailyCalories();
+    // Lấy giá trị calo mục tiêu nhất quán
+    final consistentCalorieGoal = userDataProvider.getConsistentCalorieGoal();
     
-    // Calculate macros
-    final macros = calculator.calculateMacroDistribution();
-    
-    // Update TDEE values in UserDataProvider
-    await userDataProvider.updateTDEEValues(
-      calories: dailyCalories,
-      protein: macros['protein'] ?? 0,
-      carbs: macros['carbs'] ?? 0,
-      fat: macros['fat'] ?? 0,
-    );
+    // Hiển thị thông báo về mục tiêu calo mới
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật mục tiêu calo: $consistentCalorieGoal kcal'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   // Area chart for weight history
@@ -937,6 +1014,172 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loadUserData();
     }
   }
+
+  // Save goal settings
+  Future<void> _saveGoalSettings() async {
+    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    
+    // Lấy giá trị hiện tại từ userDataProvider thay vì sử dụng biến không tồn tại
+    String goal = userDataProvider.goal;
+    double pace = userDataProvider.pace;
+    
+    // Cập nhật mục tiêu và tốc độ sử dụng phương thức mới
+    await userDataProvider.updateUserGoal(
+      goal: goal,
+      pace: pace,
+    );
+    
+    // Hiển thị thông báo
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Mục tiêu đã được cập nhật thành công'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
+    );
+    
+    // Đóng dialog
+    Navigator.of(context).pop();
+  }
+
+  // Phương thức cập nhật thông tin người dùng thông qua API
+  Future<bool> _updateUserProfileViaApi(Map<String, dynamic> userData) async {
+    try {
+      // Hiển thị loading indicator
+      setState(() {
+        _isLoading = true;
+      });
+      
+      // Lấy AuthService từ Provider
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      // Gọi phương thức updateUserProfileViaApi từ AuthService
+      final success = await authService.updateUserProfileViaApi(userData);
+      
+      // Ẩn loading indicator
+      setState(() {
+        _isLoading = false;
+      });
+      
+      // Hiển thị thông báo kết quả
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cập nhật thông tin thành công'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cập nhật thông tin thất bại: ${authService.errorMessage}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
+      return success;
+    } catch (e) {
+      // Ẩn loading indicator
+      setState(() {
+        _isLoading = false;
+      });
+      
+      // Hiển thị thông báo lỗi
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi cập nhật thông tin: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      
+      return false;
+    }
+  }
+
+  // Phương thức cập nhật toàn bộ thông tin người dùng
+  Future<bool> _updateFullUserProfile({
+    String? displayName,
+    String? photoURL,
+    int? age,
+    String? gender,
+    double? heightCm,
+    double? weightKg,
+    double? targetWeightKg,
+    String? activityLevel,
+    String? goal,
+    double? pace,
+    List<String>? dietRestrictions,
+    List<String>? healthConditions,
+    String? measurementSystem,
+    Map<String, dynamic>? nutritionGoals,
+  }) async {
+    try {
+      // Hiển thị loading indicator
+      setState(() {
+        _isLoading = true;
+      });
+      
+      // Lấy AuthService từ Provider
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      // Gọi phương thức updateFullUserProfile từ AuthService
+      final success = await authService.updateFullUserProfile(
+        displayName: displayName,
+        photoURL: photoURL,
+        age: age,
+        gender: gender,
+        heightCm: heightCm,
+        weightKg: weightKg,
+        targetWeightKg: targetWeightKg,
+        activityLevel: activityLevel,
+        goal: goal,
+        pace: pace,
+        dietRestrictions: dietRestrictions,
+        healthConditions: healthConditions,
+        measurementSystem: measurementSystem,
+        nutritionGoals: nutritionGoals,
+      );
+      
+      // Ẩn loading indicator
+      setState(() {
+        _isLoading = false;
+      });
+      
+      // Hiển thị thông báo kết quả
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cập nhật thông tin thành công'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cập nhật thông tin thất bại: ${authService.errorMessage}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
+      return success;
+    } catch (e) {
+      // Ẩn loading indicator
+      setState(() {
+        _isLoading = false;
+      });
+      
+      // Hiển thị thông báo lỗi
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi cập nhật thông tin: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      
+      return false;
+    }
+  }
 }
 
 // Widget to handle navigation to specific onboarding screens for updating user profile data
@@ -951,6 +1194,7 @@ class ProfileUpdateFlow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final userDataProvider = Provider.of<UserDataProvider>(context);
+    final _profileScreenState = context.findAncestorStateOfType<_ProfileScreenState>();
     
     // Map initialStep to the appropriate page
     Widget pageContent;
@@ -959,23 +1203,23 @@ class ProfileUpdateFlow extends StatelessWidget {
     switch (initialStep) {
       case 'name':
         pageTitle = 'Cập nhật tên';
-        pageContent = _buildNameUpdatePage(context, userDataProvider);
+        pageContent = _buildNameUpdatePage(context, userDataProvider, _profileScreenState);
         break;
       case 'age':
         pageTitle = 'Cập nhật tuổi';
-        pageContent = AgeSelectionPage(updateMode: true);
+        pageContent = _buildAgeUpdatePage(context, userDataProvider, _profileScreenState);
         break;
       case 'gender':
         pageTitle = 'Cập nhật giới tính';
-        pageContent = GenderSelectionPage(updateMode: true);
+        pageContent = _buildGenderUpdatePage(context, userDataProvider, _profileScreenState);
         break;
       case 'height':
         pageTitle = 'Cập nhật chiều cao';
-        pageContent = HeightSelectionPage(updateMode: true);
+        pageContent = _buildHeightUpdatePage(context, userDataProvider, _profileScreenState);
         break;
       case 'weight':
         pageTitle = 'Cập nhật cân nặng';
-        pageContent = WeightSelectionPage(updateMode: true);
+        pageContent = _buildWeightUpdatePage(context, userDataProvider, _profileScreenState);
         break;
       case 'activity':
         pageTitle = 'Cập nhật mức độ hoạt động';
@@ -1009,7 +1253,7 @@ class ProfileUpdateFlow extends StatelessWidget {
   }
   
   // Page to update user name
-  Widget _buildNameUpdatePage(BuildContext context, UserDataProvider userDataProvider) {
+  Widget _buildNameUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
     final TextEditingController nameController = TextEditingController(text: userDataProvider.name);
     
     return SingleChildScrollView(
@@ -1048,18 +1292,413 @@ class ProfileUpdateFlow extends StatelessWidget {
             Container(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (nameController.text.trim().isNotEmpty) {
-                    userDataProvider.setName(nameController.text.trim());
-                    Navigator.of(context).pop();
+                    final newName = nameController.text.trim();
                     
-                    // Show success message
+                    // Cập nhật tên trong UserDataProvider
+                    userDataProvider.setName(newName);
+                    
+                    // Cập nhật thông tin người dùng thông qua API
+                    if (profileScreenState != null) {
+                      // Sử dụng phương thức cập nhật toàn bộ thông tin
+                      await profileScreenState._updateFullUserProfile(
+                        displayName: newName,
+                      );
+                    }
+                    
+                    Navigator.of(context).pop();
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: Text(
+                  'Cập nhật',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Page to update user age
+  Widget _buildAgeUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+    final TextEditingController ageController = TextEditingController(text: userDataProvider.age.toString());
+    
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cập nhật tuổi của bạn',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Tuổi của bạn giúp chúng tôi tính toán nhu cầu dinh dưỡng phù hợp.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 24),
+            TextField(
+              controller: ageController,
+              decoration: InputDecoration(
+                labelText: 'Tuổi',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            SizedBox(height: 32),
+            Container(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (ageController.text.isNotEmpty) {
+                    try {
+                      final int newAge = int.parse(ageController.text);
+                      
+                      if (newAge > 0 && newAge < 120) {
+                        // Cập nhật tuổi trong UserDataProvider
+                        userDataProvider.setAge(newAge);
+                        
+                        // Cập nhật thông tin người dùng thông qua API
+                        if (profileScreenState != null) {
+                          await profileScreenState._updateFullUserProfile(
+                            age: newAge,
+                          );
+                        }
+                        
+                        Navigator.of(context).pop();
+                      } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Đã cập nhật tên thành công!'),
+                            content: Text('Vui lòng nhập tuổi hợp lệ (1-120)'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Vui lòng nhập tuổi hợp lệ'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: Text(
+                  'Cập nhật',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
                       ),
                     );
+  }
+  
+  // Page to update user gender
+  Widget _buildGenderUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+    String selectedGender = userDataProvider.gender;
+    
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cập nhật giới tính của bạn',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Giới tính sinh học giúp chúng tôi tính toán nhu cầu dinh dưỡng phù hợp.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 24),
+            StatefulBuilder(
+              builder: (context, setState) {
+                return Column(
+                  children: [
+                    RadioListTile<String>(
+                      title: Text('Nam'),
+                      value: 'Nam',
+                      groupValue: selectedGender,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedGender = value!;
+                        });
+                      },
+                    ),
+                    RadioListTile<String>(
+                      title: Text('Nữ'),
+                      value: 'Nữ',
+                      groupValue: selectedGender,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedGender = value!;
+                        });
+                      },
+                    ),
+                  ],
+                );
+              }
+            ),
+            SizedBox(height: 32),
+            Container(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  // Cập nhật giới tính trong UserDataProvider
+                  userDataProvider.setGender(selectedGender);
+                  
+                  // Cập nhật thông tin người dùng thông qua API
+                  if (profileScreenState != null) {
+                    await profileScreenState._updateFullUserProfile(
+                      gender: selectedGender,
+                    );
+                  }
+                  
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: Text(
+                  'Cập nhật',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Page to update user height
+  Widget _buildHeightUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+    final TextEditingController heightController = TextEditingController(text: userDataProvider.heightCm.toString());
+    
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cập nhật chiều cao của bạn',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Chiều cao của bạn giúp chúng tôi tính toán nhu cầu dinh dưỡng phù hợp.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 24),
+            TextField(
+              controller: heightController,
+              decoration: InputDecoration(
+                labelText: 'Chiều cao (cm)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            SizedBox(height: 32),
+            Container(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (heightController.text.isNotEmpty) {
+                    try {
+                      final double newHeight = double.parse(heightController.text);
+                      
+                      if (newHeight > 50 && newHeight < 250) {
+                        // Cập nhật chiều cao trong UserDataProvider
+                        userDataProvider.setHeight(newHeight);
+                        
+                        // Cập nhật thông tin người dùng thông qua API
+                        if (profileScreenState != null) {
+                          await profileScreenState._updateFullUserProfile(
+                            heightCm: newHeight,
+                          );
+                        }
+                        
+                        Navigator.of(context).pop();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Vui lòng nhập chiều cao hợp lệ (50-250 cm)'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Vui lòng nhập chiều cao hợp lệ'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: Text(
+                  'Cập nhật',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Page to update user weight
+  Widget _buildWeightUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+    final TextEditingController weightController = TextEditingController(text: userDataProvider.weightKg.toString());
+    
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cập nhật cân nặng của bạn',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Cân nặng của bạn giúp chúng tôi tính toán nhu cầu dinh dưỡng phù hợp.',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 24),
+            TextField(
+              controller: weightController,
+              decoration: InputDecoration(
+                labelText: 'Cân nặng (kg)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            SizedBox(height: 32),
+            Container(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (weightController.text.isNotEmpty) {
+                    try {
+                      final double newWeight = double.parse(weightController.text);
+                      
+                      if (newWeight > 20 && newWeight < 300) {
+                        // Cập nhật cân nặng trong UserDataProvider
+                        userDataProvider.setWeight(newWeight);
+                        
+                        // Cập nhật thông tin người dùng thông qua API
+                        if (profileScreenState != null) {
+                          await profileScreenState._updateFullUserProfile(
+                            weightKg: newWeight,
+                          );
+                          
+                          // Tính toán lại TDEE sau khi cập nhật cân nặng
+                          await profileScreenState._recalculateTDEEAfterWeightUpdate(userDataProvider, newWeight);
+                        }
+                        
+                        Navigator.of(context).pop();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Vui lòng nhập cân nặng hợp lệ (20-300 kg)'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Vui lòng nhập cân nặng hợp lệ'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(

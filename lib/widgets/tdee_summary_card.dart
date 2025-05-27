@@ -10,6 +10,13 @@ class TDEESummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final userData = Provider.of<UserDataProvider>(context);
     
+    // Lấy giá trị đã lưu từ UserDataProvider
+    final dailyCalories = userData.dailyCalories;
+    final protein = userData.protein.round();
+    final carbs = userData.carbs.round();
+    final fat = userData.fat.round();
+    
+    // Tính BMR và TDEE để hiển thị thông tin
     final calculator = TDEECalculator(
       gender: userData.gender,
       age: userData.age,
@@ -22,8 +29,6 @@ class TDEESummaryCard extends StatelessWidget {
 
     final bmr = calculator.calculateBMR();
     final tdee = calculator.calculateBaseTDEE();
-    final dailyCalories = calculator.calculateDailyCalories();
-    final macros = calculator.calculateMacroDistribution();
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -59,7 +64,7 @@ class TDEESummaryCard extends StatelessWidget {
             _buildInfoRow('TDEE', '${tdee.round()} kcal'),
             _buildInfoRow(
               'Mục tiêu calo',
-              '${dailyCalories.round()} kcal',
+              '$dailyCalories kcal',
               isHighlighted: true,
             ),
             const Divider(height: 24),
@@ -76,21 +81,21 @@ class TDEESummaryCard extends StatelessWidget {
                 Expanded(
                   child: _buildMacroItem(
                     'Protein',
-                    '${macros['protein']!.round()}g',
+                    '${protein}g',
                     Colors.blue,
                   ),
                 ),
                 Expanded(
                   child: _buildMacroItem(
                     'Carbs',
-                    '${macros['carbs']!.round()}g',
+                    '${carbs}g',
                     Colors.orange,
                   ),
                 ),
                 Expanded(
                   child: _buildMacroItem(
                     'Fat',
-                    '${macros['fat']!.round()}g',
+                    '${fat}g',
                     Colors.red,
                   ),
                 ),

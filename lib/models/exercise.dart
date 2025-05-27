@@ -87,4 +87,9 @@ class Exercise {
       id: json['id'] as String?,
     );
   }
+
+  // Tạo một bản sao của Exercise với ID mới
+  Exercise updateId(String newId) {
+    return copyWith(id: newId);
+  }
 }

@@ -219,6 +219,8 @@ class ApiKeys {
 
 class ApiEndpoints {
   // Thay thế bằng URL thực tế của API của bạn
+  // QUAN TRỌNG: Thay địa chỉ IP này bằng địa chỉ IPv4 của máy tính bạn
+  // Kiểm tra địa chỉ IP bằng lệnh 'ipconfig' (Windows) hoặc 'ifconfig' (Mac/Linux)
   static const String baseUrl = 'http://192.168.0.101:8000';
   
   // Meal plan endpoints
@@ -237,4 +239,25 @@ class ApiEndpoints {
   
   // Cấu hình
   static const bool forceMockData = false;
+}
+
+// Thêm class để tránh lỗi RenderFlex overflow
+class FlexFix {
+  /// Bọc bất kỳ Column hoặc Row nào có thể gây lỗi tràn với SizedBox và width/height
+  static Widget preventOverflow({
+    required Widget child,
+    double? width,
+    double? height,
+  }) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: child,
+    );
+  }
+  
+  /// Thêm vào Column hoặc Row để tránh lỗi tràn
+  static Widget spacer({double height = 18, double width = 18}) {
+    return SizedBox(height: height, width: width);
+  }
 }

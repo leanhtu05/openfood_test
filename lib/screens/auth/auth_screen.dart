@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../../screens/home_screen.dart';
+import '../../providers/user_data_provider.dart';
+import '../../services/api_service.dart';
 
 class AuthScreen extends StatefulWidget {
   final bool isLoginMode;
@@ -21,6 +27,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
+  bool _isLoading = false;
+  String _errorMessage = '';
   
   // Controllers for form fields
   final _emailController = TextEditingController();
@@ -44,11 +52,17 @@ class _AuthScreenState extends State<AuthScreen> {
   void _toggleForm() {
     setState(() {
       isLogin = !isLogin;
+      _errorMessage = '';
     });
   }
 
   Future<void> _submit() async {
     if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+      
       final authService = Provider.of<AuthService>(context, listen: false);
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
@@ -58,45 +72,160 @@ class _AuthScreenState extends State<AuthScreen> {
       if (isLogin) {
         // Login
         success = await authService.loginWithEmailAndPassword(email, password);
+        
+        // API authentication will happen in the background via AuthService._syncWithApi
+        // We don't need to wait for it here
       } else {
         // Register
         if (password != _confirmPasswordController.text.trim()) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Mật khẩu xác nhận không khớp!';
+          });
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Mật khẩu xác nhận không khớp!')),
           );
           return;
         }
         success = await authService.registerWithEmailAndPassword(email, password);
+        
+        // API user creation will happen in the background via AuthService._syncWithApi
+        // We don't need to wait for it here
       }
       
+      setState(() {
+        _isLoading = false;
+      });
+      
       if (success && mounted) {
+        // Không cần đợi, điều hướng ngay lập tức
         if (widget.onAuthSuccess != null) {
+          print('✅ Gọi onAuthSuccess callback');
           widget.onAuthSuccess!();
         } else {
-          Navigator.of(context).pop(true);
+          // Thêm debug print để theo dõi
+          print('✅ Đăng nhập thành công, đang chuyển hướng đến màn hình chính...');
+          
+          // Chuyển hướng đến màn hình home
+          _navigateToHomeScreen();
         }
+        
+        // Bỏ qua việc xác thực với backend, không cần thiết nữa
+        print('ℹ️ Bỏ qua xác thực token với backend, sử dụng Firebase trực tiếp');
       } else if (mounted) {
+        setState(() {
+          _errorMessage = authService.errorMessage;
+        });
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(authService.errorMessage)),
+          SnackBar(content: Text(_errorMessage)),
         );
       }
     }
   }
 
   Future<void> _continueAsGuest() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+    
     final authService = Provider.of<AuthService>(context, listen: false);
     final success = await authService.signInAnonymously();
     
+    // API sync will happen in the background via AuthService._syncWithApi
+    // We don't need to wait for it here
+    
+    setState(() {
+      _isLoading = false;
+    });
+    
     if (success && mounted) {
+      // Không cần đợi, điều hướng ngay lập tức
       if (widget.onAuthSuccess != null) {
+        print('✅ Gọi onAuthSuccess callback cho khách');
         widget.onAuthSuccess!();
       } else {
-        Navigator.of(context).pop(true);
+        // Thêm debug print để theo dõi
+        print('✅ Đăng nhập khách thành công, đang chuyển hướng đến màn hình chính...');
+        
+        // Chuyển hướng đến màn hình home
+        _navigateToHomeScreen();
       }
+      
+      // Bỏ qua việc xác thực với backend, không cần thiết nữa
+      print('ℹ️ Bỏ qua xác thực token ẩn danh với backend, sử dụng Firebase trực tiếp');
     } else if (mounted) {
+      setState(() {
+        _errorMessage = authService.errorMessage;
+      });
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(authService.errorMessage)),
+        SnackBar(content: Text(_errorMessage)),
       );
+    }
+  }
+
+  // Xác thực với backend sử dụng Firebase ID token
+  Future<bool> _authenticateWithBackend() async {
+    // Không cần xác thực với backend nữa, luôn trả về true
+    print('ℹ️ Bỏ qua xác thực token với backend, sử dụng Firebase trực tiếp');
+        return true;
+  }
+
+  // Phương thức riêng để điều hướng đến màn hình chính
+  void _navigateToHomeScreen() async {
+    print('✅ Thực hiện chuyển hướng đến màn hình chính');
+    
+    // Điều hướng NGAY LẬP TỨC đến màn hình chính
+    // KHÔNG chờ đợi đồng bộ dữ liệu
+    try {
+    // Kiểm tra mounted trước khi thực hiện điều hướng
+    if (!mounted) {
+      print('⚠️ Widget không còn mounted, không thể điều hướng');
+      return;
+    }
+    
+      print('✅ Đang thực hiện Navigator.pushReplacement');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => HomeScreen()),
+      );
+      
+      // Sau khi điều hướng thành công, đồng bộ dữ liệu trong background
+      Future.delayed(Duration(milliseconds: 500), () async {
+        try {
+          final authService = Provider.of<AuthService>(context, listen: false);
+          final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+          
+          // Đồng bộ dữ liệu từ Firebase vào UserDataProvider
+          await authService.syncUserDataToProvider(userDataProvider);
+          print('✅ Đã đồng bộ dữ liệu từ Firebase trong background');
+        } catch (e) {
+          print('⚠️ Lỗi khi đồng bộ dữ liệu trong background: $e');
+          // Lỗi này không ảnh hưởng đến việc điều hướng vì đã thực hiện trước đó
+        }
+      });
+    } catch (e) {
+      print('❌ Lỗi khi điều hướng đến HomeScreen: $e');
+      
+      // Thử phương án thay thế
+      try {
+        print('🔄 Thử phương án thay thế với pushNamedAndRemoveUntil');
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      } catch (fallbackError) {
+        print('❌ Lỗi khi sử dụng pushNamedAndRemoveUntil: $fallbackError');
+        
+        // Hiển thị thông báo cho người dùng
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể chuyển đến màn hình chính. Vui lòng khởi động lại ứng dụng.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -277,12 +406,25 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       if (!isLogin) SizedBox(height: 20),
                       
+                      // Error message
+                      if (_errorMessage.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16.0),
+                          child: Text(
+                            _errorMessage,
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      
                       // Submit Button
                       SizedBox(
                         width: double.infinity,
                         height: 55,
                         child: ElevatedButton(
-                          onPressed: authService.isLoading ? null : _submit,
+                          onPressed: _isLoading || authService.isLoading ? null : _submit,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Color(0xFFE65100),
                             foregroundColor: Colors.white,
@@ -291,7 +433,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: authService.isLoading
+                          child: _isLoading || authService.isLoading
                               ? SizedBox(
                                   width: 24,
                                   height: 24,
@@ -356,21 +498,30 @@ class _AuthScreenState extends State<AuthScreen> {
                   width: double.infinity,
                   height: 55,
                   child: OutlinedButton(
-                    onPressed: authService.isLoading ? null : _continueAsGuest,
+                    onPressed: _isLoading || authService.isLoading ? null : _continueAsGuest,
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: Color(0xFFE65100)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: Text(
-                      'Tiếp tục với tư cách khách',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFE65100),
-                      ),
-                    ),
+                    child: _isLoading && !authService.isLoading
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFE65100),
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            'Tiếp tục với tư cách khách',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFE65100),
+                            ),
+                          ),
                   ),
                 ),
               ],

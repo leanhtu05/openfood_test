@@ -26,8 +26,13 @@ import 'package:openfood/providers/user_auth_provider.dart';
 import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'screens/settings_screen.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
+import 'package:openfood/services/api_service.dart';
 
 bool isFirebaseInitialized = false;
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   // Đảm bảo WidgetsFlutterBinding được khởi tạo
@@ -47,35 +52,82 @@ Future<void> main() async {
 
   // Khởi tạo Firebase với error handling cải tiến
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    isFirebaseInitialized = true;
-    print('Firebase đã được khởi tạo thành công');
+    // Thêm timeout cho việc khởi tạo Firebase
+    bool initializationComplete = false;
+    
+    // Tạo một Future với timeout
+    await Future.any([
+      Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).then((_) {
+        isFirebaseInitialized = true;
+        initializationComplete = true;
+        print('Firebase đã được khởi tạo thành công');
+      }),
+      
+      // Timeout sau 5 giây
+      Future.delayed(Duration(seconds: 5)).then((_) {
+        if (!initializationComplete) {
+          print('⚠️ Timeout khi khởi tạo Firebase, tiếp tục với chế độ offline');
+          isFirebaseInitialized = false;
+          throw Exception('Firebase initialization timeout');
+        }
+      })
+    ]);
     
     // Thêm đăng nhập ẩn danh tự động - chỉ thực hiện khi Firebase đã khởi tạo thành công
-    try {
-      // Kiểm tra xem người dùng đã đăng nhập chưa
-      User? currentUser = FirebaseAuth.instance.currentUser;
-      
-      if (currentUser == null) {
-        // Nếu chưa đăng nhập, thực hiện đăng nhập ẩn danh
-        UserCredential userCredential = await FirebaseAuth.instance.signInAnonymously();
-        print('Đăng nhập ẩn danh thành công: ${userCredential.user?.uid}');
-      } else {
-        print('Người dùng đã đăng nhập với ID: ${currentUser.uid}');
-      }
-    } catch (authError) {
-      print('Lỗi đăng nhập ẩn danh: $authError');
-      // Thử đăng nhập lại một lần nữa sau khi gặp lỗi
+    if (isFirebaseInitialized) {
       try {
-        await Future.delayed(Duration(seconds: 1));
-        UserCredential userCredential = await FirebaseAuth.instance.signInAnonymously();
-        print('Đăng nhập ẩn danh lần 2 thành công: ${userCredential.user?.uid}');
-      } catch (retryError) {
-        print('Lỗi đăng nhập ẩn danh lần 2: $retryError');
-        // Đặt lại trạng thái firebase để ứng dụng biết rằng chúng ta không có firebase
-        isFirebaseInitialized = false;
+        // Kiểm tra xem người dùng đã đăng nhập chưa
+        User? currentUser = FirebaseAuth.instance.currentUser;
+        
+        if (currentUser == null) {
+          // Nếu chưa đăng nhập, thực hiện đăng nhập ẩn danh với timeout
+          bool loginComplete = false;
+          
+          await Future.any([
+            FirebaseAuth.instance.signInAnonymously().then((userCredential) {
+              loginComplete = true;
+              print('Đăng nhập ẩn danh thành công: ${userCredential.user?.uid}');
+            }),
+            
+            // Timeout sau 3 giây
+            Future.delayed(Duration(seconds: 3)).then((_) {
+              if (!loginComplete) {
+                print('⚠️ Timeout khi đăng nhập ẩn danh, tiếp tục với chế độ offline');
+                throw Exception('Anonymous login timeout');
+              }
+            })
+          ]);
+        } else {
+          print('Người dùng đã đăng nhập với ID: ${currentUser.uid}');
+        }
+      } catch (authError) {
+        print('Lỗi đăng nhập ẩn danh: $authError');
+        // Thử đăng nhập lại một lần nữa sau khi gặp lỗi
+        try {
+          await Future.delayed(Duration(seconds: 1));
+          
+          bool retryComplete = false;
+          await Future.any([
+            FirebaseAuth.instance.signInAnonymously().then((userCredential) {
+              retryComplete = true;
+              print('Đăng nhập ẩn danh lần 2 thành công: ${userCredential.user?.uid}');
+            }),
+            
+            // Timeout sau 3 giây
+            Future.delayed(Duration(seconds: 3)).then((_) {
+              if (!retryComplete) {
+                print('⚠️ Timeout khi đăng nhập ẩn danh lần 2, tiếp tục với chế độ offline');
+                throw Exception('Anonymous login retry timeout');
+              }
+            })
+          ]);
+        } catch (retryError) {
+          print('Lỗi đăng nhập ẩn danh lần 2: $retryError');
+          // Đặt lại trạng thái firebase để ứng dụng biết rằng chúng ta không có firebase
+          isFirebaseInitialized = false;
+        }
       }
     }
   } catch (e) {
@@ -113,6 +165,22 @@ Future<void> main() async {
       child: MyApp(),
     ),
   );
+
+  // Sau khi app khởi động, tự động đồng bộ dữ liệu
+  // Cần delay để context và provider sẵn sàng
+  Future.delayed(Duration(seconds: 2), () {
+    final context = navigatorKey.currentContext;
+    if (context != null) {
+      // Đồng bộ dữ liệu với server
+      syncAllDataToServer(context);
+      
+      // Tự động tính toán TDEE
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      userDataProvider.autoCalculateTDEE().then((_) {
+        print('Đã tự động tính toán TDEE khi khởi động ứng dụng');
+      });
+    }
+  });
 }
 
 // Khởi tạo các service cần thiết
@@ -125,6 +193,16 @@ Future<void> initializeServices() async {
     // Khởi tạo Food Database Service
     final foodDatabaseService = FoodDatabaseService();
     await foodDatabaseService.initialize();
+    
+    // Cập nhật URL server cho API calls
+    try {
+      // Nếu bạn đang gặp vấn đề với kết nối, có thể thay đổi địa chỉ IP server ở đây
+      // ApiService.baseUrl = 'http://192.168.1.5:8000';
+      // ApiService.authBaseUrl = 'http://192.168.1.5:8000';
+      print('Sử dụng địa chỉ server mặc định');
+    } catch (e) {
+      print('Lỗi khi cập nhật địa chỉ server: $e');
+    }
     
     print('Đã khởi tạo các service thành công');
   } catch (e) {
@@ -145,6 +223,9 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.green,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      navigatorKey: navigatorKey,
+      routes: routes,
+      onGenerateRoute: generateRoute,
       home: FutureBuilder<bool>(
         future: OnboardingService.hasCompletedOnboarding(),
         builder: (context, snapshot) {
@@ -177,11 +258,10 @@ class MyApp extends StatelessWidget {
           
           // Nếu đã hoàn thành, chuyển đến màn hình chính
           // Nếu chưa, chuyển đến màn hình onboarding
+          print('🏠 Khởi tạo màn hình chính: ${hasCompletedOnboarding ? "HomeScreen" : "OnboardingScreen"}');
           return hasCompletedOnboarding ? HomeScreen() : const OnboardingScreen();
         },
       ),
-      routes: routes,
-      onGenerateRoute: generateRoute,
       // Hỗ trợ hiển thị tiếng Việt
       localizationsDelegates: [
         GlobalMaterialLocalizations.delegate,
@@ -215,4 +295,60 @@ void navigateToMealDetail(BuildContext context, String mealId) {
   //     builder: (context) => MealScreen(mealId: mealId),
   //   ),
   // );
+}
+
+Future<void> syncAllDataToServer(BuildContext context) async {
+  final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+  final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+  final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+  final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+
+  final foodData = foodProvider.getAllEntriesAsJson();
+  final userData = userDataProvider.toJson();
+  final exerciseData = exerciseProvider.getAllExercisesAsJson();
+  final waterData = waterProvider.getAllWaterLogsAsJson();
+
+  final data = {
+    'user': userData,
+    'meals': foodData,
+    'exercises': exerciseData,
+    'water_logs': waterData,
+  };
+
+  try {
+    // Lấy user ID từ Firebase nếu có
+    String userId = "default";
+    try {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser != null) {
+        userId = firebaseUser.uid;
+      }
+    } catch (e) {
+      print('Không thể lấy Firebase user ID: $e');
+    }
+    
+    // Sử dụng URL từ ApiService nếu có, ngược lại sử dụng URL mặc định
+    final apiUrl = '${ApiService.baseUrl}/sync?user_id=$userId';
+    
+    final response = await http.post(
+      Uri.parse(apiUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    ).timeout(
+      Duration(seconds: 8), // Timeout sau 8 giây
+      onTimeout: () {
+        print('⏱️ Timeout khi đồng bộ dữ liệu');
+        throw TimeoutException('Không thể kết nối đến server');
+      },
+    );
+    
+    if (response.statusCode == 200) {
+      print('Đồng bộ dữ liệu local lên server thành công!');
+      print('Response: ${response.body}');
+    } else {
+      print('Lỗi đồng bộ (${response.statusCode}): ${response.body}');
+    }
+  } catch (e) {
+    print('Lỗi khi gửi dữ liệu lên server: $e');
+  }
 }
