@@ -232,11 +232,12 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       await _simulateAIProcessing();
       
       // Process image with AI
+      final description = _getDescription();
+      final mealType = _selectedMealType;
+      // Gọi addFoodEntryWithAI với tham số vị trí theo phiên bản mới
       final entry = await foodProvider.addFoodEntryWithAI(
-        image: _foodImage!,
-        description: _getDescription(),
-        mealType: _selectedMealType,
-        date: _selectedDate ?? targetDate,
+        description,
+        mealType
       );
       
       _closeProcessingDialog();
@@ -356,14 +357,19 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         _selectedDate = DateTime.now().toIso8601String().split('T')[0];
       }
       
+      final description = _descriptionController.text;
+      final mealType = _selectedMealType;
+      // Gọi phiên bản mới của addFoodEntryManual với các tham số vị trí thay vì named parameters
       final entry = await foodProvider.addFoodEntryManual(
-        dateTime: DateTime.parse(_selectedDate!),
-        description: _descriptionController.text,
-        mealType: _selectedMealType,
-        image: _foodImage,
+        description,
+        mealType,
+        [] // Danh sách items rỗng, sẽ được cập nhật sau nếu cần
       );
       
-      foodProvider.updateHomeScreenWithNewEntry(context, entry);
+      // Chỉ gọi updateHomeScreenWithNewEntry nếu entry không phải null
+      if (entry != null) {
+        foodProvider.updateHomeScreenWithNewEntry(context, entry);
+      }
       
       syncCaloriesAndGoalsAfterAdd(context);
       
@@ -472,11 +478,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final DateTime selectedDateTime = _getSelectedDateTime();
     
+    final description = items.map((item) => item.name).join(", ");
+    final mealType = _selectedMealType;
+    // Gọi addFoodEntryManual với tham số vị trí
     final entry = await foodProvider.addFoodEntryManual(
-      description: items.map((item) => item.name).join(", "),
-      mealType: _selectedMealType,
-      dateTime: selectedDateTime,
-      items: items,
+      description,
+      mealType,
+      items
     );
     
     await _showNutritionDetailAndUpdateUI(entry, foodProvider);
@@ -486,11 +494,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final DateTime selectedDateTime = _getSelectedDateTime();
     
+    final description = item.name;
+    final mealType = _selectedMealType;
+    // Gọi addFoodEntryManual với tham số vị trí
     final entry = await foodProvider.addFoodEntryManual(
-      description: item.name,
-      mealType: _selectedMealType,
-      dateTime: selectedDateTime,
-      items: [item],
+      description,
+      mealType,
+      [item] // Danh sách chỉ chứa một item
     );
     
     await _showNutritionDetailAndUpdateUI(entry, foodProvider);
@@ -500,7 +510,14 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     return _selectedDate != null ? DateTime.parse(_selectedDate!) : DateTime.now();
   }
   
-  Future<void> _showNutritionDetailAndUpdateUI(FoodEntry entry, FoodProvider foodProvider) async {
+  // Sử dụng FoodEntry? thay vì FoodEntry để cho phép giá trị null
+  Future<void> _showNutritionDetailAndUpdateUI(FoodEntry? entry, FoodProvider foodProvider) async {
+    // Kiểm tra nếu entry là null thì thoát khỏi hàm
+    if (entry == null) {
+      print('Không thể hiển thị chi tiết dinh dưỡng vì entry là null');
+      return;
+    }
+    
     final updateResult = await Navigator.push(
       context,
       MaterialPageRoute(

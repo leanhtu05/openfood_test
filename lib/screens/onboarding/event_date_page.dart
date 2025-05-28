@@ -171,37 +171,41 @@ class _EventDatePageState extends State<EventDatePage> {
     required Function(int) onValueChanged,
   }) {
     return Expanded(
-      child: Container(
+      child: SizedBox(
         height: 250,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: visibleValues.map((value) {
-            final isSelected = value == selectedValue;
-            
-            return GestureDetector(
-              onTap: () => onValueChanged(value),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-                decoration: isSelected
-                    ? BoxDecoration(
-                        border: Border.all(color: OnboardingStyles.accentColor, width: 2),
-                        borderRadius: BorderRadius.circular(30),
-                      )
-                    : null,
-                child: Text(
-                  '$prefix$value',
-                  style: TextStyle(
-                    fontSize: isSelected ? 26 : 20,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? OnboardingStyles.accentColor : Colors.grey,
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: visibleValues.map((value) {
+                final isSelected = value == selectedValue;
+                
+                return GestureDetector(
+                  onTap: () => onValueChanged(value),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                    decoration: isSelected
+                        ? BoxDecoration(
+                            border: Border.all(color: OnboardingStyles.accentColor, width: 2),
+                            borderRadius: BorderRadius.circular(30),
+                          )
+                        : null,
+                    child: Text(
+                      '$prefix$value',
+                      style: TextStyle(
+                        fontSize: isSelected ? 24 : 18,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? OnboardingStyles.accentColor : Colors.grey,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
+            ),
+          ),
         ),
       ),
     );

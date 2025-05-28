@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../screens/home_screen.dart';
 import '../../providers/user_data_provider.dart';
-import '../../services/api_service.dart';
+import '../../providers/meal_plan_provider.dart';
 
 class AuthScreen extends StatefulWidget {
   final bool isLoginMode;
@@ -63,59 +61,123 @@ class _AuthScreenState extends State<AuthScreen> {
         _errorMessage = '';
       });
       
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
-      
-      bool success;
-      
-      if (isLogin) {
-        // Login
-        success = await authService.loginWithEmailAndPassword(email, password);
+      try {
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final email = _emailController.text.trim();
+        final password = _passwordController.text.trim();
         
-        // API authentication will happen in the background via AuthService._syncWithApi
-        // We don't need to wait for it here
-      } else {
-        // Register
-        if (password != _confirmPasswordController.text.trim()) {
+        bool success;
+        
+        if (isLogin) {
+          // Login
+          print('🔄 Đang đăng nhập với email: $email');
+          success = await authService.loginWithEmailAndPassword(email, password);
+          print('✅ Kết quả đăng nhập: $success');
+        } else {
+          // Register
+          if (password != _confirmPasswordController.text.trim()) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage = 'Mật khẩu xác nhận không khớp!';
+            });
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Mật khẩu xác nhận không khớp!')),
+            );
+            return;
+          }
+          print('🔄 Đang đăng ký với email: $email');
+          success = await authService.registerWithEmailAndPassword(email, password);
+          print('✅ Kết quả đăng ký: $success');
+        }
+        
+        setState(() {
+          _isLoading = false;
+        });
+        
+        if (success && mounted) {
+          // Đồng bộ dữ liệu từ Firebase sau khi đăng nhập thành công
+          try {
+            // Đồng bộ dữ liệu người dùng
+            final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+            await userDataProvider.loadFromFirestore();
+            print('✅ Đã đồng bộ dữ liệu người dùng từ Firebase');
+            
+            // Đồng bộ dữ liệu bữa ăn
+            final mealPlanProvider = Provider.of<MealPlanProvider>(context, listen: false);
+            await mealPlanProvider.initializeAfterLogin();
+            print('✅ Đã đồng bộ dữ liệu bữa ăn từ Firebase');
+          } catch (syncError) {
+            print('⚠️ Lỗi khi đồng bộ dữ liệu từ Firebase: $syncError');
+          }
+          
+          // Hiển thị thông báo thành công
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isLogin ? 'Đăng nhập thành công!' : 'Đăng ký thành công!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          
+          // Chuyển hướng ngay lập tức
+          if (widget.onAuthSuccess != null) {
+            print('✅ Gọi onAuthSuccess callback');
+            widget.onAuthSuccess!();
+          } else {
+            print('✅ Chuyển hướng đến màn hình chính');
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => HomeScreen()),
+            );
+          }
+        } else if (mounted) {
           setState(() {
-            _isLoading = false;
-            _errorMessage = 'Mật khẩu xác nhận không khớp!';
+            _errorMessage = authService.errorMessage;
           });
           
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Mật khẩu xác nhận không khớp!')),
+            SnackBar(content: Text(_errorMessage)),
           );
-          return;
         }
-        success = await authService.registerWithEmailAndPassword(email, password);
+      } catch (e) {
+        print('❌ Lỗi khi đăng nhập: $e');
         
-        // API user creation will happen in the background via AuthService._syncWithApi
-        // We don't need to wait for it here
-      }
-      
-      setState(() {
-        _isLoading = false;
-      });
-      
-      if (success && mounted) {
-        // Không cần đợi, điều hướng ngay lập tức
-        if (widget.onAuthSuccess != null) {
-          print('✅ Gọi onAuthSuccess callback');
-          widget.onAuthSuccess!();
-        } else {
-          // Thêm debug print để theo dõi
-          print('✅ Đăng nhập thành công, đang chuyển hướng đến màn hình chính...');
+        // Xử lý đặc biệt cho lỗi PigeonUserDetails
+        if (e.toString().contains('PigeonUserDetails')) {
+          print('⚠️ Phát hiện lỗi PigeonUserDetails, thử chuyển hướng trực tiếp');
           
-          // Chuyển hướng đến màn hình home
-          _navigateToHomeScreen();
+          // Kiểm tra xem người dùng đã đăng nhập hay chưa
+          if (FirebaseAuth.instance.currentUser != null) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage = '';
+            });
+            
+            // Hiển thị thông báo ngắn
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Có lỗi nhẹ xảy ra, nhưng đăng nhập vẫn thành công')),
+            );
+            
+            // Chuyển hướng đến màn hình chính
+            Future.delayed(Duration(seconds: 1), () {
+              if (mounted) {
+                if (widget.onAuthSuccess != null) {
+                  widget.onAuthSuccess!();
+                } else {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => HomeScreen()),
+                  );
+                }
+              }
+            });
+            return;
+          }
         }
         
-        // Bỏ qua việc xác thực với backend, không cần thiết nữa
-        print('ℹ️ Bỏ qua xác thực token với backend, sử dụng Firebase trực tiếp');
-      } else if (mounted) {
+        // Xử lý lỗi thông thường
         setState(() {
-          _errorMessage = authService.errorMessage;
+          _isLoading = false;
+          _errorMessage = 'Có lỗi xảy ra: ${e.toString()}';
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -134,9 +196,6 @@ class _AuthScreenState extends State<AuthScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
     final success = await authService.signInAnonymously();
     
-    // API sync will happen in the background via AuthService._syncWithApi
-    // We don't need to wait for it here
-    
     setState(() {
       _isLoading = false;
     });
@@ -147,15 +206,11 @@ class _AuthScreenState extends State<AuthScreen> {
         print('✅ Gọi onAuthSuccess callback cho khách');
         widget.onAuthSuccess!();
       } else {
-        // Thêm debug print để theo dõi
         print('✅ Đăng nhập khách thành công, đang chuyển hướng đến màn hình chính...');
-        
-        // Chuyển hướng đến màn hình home
-        _navigateToHomeScreen();
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+        );
       }
-      
-      // Bỏ qua việc xác thực với backend, không cần thiết nữa
-      print('ℹ️ Bỏ qua xác thực token ẩn danh với backend, sử dụng Firebase trực tiếp');
     } else if (mounted) {
       setState(() {
         _errorMessage = authService.errorMessage;
@@ -164,68 +219,6 @@ class _AuthScreenState extends State<AuthScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_errorMessage)),
       );
-    }
-  }
-
-  // Xác thực với backend sử dụng Firebase ID token
-  Future<bool> _authenticateWithBackend() async {
-    // Không cần xác thực với backend nữa, luôn trả về true
-    print('ℹ️ Bỏ qua xác thực token với backend, sử dụng Firebase trực tiếp');
-        return true;
-  }
-
-  // Phương thức riêng để điều hướng đến màn hình chính
-  void _navigateToHomeScreen() async {
-    print('✅ Thực hiện chuyển hướng đến màn hình chính');
-    
-    // Điều hướng NGAY LẬP TỨC đến màn hình chính
-    // KHÔNG chờ đợi đồng bộ dữ liệu
-    try {
-    // Kiểm tra mounted trước khi thực hiện điều hướng
-    if (!mounted) {
-      print('⚠️ Widget không còn mounted, không thể điều hướng');
-      return;
-    }
-    
-      print('✅ Đang thực hiện Navigator.pushReplacement');
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => HomeScreen()),
-      );
-      
-      // Sau khi điều hướng thành công, đồng bộ dữ liệu trong background
-      Future.delayed(Duration(milliseconds: 500), () async {
-        try {
-          final authService = Provider.of<AuthService>(context, listen: false);
-          final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-          
-          // Đồng bộ dữ liệu từ Firebase vào UserDataProvider
-          await authService.syncUserDataToProvider(userDataProvider);
-          print('✅ Đã đồng bộ dữ liệu từ Firebase trong background');
-        } catch (e) {
-          print('⚠️ Lỗi khi đồng bộ dữ liệu trong background: $e');
-          // Lỗi này không ảnh hưởng đến việc điều hướng vì đã thực hiện trước đó
-        }
-      });
-    } catch (e) {
-      print('❌ Lỗi khi điều hướng đến HomeScreen: $e');
-      
-      // Thử phương án thay thế
-      try {
-        print('🔄 Thử phương án thay thế với pushNamedAndRemoveUntil');
-        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-      } catch (fallbackError) {
-        print('❌ Lỗi khi sử dụng pushNamedAndRemoveUntil: $fallbackError');
-        
-        // Hiển thị thông báo cho người dùng
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Không thể chuyển đến màn hình chính. Vui lòng khởi động lại ứng dụng.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
     }
   }
 
@@ -266,9 +259,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  isLogin 
-                      ? 'Đăng nhập để truy cập tất cả tính năng' 
-                      : 'Đăng ký để lưu dữ liệu và nhận các quyền lợi đặc biệt',
+                  isLogin
+                    ? 'Đăng nhập để truy cập tất cả tính năng'
+                    : 'Đăng ký để lưu dữ liệu và nhận các quyền lợi đặc biệt',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
@@ -427,13 +420,11 @@ class _AuthScreenState extends State<AuthScreen> {
                           onPressed: _isLoading || authService.isLoading ? null : _submit,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Color(0xFFE65100),
-                            foregroundColor: Colors.white,
-                            elevation: 2,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: _isLoading || authService.isLoading
+                          child: _isLoading && !authService.isLoading
                               ? SizedBox(
                                   width: 24,
                                   height: 24,
@@ -553,4 +544,5 @@ class AuthProfileUpdateFlow extends StatelessWidget {
       ),
     );
   }
-} 
+}
+

@@ -296,6 +296,25 @@ class FirebaseHelpers {
         };
       }
       
+      // Kiểm tra nếu responseData là List<dynamic> và có thể chứa PigeonUserDetails
+      if (responseData is List) {
+        debugPrint('⚠️ Phát hiện responseData là List, kiểm tra nội dung');
+        // Kiểm tra từng phần tử trong danh sách
+        for (var item in responseData) {
+          if (item.toString().contains('PigeonUserDetails')) {
+            debugPrint('⚠️ Phát hiện PigeonUserDetails trong List, trả về Map an toàn');
+            return {
+              'user_id': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
+              'email': FirebaseAuth.instance.currentUser?.email ?? 'unknown',
+              'display_name': FirebaseAuth.instance.currentUser?.displayName,
+              'photo_url': FirebaseAuth.instance.currentUser?.photoURL,
+              'is_authenticated': true,
+              'converted_from_list_with_pigeonuserdetails': true
+            };
+          }
+        }
+      }
+      
       if (responseData is Map<String, dynamic>) {
         return responseData;
       } else if (responseData is List) {
@@ -316,6 +335,33 @@ class FirebaseHelpers {
             'is_authenticated': true,
             'converted_from_list_pigeonuserdetails': true
           };
+        }
+        
+        // Thêm xử lý đặc biệt cho List<Object?>
+        try {
+          if (responseData.runtimeType.toString().contains('List<Object?>')) {
+            debugPrint('⚠️ Phát hiện List<Object?>, xử lý đặc biệt');
+            // Chuyển đổi an toàn
+            Map<String, dynamic> safeData = {};
+            
+            // Thêm thông tin cơ bản từ Firebase Auth
+            safeData['user_id'] = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+            safeData['email'] = FirebaseAuth.instance.currentUser?.email ?? 'unknown';
+            safeData['display_name'] = FirebaseAuth.instance.currentUser?.displayName;
+            safeData['is_authenticated'] = true;
+            
+            // Thêm dữ liệu từ danh sách nếu có thể
+            if (responseData.isNotEmpty) {
+              var firstItem = responseData.first;
+              if (firstItem is Map) {
+                safeData.addAll(Map<String, dynamic>.from(firstItem));
+              }
+            }
+            
+            return safeData;
+          }
+        } catch (e) {
+          debugPrint('❌ Lỗi khi xử lý List<Object?>: $e');
         }
         
         try {

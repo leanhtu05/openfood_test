@@ -1,28 +1,33 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:openfood/utils/config.dart';
 import '../providers/user_data_provider.dart';
 import '../models/food_entry.dart';
 import '../models/meal_plan.dart';
 import '../models/exercise.dart';
 import '../models/water_entry.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../utils/config.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/config.dart' as AppConfig;
 import '../utils/firebase_helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 class ApiService {
+  // Cờ điều khiển việc sử dụng Firestore trực tiếp
+  static bool get useDirectFirestore => AppConfig.useDirectFirestore;
+  
   // Base URL for FastAPI server
   // When running on Android emulator, use 10.0.2.2 to connect to host's localhost
   // QUAN TRỌNG: Thay địa chỉ IP này bằng địa chỉ IPv4 của máy tính bạn
   // Kiểm tra địa chỉ IP bằng lệnh 'ipconfig' (Windows) hoặc 'ifconfig' (Mac/Linux)
   // KHÔNG sử dụng 'localhost' hoặc '127.0.0.1' vì thiết bị Android sẽ không kết nối được
-  static String get baseUrl => apiBaseUrl;
+  static String get baseUrl => AppConfig.apiBaseUrl;
   
   // URL cho các endpoint auth (không có /api)
-  static String get authBaseUrl => apiBaseUrl;
+  static String get authBaseUrl => AppConfig.apiBaseUrl;
   
   // API endpoints
   static String get userProfileUrl => '$baseUrl/api/user-profile';
@@ -35,6 +40,25 @@ class ApiService {
   static String get firestoreUsersUrl => '$baseUrl/firestore/users';
   static String get syncUrl => '$baseUrl/api/sync';
   static String get firestoreMealPlansUrl => '$baseUrl/firestore/meal-plans';
+  
+  // Phương thức kiểm tra xem có nên sử dụng Firestore trực tiếp không
+  static bool shouldUseDirectFirestore(String featureType) {
+    // Sử dụng Firestore trực tiếp cho các chức năng CRUD đơn giản
+    if (useDirectFirestore) {
+      // Các chức năng CRUD đơn giản
+      if (featureType == 'user_profile' || 
+          featureType == 'food_entry' || 
+          featureType == 'water_entry' || 
+          featureType == 'exercise') {
+        debugPrint('ℹ️ Sử dụng Firestore trực tiếp cho chức năng: $featureType');
+        return true;
+      }
+    }
+    
+    // Các chức năng phức tạp vẫn sử dụng API
+    debugPrint('ℹ️ Sử dụng API cho chức năng phức tạp: $featureType');
+    return false;
+  }
   
   // QUAN TRỌNG: Tất cả dữ liệu chỉ được gửi qua API, không gửi trực tiếp đến Firebase
   // Firebase chỉ được sử dụng để xác thực và lấy dữ liệu khi cần
@@ -110,7 +134,7 @@ class ApiService {
       debugPrint('🔍 Đang kiểm tra kết nối API tại: ${authBaseUrl}${ApiEndpoints.apiStatus}');
       
       final response = await http.get(
-        Uri.parse('${authBaseUrl}${ApiEndpoints.apiStatus}'),
+        Uri.parse('${authBaseUrl}${AppConfig.ApiEndpoints.apiStatus}'),
       ).timeout(
         Duration(seconds: 5),
         onTimeout: () {
@@ -238,25 +262,7 @@ class ApiService {
     }
   }
   
-  // Get user profile from FastAPI
-  static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
-    try {
-      final headers = await getAuthHeaders();
-      final response = await http.get(
-        Uri.parse('$userProfileUrl/$userId'),
-        headers: headers,
-      );
-      
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error getting user profile from API: $e');
-      return null;
-    }
-  }
-  
+
   // Gửi thông tin người dùng đầy đủ đến endpoint /firestore/users/{user_id}
   static Future<bool> sendUserProfileToFirestore(String userId, Map<String, dynamic> userData) async {
     try {
@@ -569,19 +575,46 @@ class ApiService {
   // Send food entry to FastAPI
   static Future<bool> sendFoodEntry(FoodEntry entry, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.post(
-        Uri.parse(foodLogUrl),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-          'entry': entry.toJson(),
-        }),
-      );
-      
-      return response.statusCode == 200 || response.statusCode == 201;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('food_entry')) {
+        debugPrint('🔄 Đang lưu mục nhập thực phẩm trực tiếp vào Firestore...');
+        
+        try {
+          // Chuẩn bị dữ liệu để lưu vào Firestore
+          final entryData = entry.toJson();
+          entryData['user_id'] = userId;
+          entryData['created_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          entryData['updated_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          
+          // Lưu vào Firestore
+          await FirebaseFirestore.instance
+              .collection('food_entries')
+              .doc(entry.id)
+              .set(entryData);
+          
+          debugPrint('✅ Đã lưu mục nhập thực phẩm trực tiếp vào Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi lưu mục nhập thực phẩm vào Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang gửi mục nhập thực phẩm đến API...');
+        final headers = await getAuthHeaders();
+        final response = await http.post(
+          Uri.parse(foodLogUrl),
+          headers: headers,
+          body: jsonEncode({
+            'user_id': userId,
+            'entry': entry.toJson(),
+          }),
+        );
+        
+        return response.statusCode == 200 || response.statusCode == 201;
+      }
     } catch (e) {
-      debugPrint('Error sending food entry to API: $e');
+      debugPrint('❌ Lỗi khi gửi mục nhập thực phẩm: $e');
       return false;
     }
   }
@@ -589,35 +622,92 @@ class ApiService {
   // Get food logs by date from FastAPI
   static Future<List<FoodEntry>?> getFoodEntriesByDate(String userId, String date) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.get(
-        Uri.parse('$foodLogUrl/$userId/$date'),
-        headers: headers,
-      );
-      
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => FoodEntry.fromJson(item)).toList();
+      // Sử dụng Firestore trực tiếp
+      if (shouldUseDirectFirestore('food_entry')) {
+        debugPrint('🔄 Đang lấy mục nhập thực phẩm trực tiếp từ Firestore...');
+        
+        try {
+          // Truy vấn Firestore chỉ với điều kiện user_id để tránh yêu cầu index phức tạp
+          final querySnapshot = await FirebaseFirestore.instance
+              .collection('food_entries')
+              .where('user_id', isEqualTo: userId)
+              .get();
+          
+          // Lọc kết quả theo ngày ở phía client
+          final List<FoodEntry> entries = querySnapshot.docs
+              .map((doc) {
+                try {
+                  final data = doc.data();
+                  return FoodEntry.fromJson(data);
+                } catch (e) {
+                  debugPrint('⚠️ Lỗi khi chuyển đổi dữ liệu: $e');
+                  return null;
+                }
+              })
+              .where((entry) => entry != null && entry.dateTime.toIso8601String().split('T')[0] == date)
+              .cast<FoodEntry>()
+              .toList();
+          
+          debugPrint('✅ Đã lấy ${entries.length} mục nhập thực phẩm từ Firestore thành công cho ngày $date');
+          return entries;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi lấy mục nhập thực phẩm từ Firestore: $firestoreError');
+          return [];
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang lấy mục nhập thực phẩm từ API...');
+        final headers = await getAuthHeaders();
+        final response = await http.get(
+          Uri.parse('$foodLogUrl/$userId/$date'),
+          headers: headers,
+        );
+        
+        if (response.statusCode == 200) {
+          final List<dynamic> data = json.decode(response.body);
+          return data.map((item) => FoodEntry.fromJson(item)).toList();
+        }
+        return [];
       }
-      return null;
     } catch (e) {
-      debugPrint('Error getting food entries from API: $e');
-      return null;
+      debugPrint('❌ Lỗi khi lấy mục nhập thực phẩm: $e');
+      return [];
     }
   }
   
   // Delete food entry
   static Future<bool> deleteFoodEntry(String entryId, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.delete(
-        Uri.parse('$foodLogUrl/$userId/$entryId'),
-        headers: headers,
-      );
-      
-      return response.statusCode == 200 || response.statusCode == 204;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('food_entry')) {
+        debugPrint('🔄 Đang xóa mục nhập thực phẩm trực tiếp từ Firestore...');
+        
+        try {
+          // Xóa mục nhập thực phẩm từ Firestore
+          await FirebaseFirestore.instance
+              .collection('food_entries')
+              .doc(entryId)
+              .delete();
+          
+          debugPrint('✅ Đã xóa mục nhập thực phẩm từ Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi xóa mục nhập thực phẩm từ Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang xóa mục nhập thực phẩm qua API...');
+        final headers = await getAuthHeaders();
+        final response = await http.delete(
+          Uri.parse('$foodLogUrl/$userId/$entryId'),
+          headers: headers,
+        );
+        
+        return response.statusCode == 200 || response.statusCode == 204;
+      }
     } catch (e) {
-      debugPrint('Error deleting food entry from API: $e');
+      debugPrint('❌ Lỗi khi xóa mục nhập thực phẩm: $e');
       return false;
     }
   }
@@ -625,44 +715,47 @@ class ApiService {
   // Update food entry
   static Future<bool> updateFoodEntry(FoodEntry entry, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.put(
-        Uri.parse('$foodLogUrl/$userId/${entry.id}'),
-        headers: headers,
-        body: jsonEncode({
-          'entry': entry.toJson(),
-        }),
-      );
-      
-      return response.statusCode == 200;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('food_entry')) {
+        debugPrint('🔄 Đang cập nhật mục nhập thực phẩm trực tiếp vào Firestore...');
+        
+        try {
+          // Chuẩn bị dữ liệu để cập nhật vào Firestore
+          final entryData = entry.toJson();
+          entryData['user_id'] = userId;
+          entryData['updated_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          
+          // Cập nhật vào Firestore
+          await FirebaseFirestore.instance
+              .collection('food_entries')
+              .doc(entry.id)
+              .update(entryData);
+          
+          debugPrint('✅ Đã cập nhật mục nhập thực phẩm trực tiếp vào Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi cập nhật mục nhập thực phẩm vào Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang cập nhật mục nhập thực phẩm qua API...');
+        final headers = await getAuthHeaders();
+        final response = await http.put(
+          Uri.parse('$foodLogUrl/$userId/${entry.id}'),
+          headers: headers,
+          body: jsonEncode({
+            'entry': entry.toJson(),
+          }),
+        );
+        
+        return response.statusCode == 200;
+      }
     } catch (e) {
-      debugPrint('Error updating food entry via API: $e');
+      debugPrint('❌ Lỗi khi cập nhật mục nhập thực phẩm: $e');
       return false;
     }
   }
-  
-  // EXERCISE METHODS
-  
-  // Get exercises for a specific date
-  static Future<List<Exercise>?> getExercisesByDate(String userId, String date) async {
-    try {
-      final headers = await getAuthHeaders();
-      final response = await http.get(
-        Uri.parse('$exerciseUrl/$userId/date/$date'),
-        headers: headers,
-      );
-      
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Exercise.fromJson(json)).toList();
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error getting exercises from API: $e');
-      return null;
-    }
-  }
-  
   // Get all exercises
   static Future<Map<String, List<Exercise>>?> getAllExercises(String userId) async {
     try {
@@ -694,21 +787,48 @@ class ApiService {
   // Send exercise data to API
   static Future<bool> sendExercise(Exercise exercise, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.post(
-        Uri.parse(exerciseUrl),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-          'exercise_data': exercise.toJson(),
-        }),
-      );
-      
-      debugPrint('API Response (sendExercise): ${response.statusCode} - ${response.body}');
-      
-      return response.statusCode == 200 || response.statusCode == 201;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('exercise')) {
+        debugPrint('🔄 Đang lưu bài tập trực tiếp vào Firestore...');
+        
+        try {
+          // Chuẩn bị dữ liệu để lưu vào Firestore
+          final exerciseData = exercise.toJson();
+          exerciseData['user_id'] = userId;
+          exerciseData['created_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          exerciseData['updated_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          
+          // Lưu vào Firestore
+          await FirebaseFirestore.instance
+              .collection('exercises')
+              .doc(exercise.id)
+              .set(exerciseData);
+          
+          debugPrint('✅ Đã lưu bài tập trực tiếp vào Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi lưu bài tập vào Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang gửi bài tập đến API...');
+        final headers = await getAuthHeaders();
+        final response = await http.post(
+          Uri.parse(exerciseUrl),
+          headers: headers,
+          body: jsonEncode({
+            'user_id': userId,
+            'exercise_data': exercise.toJson(),
+          }),
+        );
+        
+        debugPrint('API Response (sendExercise): ${response.statusCode} - ${response.body}');
+        
+        return response.statusCode == 200 || response.statusCode == 201;
+      }
     } catch (e) {
-      debugPrint('Error sending exercise to API: $e');
+      debugPrint('❌ Lỗi khi gửi bài tập: $e');
       return false;
     }
   }
@@ -716,21 +836,47 @@ class ApiService {
   // Update exercise data
   static Future<bool> updateExercise(Exercise exercise, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.put(
-        Uri.parse('$exerciseUrl/${exercise.id}'),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-          'exercise_data': exercise.toJson(),
-        }),
-      );
-      
-      debugPrint('API Response (updateExercise): ${response.statusCode} - ${response.body}');
-      
-      return response.statusCode == 200;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('exercise')) {
+        debugPrint('🔄 Đang cập nhật bài tập trực tiếp vào Firestore...');
+        
+        try {
+          // Chuẩn bị dữ liệu để cập nhật vào Firestore
+          final exerciseData = exercise.toJson();
+          exerciseData['user_id'] = userId;
+          exerciseData['updated_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          
+          // Cập nhật vào Firestore
+          await FirebaseFirestore.instance
+              .collection('exercises')
+              .doc(exercise.id)
+              .update(exerciseData);
+          
+          debugPrint('✅ Đã cập nhật bài tập trực tiếp vào Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi cập nhật bài tập vào Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang cập nhật bài tập qua API...');
+        final headers = await getAuthHeaders();
+        final response = await http.put(
+          Uri.parse('$exerciseUrl/${exercise.id}'),
+          headers: headers,
+          body: jsonEncode({
+            'user_id': userId,
+            'exercise_data': exercise.toJson(),
+          }),
+        );
+        
+        debugPrint('API Response (updateExercise): ${response.statusCode} - ${response.body}');
+        
+        return response.statusCode == 200;
+      }
     } catch (e) {
-      debugPrint('Error updating exercise on API: $e');
+      debugPrint('❌ Lỗi khi cập nhật bài tập: $e');
       return false;
     }
   }
@@ -738,43 +884,110 @@ class ApiService {
   // Delete exercise
   static Future<bool> deleteExercise(String exerciseId, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.delete(
-        Uri.parse('$exerciseUrl/$exerciseId'),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-        }),
-      );
-      
-      debugPrint('API Response (deleteExercise): ${response.statusCode} - ${response.body}');
-      
-      return response.statusCode == 200;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('exercise')) {
+        debugPrint('🔄 Đang xóa bài tập trực tiếp từ Firestore...');
+        
+        try {
+          // Xóa bài tập từ Firestore
+          await FirebaseFirestore.instance
+              .collection('exercises')
+              .doc(exerciseId)
+              .delete();
+          
+          debugPrint('✅ Đã xóa bài tập từ Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi xóa bài tập từ Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang xóa bài tập qua API...');
+        final headers = await getAuthHeaders();
+        final response = await http.delete(
+          Uri.parse('$exerciseUrl/$exerciseId'),
+          headers: headers,
+          body: jsonEncode({
+            'user_id': userId,
+          }),
+        );
+        
+        debugPrint('API Response (deleteExercise): ${response.statusCode} - ${response.body}');
+        
+        return response.statusCode == 200;
+      }
     } catch (e) {
-      debugPrint('Error deleting exercise from API: $e');
+      debugPrint('❌ Lỗi khi xóa bài tập: $e');
       return false;
     }
   }
   
-  // WATER LOG METHODS
-  
-  // Get water entries for a specific date
-  static Future<List<WaterEntry>?> getWaterEntriesByDate(String userId, String date) async {
+  // Get exercises for a specific date
+  static Future<List<Exercise>?> getExercisesByDate(String userId, String date) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.get(
-        Uri.parse('$waterLogUrl/$userId/date/$date'),
-        headers: headers,
-      );
-      
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => WaterEntry.fromMap(json)).toList();
+      // Sử dụng Firestore trực tiếp
+      if (shouldUseDirectFirestore('exercise')) {
+        debugPrint('🔄 Đang lấy bài tập trực tiếp từ Firestore...');
+        
+        try {
+          // Truy vấn Firestore chỉ với điều kiện user_id để tránh yêu cầu index phức tạp
+          final querySnapshot = await FirebaseFirestore.instance
+              .collection('exercises')
+              .where('user_id', isEqualTo: userId)
+              .get();
+          
+          // Lọc kết quả theo ngày ở phía client
+          final List<Exercise> exercises = [];
+          
+          for (var doc in querySnapshot.docs) {
+            try {
+              final data = doc.data();
+              
+              // Xử lý các trường hợp khác nhau của dữ liệu
+              Exercise? exercise;
+              
+              if (data.containsKey('exercise_data')) {
+                // Trường hợp dữ liệu từ API
+                exercise = Exercise.fromJson(data['exercise_data']);
+              } else {
+                // Trường hợp dữ liệu lưu trực tiếp
+                exercise = Exercise.fromJson(data);
+              }
+              
+              // Kiểm tra ngày
+              if (exercise.date == date) {
+                exercises.add(exercise);
+              }
+            } catch (e) {
+              debugPrint('⚠️ Lỗi khi chuyển đổi dữ liệu bài tập: $e');
+            }
+          }
+          
+          debugPrint('✅ Đã lấy ${exercises.length} bài tập từ Firestore thành công cho ngày $date');
+          return exercises;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi lấy bài tập từ Firestore: $firestoreError');
+          return [];
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang lấy bài tập từ API...');
+        final headers = await getAuthHeaders();
+        final response = await http.get(
+          Uri.parse('$exerciseUrl/$userId/date/$date'),
+          headers: headers,
+        );
+        
+        if (response.statusCode == 200) {
+          final List<dynamic> data = json.decode(response.body);
+          return data.map((json) => Exercise.fromJson(json)).toList();
+        }
+        return [];
       }
-      return null;
     } catch (e) {
-      debugPrint('Error getting water entries from API: $e');
-      return null;
+      debugPrint('❌ Lỗi khi lấy bài tập: $e');
+      return [];
     }
   }
   
@@ -801,21 +1014,48 @@ class ApiService {
   // Send water entry to API
   static Future<bool> sendWaterEntry(WaterEntry entry, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.post(
-        Uri.parse(waterLogUrl),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-          'water_data': entry.toMap(),
-        }),
-      );
-      
-      debugPrint('API Response (sendWaterEntry): ${response.statusCode} - ${response.body}');
-      
-      return response.statusCode == 200 || response.statusCode == 201;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('water_entry')) {
+        debugPrint('🔄 Đang lưu mục nhập nước uống trực tiếp vào Firestore...');
+        
+        try {
+          // Chuẩn bị dữ liệu để lưu vào Firestore
+          final waterData = entry.toMap();
+          waterData['user_id'] = userId;
+          waterData['created_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          waterData['updated_at'] = DateTime.now().toIso8601String(); // Timestamp hiện tại
+          
+          // Lưu vào Firestore
+          await FirebaseFirestore.instance
+              .collection('water_entries')
+              .doc(entry.id)
+              .set(waterData);
+          
+          debugPrint('✅ Đã lưu mục nhập nước uống trực tiếp vào Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi lưu mục nhập nước uống vào Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang gửi mục nhập nước uống đến API...');
+        final headers = await getAuthHeaders();
+        final response = await http.post(
+          Uri.parse(waterLogUrl),
+          headers: headers,
+          body: jsonEncode({
+            'user_id': userId,
+            'water_data': entry.toMap(),
+          }),
+        );
+        
+        debugPrint('API Response (sendWaterEntry): ${response.statusCode} - ${response.body}');
+        
+        return response.statusCode == 200 || response.statusCode == 201;
+      }
     } catch (e) {
-      debugPrint('Error sending water entry to API: $e');
+      debugPrint('❌ Lỗi khi gửi mục nhập nước uống: $e');
       return false;
     }
   }
@@ -823,20 +1063,41 @@ class ApiService {
   // Delete water entry
   static Future<bool> deleteWaterEntry(String entryId, String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.delete(
-        Uri.parse('$waterLogUrl/$entryId'),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-        }),
-      );
-      
-      debugPrint('API Response (deleteWaterEntry): ${response.statusCode} - ${response.body}');
-      
-      return response.statusCode == 200;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('water_entry')) {
+        debugPrint('🔄 Đang xóa mục nhập nước uống trực tiếp từ Firestore...');
+        
+        try {
+          // Xóa mục nhập nước uống từ Firestore
+          await FirebaseFirestore.instance
+              .collection('water_entries')
+              .doc(entryId)
+              .delete();
+          
+          debugPrint('✅ Đã xóa mục nhập nước uống từ Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi xóa mục nhập nước uống từ Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang xóa mục nhập nước uống qua API...');
+        final headers = await getAuthHeaders();
+        final response = await http.delete(
+          Uri.parse('$waterLogUrl/$entryId'),
+          headers: headers,
+          body: jsonEncode({
+            'user_id': userId,
+          }),
+        );
+        
+        debugPrint('API Response (deleteWaterEntry): ${response.statusCode} - ${response.body}');
+        
+        return response.statusCode == 200;
+      }
     } catch (e) {
-      debugPrint('Error deleting water entry from API: $e');
+      debugPrint('❌ Lỗi khi xóa mục nhập nước uống: $e');
       return false;
     }
   }
@@ -844,17 +1105,47 @@ class ApiService {
   // Clear all water entries
   static Future<bool> clearAllWaterEntries(String userId) async {
     try {
-      final headers = await getAuthHeaders();
-      final response = await http.delete(
-        Uri.parse('$waterLogUrl/$userId/all'),
-        headers: headers,
-      );
-      
-      debugPrint('API Response (clearAllWaterEntries): ${response.statusCode} - ${response.body}');
-      
-      return response.statusCode == 200;
+      // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
+      if (shouldUseDirectFirestore('water_entry')) {
+        debugPrint('🔄 Đang xóa tất cả mục nhập nước uống trực tiếp từ Firestore...');
+        
+        try {
+          // Lấy tất cả mục nhập nước uống của người dùng
+          final querySnapshot = await FirebaseFirestore.instance
+              .collection('water_entries')
+              .where('user_id', isEqualTo: userId)
+              .get();
+          
+          // Xóa từng mục nhập
+          final batch = FirebaseFirestore.instance.batch();
+          for (final doc in querySnapshot.docs) {
+            batch.delete(doc.reference);
+          }
+          
+          // Thực hiện xóa hàng loạt
+          await batch.commit();
+          
+          debugPrint('✅ Đã xóa ${querySnapshot.docs.length} mục nhập nước uống từ Firestore thành công');
+          return true;
+        } catch (firestoreError) {
+          debugPrint('❌ Lỗi khi xóa tất cả mục nhập nước uống từ Firestore: $firestoreError');
+          return false;
+        }
+      } else {
+        // Sử dụng API
+        debugPrint('🔄 Đang xóa tất cả mục nhập nước uống qua API...');
+        final headers = await getAuthHeaders();
+        final response = await http.delete(
+          Uri.parse('$waterLogUrl/$userId/all'),
+          headers: headers,
+        );
+        
+        debugPrint('API Response (clearAllWaterEntries): ${response.statusCode} - ${response.body}');
+        
+        return response.statusCode == 200;
+      }
     } catch (e) {
-      debugPrint('Error clearing all water entries from API: $e');
+      debugPrint('❌ Lỗi khi xóa tất cả mục nhập nước uống: $e');
       return false;
     }
   }
@@ -1495,98 +1786,7 @@ class ApiService {
     }
   }
   
-  // Đăng nhập trực tiếp qua API (không qua Firebase)
-  static Future<Map<String, dynamic>?> loginDirectly(String email, String password) async {
-    try {
-      debugPrint('🔄 Đang đăng nhập trực tiếp qua API...');
-      
-      final response = await http.post(
-        Uri.parse('$authBaseUrl/auth/email-login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-        }),
-      ).timeout(
-        defaultTimeout,
-        onTimeout: () {
-          debugPrint('⏱️ Login API timeout - có thể server đang bận');
-          return http.Response('{"error": "Timeout"}', 408);
-        },
-      );
-      
-      debugPrint('Direct Login API Response: ${response.statusCode}');
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint('✅ Đăng nhập API trực tiếp thành công');
-        
-        // Lưu token vào SharedPreferences
-        if (data['token'] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('api_token', data['token']);
-          if (data['user'] != null && data['user']['uid'] != null) {
-            await prefs.setString('user_id', data['user']['uid']);
-          }
-        }
-        
-        return data;
-      }
-      
-      debugPrint('❌ Đăng nhập API trực tiếp thất bại: ${response.statusCode}');
-      return null;
-    } catch (e) {
-      debugPrint('❌ Lỗi khi đăng nhập trực tiếp qua API: $e');
-      return null;
-    }
-  }
   
-  // Đăng ký trực tiếp qua API (không qua Firebase)
-  static Future<Map<String, dynamic>?> registerDirectly(String email, String password, String displayName) async {
-    try {
-      debugPrint('🔄 Đang đăng ký trực tiếp qua API...');
-      
-      final response = await http.post(
-        Uri.parse('$authBaseUrl/auth/email-register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-          'display_name': displayName,
-        }),
-      ).timeout(
-        Duration(seconds: 15),
-        onTimeout: () {
-          debugPrint('⏱️ Register API timeout - có thể server đang bận');
-          return http.Response('{"error": "Timeout"}', 408);
-        },
-      );
-      
-      debugPrint('Direct Register API Response: ${response.statusCode}');
-      
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        debugPrint('✅ Đăng ký API trực tiếp thành công');
-        
-        // Lưu token vào SharedPreferences
-        if (data['token'] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('api_token', data['token']);
-          if (data['user'] != null && data['user']['uid'] != null) {
-            await prefs.setString('user_id', data['user']['uid']);
-          }
-        }
-        
-        return data;
-      }
-      
-      debugPrint('❌ Đăng ký API trực tiếp thất bại: ${response.statusCode}');
-      return null;
-    } catch (e) {
-      debugPrint('❌ Lỗi khi đăng ký trực tiếp qua API: $e');
-      return null;
-    }
-  }
   
   // FIRESTORE USERS METHODS
   

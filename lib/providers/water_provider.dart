@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/water_entry.dart';
 import '../services/water_service.dart';
+import '../services/water_firebase_service.dart';
 import 'package:intl/intl.dart';
 import '../utils/constants.dart';
 import '../services/api_service.dart';
@@ -12,6 +13,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WaterProvider with ChangeNotifier {
   final WaterService _waterService = WaterService();
+  final WaterFirebaseService _waterFirebaseService = WaterFirebaseService();
   
   List<WaterEntry> _entries = [];
   int _totalWaterToday = 0;
@@ -35,6 +37,14 @@ class WaterProvider with ChangeNotifier {
   WaterProvider({FirebaseAuth? authService})
       : _authService = authService ?? FirebaseAuth.instance {
     _loadInitialData();
+    
+    // Lắng nghe sự kiện đăng nhập để đồng bộ dữ liệu từ Firebase
+    _authService.authStateChanges().listen((User? user) {
+      if (user != null) {
+        // Người dùng đã đăng nhập, đồng bộ dữ liệu từ Firebase
+        syncFromFirebase();
+      }
+    });
   }
   
   // Phương thức khởi tạo dữ liệu
@@ -88,121 +98,114 @@ class WaterProvider with ChangeNotifier {
       // Tải dữ liệu từ SharedPreferences trước
       await _loadWaterEntriesFromPrefs();
       
-      // Nếu người dùng đã đăng nhập, thử tải từ Firebase
+      // Nếu người dùng đã đăng nhập, ưu tiên lấy dữ liệu từ Firebase
       final user = _authService.currentUser;
       if (user != null) {
         try {
           // Ưu tiên lấy dữ liệu từ Firestore trực tiếp
-          try {
-            final firestore = FirebaseFirestore.instance;
-            final querySnapshot = await firestore
-                .collection('water_entries')
-                .where('user_id', isEqualTo: user.uid)
-                .where('date', isEqualTo: _selectedDate)
-                .get();
-            
-            if (querySnapshot.docs.isNotEmpty) {
-              // Lọc các bản ghi hiện có cho ngày được chọn
-              _entries.removeWhere((entry) => 
-                DateFormat('yyyy-MM-dd').format(entry.timestamp) == _selectedDate);
-              
-              // Chuyển đổi dữ liệu từ Firestore sang WaterEntry
-              final firestoreEntries = querySnapshot.docs.map((doc) {
-                final data = doc.data();
-                return WaterEntry.fromJson(data);
-              }).toList();
-              
-              // Thêm các bản ghi mới từ Firestore
-              _entries.addAll(firestoreEntries);
-              
-              // Cập nhật tổng lượng nước uống trong ngày
-              _updateTotalWaterForSelectedDate();
-              
-              debugPrint('✅ Đã tải ${firestoreEntries.length} bản ghi nước từ Firestore trực tiếp');
-              
-              // Lưu vào bộ nhớ cục bộ
-              await _saveWaterEntriesToPrefs();
-              _isLoading = false;
-              notifyListeners();
-              return;
-            }
-          } catch (firestoreError) {
-            debugPrint('⚠️ Lỗi khi lấy dữ liệu từ Firestore trực tiếp: $firestoreError');
-          }
+          final firestore = FirebaseFirestore.instance;
+          final querySnapshot = await firestore
+              .collection('water_entries')
+              .where('user_id', isEqualTo: user.uid)
+              .where('date', isEqualTo: _selectedDate)
+              .get();
           
-          // Nếu không thể lấy từ Firestore trực tiếp, thử lấy từ API
-          final firebaseEntries = await ApiService.getWaterEntriesFromFirebase(user.uid, _selectedDate);
-          
-          if (firebaseEntries != null && firebaseEntries.isNotEmpty) {
+          if (querySnapshot.docs.isNotEmpty) {
             // Lọc các bản ghi hiện có cho ngày được chọn
             _entries.removeWhere((entry) => 
               DateFormat('yyyy-MM-dd').format(entry.timestamp) == _selectedDate);
             
-            // Thêm các bản ghi mới từ Firebase
-            _entries.addAll(firebaseEntries);
+            // Thêm các bản ghi mới từ Firestore
+            for (var doc in querySnapshot.docs) {
+              final data = doc.data();
+              final timestamp = data['timestamp'] is Timestamp
+                  ? (data['timestamp'] as Timestamp).toDate()
+                  : DateTime.parse(data['timestamp'].toString());
+              
+              final waterEntry = WaterEntry(
+                id: doc.id,
+                timestamp: timestamp,
+                amount: data['amount'],
+              );
+              
+              _entries.add(waterEntry);
+            }
             
-            // Cập nhật tổng lượng nước uống trong ngày
-            _updateTotalWaterForSelectedDate();
+            // Sắp xếp lại danh sách theo thời gian gần nhất trước
+            _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
             
-            debugPrint('✅ Đã tải ${firebaseEntries.length} bản ghi nước từ API');
-            
-            // Lưu vào bộ nhớ cục bộ
-            await _saveWaterEntriesToPrefs();
-            _isLoading = false;
-            notifyListeners();
-            return;
+            debugPrint('✅ Đã tải ${querySnapshot.docs.length} bản ghi nước từ Firestore');
+          } else {
+            debugPrint('ℹ️ Không có bản ghi nước nào trên Firestore cho ngày $_selectedDate');
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi tải dữ liệu từ Firebase: $e');
+          debugPrint('❌ Lỗi khi tải dữ liệu nước từ Firestore: $e');
         }
       }
       
-      // Nếu không thể tải từ Firebase hoặc API, sử dụng dữ liệu cục bộ
-      debugPrint('ℹ️ Sử dụng dữ liệu nước cục bộ cho ngày $_selectedDate');
+      // Cập nhật tổng lượng nước và thời gian lần cuối
       _updateTotalWaterForSelectedDate();
-      _isLoading = false;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('❌ Lỗi khi tải dữ liệu nước: $e');
+      _lastWaterTime = _getLastWaterTimeFromEntries(_entries);
+      
+      // Lưu vào SharedPreferences
+      await _saveWaterEntriesToPrefs();
+    } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
   
-  // Thêm bản ghi mới
+
+  
+  // Thêm một bản ghi nước mới
   Future<bool> addWaterEntry(int amount, {DateTime? timestamp}) async {
     try {
-      final newEntry = WaterEntry(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        timestamp: timestamp ?? DateTime.now(),
+      final now = timestamp ?? DateTime.now();
+      final id = 'water_${now.millisecondsSinceEpoch}';
+      
+      // Tạo bản ghi mới
+      final entry = WaterEntry(
+        id: id,
         amount: amount,
+        timestamp: now,
       );
       
       // Thêm vào danh sách local
-      _entries.insert(0, newEntry); // Thêm vào đầu danh sách
+      _entries.insert(0, entry); // Thêm vào đầu danh sách
       
       // Cập nhật tổng lượng nước và thời gian lần cuối
       _updateTotalWaterForSelectedDate();
-      _lastWaterTime = newEntry.timestamp;
+      _lastWaterTime = entry.timestamp;
       
       notifyListeners();
       
       // Lưu vào SharedPreferences
       await _saveWaterEntriesToPrefs();
       
-      // Gửi đến API
+      // Lưu trực tiếp vào Firebase nếu đã đăng nhập
       final userId = _authService.currentUser?.uid;
       if (userId != null) {
         try {
-          final result = await ApiService.sendWaterEntry(newEntry, userId);
-          if (result) {
-            debugPrint('✅ Đã gửi bản ghi nước đến API thành công');
+          // Sử dụng WaterFirebaseService để lưu trực tiếp vào Firebase
+          final success = await _waterFirebaseService.saveWaterEntry(entry);
+          
+          if (success) {
+            debugPrint('✅ Đã lưu bản ghi nước vào Firebase thành công');
           } else {
-            debugPrint('⚠️ Không thể gửi bản ghi nước đến API');
+            debugPrint('❌ Không thể lưu bản ghi nước vào Firebase');
           }
-          return result;
+          
+          // Chỉ gửi đến API nếu cần phân tích nâng cao
+          try {
+            await ApiService.sendWaterEntry(entry, userId);
+            debugPrint('✅ Đã thông báo API về bản ghi nước mới');
+          } catch (apiError) {
+            // Không quan trọng nếu API không nhận được thông báo
+            debugPrint('ℹ️ Không thể thông báo API về bản ghi nước mới: $apiError');
+          }
+          return true;
         } catch (e) {
-          debugPrint('❌ Lỗi khi gửi bản ghi nước đến API: $e');
+          debugPrint('❌ Lỗi khi lưu bản ghi nước vào Firebase: $e');
           return false;
         }
       }
@@ -229,19 +232,30 @@ class WaterProvider with ChangeNotifier {
       // Lưu vào SharedPreferences
       await _saveWaterEntriesToPrefs();
       
-      // Xóa trên API
+      // Xóa trực tiếp trên Firebase
       final userId = _authService.currentUser?.uid;
       if (userId != null) {
         try {
-          final result = await ApiService.deleteWaterEntry(id, userId);
-          if (result) {
-            debugPrint('✅ Đã xóa bản ghi nước trên API thành công');
-          } else {
-            debugPrint('⚠️ Không thể xóa bản ghi nước trên API');
+          // Xóa từ Firestore trực tiếp
+          await FirebaseFirestore.instance
+              .collection('water_entries')
+              .doc(id)
+              .delete();
+          
+          debugPrint('✅ Đã xóa bản ghi nước trên Firebase thành công');
+          
+          // Thông báo cho API về việc xóa (nếu cần)
+          try {
+            await ApiService.deleteWaterEntry(id, userId);
+            debugPrint('✅ Đã thông báo API về việc xóa bản ghi nước');
+          } catch (apiError) {
+            // Không quan trọng nếu API không nhận được thông báo
+            debugPrint('ℹ️ Không thể thông báo API về việc xóa bản ghi nước: $apiError');
           }
-          return result;
+          
+          return true;
         } catch (e) {
-          debugPrint('❌ Lỗi khi xóa bản ghi nước trên API: $e');
+          debugPrint('❌ Lỗi khi xóa bản ghi nước trên Firebase: $e');
           return false;
         }
       }
@@ -351,19 +365,37 @@ class WaterProvider with ChangeNotifier {
       // Lưu vào SharedPreferences
       await _saveWaterEntriesToPrefs();
       
-      // Xóa trên API
+      // Xóa trực tiếp trên Firebase
       final userId = _authService.currentUser?.uid;
       if (userId != null) {
         try {
-          final result = await ApiService.clearAllWaterEntries(userId);
-          if (result) {
-            debugPrint('✅ Đã xóa tất cả bản ghi nước trên API thành công');
-          } else {
-            debugPrint('⚠️ Không thể xóa tất cả bản ghi nước trên API');
+          // Xóa tất cả bản ghi nước của người dùng từ Firestore
+          final batch = FirebaseFirestore.instance.batch();
+          final snapshot = await FirebaseFirestore.instance
+              .collection('water_entries')
+              .where('user_id', isEqualTo: userId)
+              .get();
+          
+          for (var doc in snapshot.docs) {
+            batch.delete(doc.reference);
           }
-          return result;
+          
+          await batch.commit();
+          
+          debugPrint('✅ Đã xóa tất cả bản ghi nước trên Firebase thành công');
+          
+          // Thông báo cho API về việc xóa (nếu cần)
+          try {
+            await ApiService.clearAllWaterEntries(userId);
+            debugPrint('✅ Đã thông báo API về việc xóa tất cả bản ghi nước');
+          } catch (apiError) {
+            // Không quan trọng nếu API không nhận được thông báo
+            debugPrint('ℹ️ Không thể thông báo API về việc xóa tất cả bản ghi nước: $apiError');
+          }
+          
+          return true;
         } catch (e) {
-          debugPrint('❌ Lỗi khi xóa tất cả bản ghi nước trên API: $e');
+          debugPrint('❌ Lỗi khi xóa tất cả bản ghi nước trên Firebase: $e');
           return false;
         }
       }
@@ -401,6 +433,10 @@ class WaterProvider with ChangeNotifier {
       debugPrint('❌ Lỗi khi lưu dữ liệu nước vào SharedPreferences: $e');
     }
   }
+  
+
+  
+
   
   // Tải dữ liệu nước từ SharedPreferences
   Future<void> _loadWaterEntriesFromPrefs() async {
@@ -641,4 +677,58 @@ class WaterProvider with ChangeNotifier {
     // Gọi đến phương thức getAllWaterEntriesAsJson mới
     return getAllWaterEntriesAsJson();
   }
-} 
+  
+  // Đồng bộ dữ liệu từ Firebase khi đăng nhập lại
+  Future<void> syncFromFirebase() async {
+    final user = _authService.currentUser;
+    if (user == null) return;
+    
+    try {
+      debugPrint('🔄 Đang đồng bộ dữ liệu nước từ Firebase...');
+      
+      // Sử dụng WaterFirebaseService để lấy dữ liệu cho ngày hiện tại
+      final today = DateTime.now();
+      final entries = await _waterFirebaseService.getWaterEntriesForDate(today);
+      
+      if (entries.isNotEmpty) {
+        // Sắp xếp dữ liệu theo thời gian gần nhất trước
+        entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        
+        // Ghi đè dữ liệu local bằng dữ liệu từ Firebase
+        _entries = entries;
+        
+        // Cập nhật tổng lượng nước cho ngày đã chọn
+        _updateTotalWaterForSelectedDate();
+        
+        // Lấy thời gian lần cuối uống nước
+        _lastWaterTime = _getLastWaterTimeFromEntries(_entries);
+        
+        // Cập nhật SharedPreferences
+        await _saveWaterEntriesToPrefs();
+        
+        // Thông báo UI cập nhật
+        notifyListeners();
+        
+        debugPrint('✅ Đã đồng bộ ${entries.length} bản ghi nước từ Firebase');
+      } else {
+        debugPrint('ℹ️ Không có dữ liệu nước trên Firebase cho ngày hôm nay');
+        
+        // Đồng bộ dữ liệu local lên Firebase nếu có
+        final localEntries = _entries.where((entry) => 
+          DateFormat('yyyy-MM-dd').format(entry.timestamp) == 
+          DateFormat('yyyy-MM-dd').format(today)).toList();
+        
+        if (localEntries.isNotEmpty) {
+          final success = await _waterFirebaseService.syncAllWaterEntries(localEntries);
+          if (success) {
+            debugPrint('✅ Đã đồng bộ ${localEntries.length} bản ghi nước local lên Firebase');
+          } else {
+            debugPrint('❌ Không thể đồng bộ dữ liệu nước local lên Firebase');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi khi đồng bộ dữ liệu nước từ Firebase: $e');
+    }
+  }
+}

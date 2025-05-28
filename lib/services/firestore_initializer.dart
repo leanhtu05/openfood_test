@@ -45,8 +45,8 @@ class FirestoreInitializer {
           'carbs': 200.0,
           'fat': 65.0
         },
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLoginAt': FieldValue.serverTimestamp(),
+        'createdAt': DateTime.now().toIso8601String(),
+        'lastLoginAt': DateTime.now().toIso8601String(),
         'isAnonymous': false,
         'isStructureSample': true, // Để đánh dấu đây là mẫu
       });
@@ -254,7 +254,7 @@ class FirestoreInitializer {
       await latestMealPlansRef.set({
         'user_id': 'sample_user',
         'name': 'Kế hoạch ăn uống mẫu',
-        'startDate': FieldValue.serverTimestamp(),
+        'startDate': DateTime.now().toIso8601String(),
         'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
         'weekly_plan': {
           'Thứ 2': {
@@ -311,7 +311,7 @@ class FirestoreInitializer {
         'preferences': ['Ít muối', 'Nhiều rau'],
         'allergies': ['Hải sản'],
         'cuisineStyle': 'Việt Nam',
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': DateTime.now().toIso8601String(),
         'isStructureSample': true,
       });
       
@@ -319,7 +319,7 @@ class FirestoreInitializer {
       await _firestore.collection('meal_plans').add({
         'user_id': 'sample_user',
         'name': 'Kế hoạch ăn uống mẫu trong collection meal_plans',
-        'startDate': FieldValue.serverTimestamp(),
+        'startDate': DateTime.now().toIso8601String(),
         'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
         'weekly_plan': {
           'Thứ 2': {
@@ -363,7 +363,7 @@ class FirestoreInitializer {
           'fat': 3.6,
           'carbs': 0,
         },
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': DateTime.now().toIso8601String(),
         'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
         'source': 'USDA',
         'query': 'thịt gà',
@@ -395,7 +395,7 @@ class FirestoreInitializer {
             'fat': 18
           }
         ],
-        'timestamp': FieldValue.serverTimestamp(),
+        'timestamp': DateTime.now().toIso8601String(),
         'isImplemented': false,
         'isStructureSample': true,
       });

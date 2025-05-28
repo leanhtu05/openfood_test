@@ -9,6 +9,9 @@ class WaterEntry {
     required this.amount,
   });
 
+  // Getter cho date (trả về timestamp)
+  DateTime get date => timestamp;
+
   // Convert to Map
   Map<String, dynamic> toMap() {
     return {

@@ -9,10 +9,16 @@
 
 // API URL cho máy thật
 // Thay đổi IP tại đây để kết nối với máy chủ cục bộ
-const String apiLocalUrl = 'http://192.168.0.101:8000';
+// Cấu hình cho máy thật - sử dụng địa chỉ IP của máy tính trong mạng LAN
+const String apiLocalUrl = 'http://192.168.0.104:8000';
+
+// Các cấu hình thay thế nếu cần:
+// - Cho emulator: 'http://10.0.2.2:8000' (đặc biệt cho Android Emulator khi kết nối đến localhost của máy host)
+// - Cho máy thật qua USB: 'http://localhost:8000' (với port forwarding)
+// - Cho web: 'http://127.0.0.1:8000'
 
 // URL khi deploy trên hosting
-const String apiProductionUrl = 'http://192.168.0.101:8000';
+const String apiProductionUrl = 'http://192.168.0.104:8000'; // Sử dụng cùng địa chỉ với apiLocalUrl
 
 // URL mặc định để sử dụng
 // Cho phép đè cấu hình trong runtime từ biến apiOverrideUrl
@@ -79,6 +85,7 @@ const String generateMealEndpoint = '/api/meal-plan/generate'; // Endpoint tạo
 const bool useFirebaseByDefault = true;
 const bool useMockDataWhenOffline = true;
 const bool enableAIFeatures = true;
+const bool useDirectFirestore = true; // Sử dụng Firestore trực tiếp thay vì thông qua API
 
 // User preferences defaults
 const double defaultCaloriesTarget = 2000.0;

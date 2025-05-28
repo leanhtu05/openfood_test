@@ -29,17 +29,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     authService = Provider.of<AuthService>(context, listen: false);
+    
+    // Kiểm tra trạng thái đăng nhập và thiết lập ưu tiên dữ liệu
+    _setupDataPriority();
+  }
+  
+  // Phương thức thiết lập ưu tiên dữ liệu dựa trên trạng thái đăng nhập
+  void _setupDataPriority() {
+    // Lấy UserDataProvider từ Provider
+    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    
+    // Kiểm tra xem người dùng đã đăng nhập chưa
+    if (!authService.isAuthenticated) {
+      // Nếu chưa đăng nhập, ưu tiên dữ liệu từ local
+      // Đảm bảo dữ liệu được tải từ SharedPreferences
+      userDataProvider.loadUserData();
+      debugPrint('🔄 Người dùng chưa đăng nhập: Ưu tiên dữ liệu từ local');
+    } else {
+      // Nếu đã đăng nhập, cho phép đồng bộ dữ liệu từ Firestore
+      debugPrint('🔄 Người dùng đã đăng nhập: Cho phép đồng bộ dữ liệu từ Firestore');
+    }
   }
 
-  // Phương thức cập nhật thông tin người dùng thông qua API
+  // Phương thức cập nhật thông tin người dùng trực tiếp với Firestore
   Future<bool> updateUserProfileViaApi(Map<String, dynamic> userData) async {
     setState(() {
       _isLoading = true;
     });
     
     try {
-      // Gọi phương thức từ AuthService
-      final success = await authService.updateUserProfileViaApi(userData);
+      // Gọi phương thức từ AuthService để cập nhật trực tiếp với Firestore
+      final success = await authService.updateFullUserProfile(
+        // Chuyển đổi các trường từ userData sang tham số riêng lẻ nếu cần
+        // Nếu userData chỉ có một số trường cần cập nhật, chỉ truyền những trường đó
+        displayName: userData['display_name'],
+        photoURL: userData['photo_url'],
+        age: userData['age'],
+        gender: userData['gender'],
+        heightCm: userData['height_cm'],
+        weightKg: userData['weight_kg'],
+        targetWeightKg: userData['target_weight_kg'],
+        activityLevel: userData['activity_level'],
+        goal: userData['goal'],
+        pace: userData['pace'],
+        dietRestrictions: userData['diet_restrictions'] != null ? 
+          List<String>.from(userData['diet_restrictions']) : null,
+        healthConditions: userData['health_conditions'] != null ? 
+          List<String>.from(userData['health_conditions']) : null,
+        measurementSystem: userData['measurement_system'],
+        nutritionGoals: userData['nutrition_goals'],
+      );
       
       setState(() {
         _isLoading = false;

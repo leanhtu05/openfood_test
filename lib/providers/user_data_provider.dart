@@ -1,23 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:async'; // Thêm import cho Timer
-import 'dart:math'; // Thêm import cho hàm min
+import 'dart:async';
 import '../services/api_service.dart';
-import '../services/data_integration_service.dart';
-import '../services/auth_service.dart';
+import '../utils/constants.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/firestore_service.dart';
-import '../utils/tdee_calculator.dart';
-import 'package:provider/provider.dart';
+import '../utils/firebase_helpers.dart';
 import 'package:http/http.dart' as http;
 import 'food_provider.dart';
 import 'exercise_provider.dart';
 import 'water_provider.dart';
 import '../services/user_service.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import '../utils/tdee_calculator.dart';
 
 class UserDataProvider with ChangeNotifier {
   // Khai báo các key cho SharedPreferences
@@ -92,9 +89,6 @@ class UserDataProvider with ChangeNotifier {
     'water': 2000.0,
   };
   
-  // DataIntegrationService
-  final DataIntegrationService? _dataIntegrationService;
-  
   // Flag to track if Firebase is available
   bool _isFirebaseAvailable = false;
   
@@ -104,19 +98,15 @@ class UserDataProvider with ChangeNotifier {
   String? _cuisineStyle;
   
   // Additional fields
+  String _userId = '';
   String _email = '';
   String _weightGoal = 'Duy trì cân nặng';
   
   // Exercise calories setting
   bool _addExerciseCaloriesToGoal = true;
   
-  // Authentication service
-  AuthService? _authService;
-  
   // Constructor
-  UserDataProvider({AuthService? authService}) : 
-    _dataIntegrationService = null,
-    _authService = authService {
+  UserDataProvider() {
     // First load local data
     loadUserData().then((_) {
       // Đảm bảo TDEE được tính toán sau khi dữ liệu được tải
@@ -125,15 +115,31 @@ class UserDataProvider with ChangeNotifier {
         _initializeTDEE();
       }
       
-      // Check Firebase availability using a safer approach
-      _checkFirebaseAvailabilityAndInit();
+      // Kiểm tra trạng thái đăng nhập trước khi kiểm tra Firebase
+      _checkAuthenticationStatus();
     });
   }
-
-  // Thiết lập AuthService
-  void setAuthService(AuthService authService) {
-    _authService = authService;
+  
+  // Kiểm tra trạng thái đăng nhập trước khi quyết định có tải dữ liệu từ Firestore hay không
+  Future<void> _checkAuthenticationStatus() async {
+    try {
+      // Kiểm tra xem người dùng đã đăng nhập chưa
+      final isAuthenticated = isUserAuthenticated();
+      
+      if (isAuthenticated) {
+        debugPrint('🔄 Người dùng đã đăng nhập: Kiểm tra và tải dữ liệu từ Firebase');
+        // Nếu đã đăng nhập, kiểm tra và tải dữ liệu từ Firebase
+        await _checkFirebaseAvailabilityAndInit();
+      } else {
+        debugPrint('🔄 Người dùng chưa đăng nhập: Sử dụng dữ liệu local');
+        // Nếu chưa đăng nhập, chỉ sử dụng dữ liệu local đã được tải trước đó
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi khi kiểm tra trạng thái đăng nhập: $e');
+    }
   }
+  
+  // }
 
   // Check Firebase availability and initialize if possible
   Future<void> _checkFirebaseAvailabilityAndInit() async {
@@ -147,10 +153,12 @@ class UserDataProvider with ChangeNotifier {
           final currentUser = FirebaseAuth.instance.currentUser;
           if (currentUser != null) {
             // Create DataIntegrationService instance
-            DataIntegrationService? service = DataIntegrationService();
+            // DataIntegrationService? service = DataIntegrationService();
+            // Đã bỏ tham chiếu đến DataIntegrationService vì nó không tồn tại
             
-            // Use a setter since final field can't be modified after initialization
-            _setDataIntegrationService(service);
+            // // Use a setter since final field can't be modified after initialization
+            // _setDataIntegrationService(service);
+            // Đã bỏ tham chiếu đến service vì nó không tồn tại
             
             // Use loadFromFirestore only if user is authenticated
             await loadFromFirestore();
@@ -173,11 +181,9 @@ class UserDataProvider with ChangeNotifier {
   }
   
   // Helper method to set the DataIntegrationService since it's final
-  void _setDataIntegrationService(DataIntegrationService? service) {
-    // Using reflection or other technique would be needed to modify a final field
-    // For now, we'll work with the service being potentially null
-    // We'll handle null checks wherever the service is used
-  }
+  // void _setDataIntegrationService(DataIntegrationService? service) {
+  //   _dataIntegrationService = service;
+  // }
   
   @override
   void dispose() {
@@ -186,6 +192,8 @@ class UserDataProvider with ChangeNotifier {
   }
   
   // Getters
+  String get userId => _userId;
+  String get email => _email;
   String get name => _name;
   String get gender => _gender;
   int get age => _age;
@@ -214,7 +222,7 @@ class UserDataProvider with ChangeNotifier {
   double get tdeeFat => _tdeeFat;
   bool get syncEnabled => _syncEnabled;
   DateTime? get lastSyncTime => _lastSyncTime;
-  String? get userId => FirebaseAuth.instance.currentUser?.uid; // Get user ID from Firebase
+  // Sử dụng getCurrentUserId() để lấy ID từ Firebase khi cần thiết
   
   // Exercise calories setting
   bool get addExerciseCaloriesToGoal => _addExerciseCaloriesToGoal;
@@ -224,8 +232,7 @@ class UserDataProvider with ChangeNotifier {
   List<String> get allergies => _allergies;
   String? get cuisineStyle => _cuisineStyle;
   
-  // Email getter
-  String get email => _email;
+  // Email đã được định nghĩa ở trên
   
   // Phương thức để lấy thời gian đồng bộ gần nhất theo định dạng chuỗi
   String getFormattedLastSyncTime() {
@@ -246,9 +253,14 @@ class UserDataProvider with ChangeNotifier {
   }
   
   void setName(String value) {
-    _name = value;
-    notifyListeners();
-    saveUserData();
+    if (_name != value) {
+      _name = value;
+      // Sử dụng Future.microtask để tránh gọi notifyListeners trong build
+      Future.microtask(() {
+        notifyListeners();
+      });
+      saveUserData();
+    }
   }
   
   void setAge(int value) {
@@ -530,39 +542,7 @@ class UserDataProvider with ChangeNotifier {
       }
       
       // Chuẩn bị đầy đủ dữ liệu người dùng để đồng bộ
-      final Map<String, dynamic> fullUserData = {
-        'name': _name,
-        'gender': _gender,
-        'age': _age,
-        'height_cm': _heightCm,
-        'weight_kg': _weightKg,
-        'activity_level': _activityLevel,
-        'goal': _goal,
-        'pace': _pace,
-        'target_weight_kg': _targetWeightKg,
-        'event': _event,
-        'event_date': {
-          'day': _eventDay,
-          'month': _eventMonth,
-          'year': _eventYear,
-        },
-        'diet_restrictions': _dietRestrictions,
-        'diet_preference': _dietPreference,
-        'health_conditions': _healthConditions,
-        'nutrition_goals': _nutritionGoals,
-        'daily_calories': _dailyCalories,
-        'tdee': {
-          'calories': _tdeeCalories,
-          'protein': _tdeeProtein,
-          'carbs': _tdeeCarbs,
-          'fat': _tdeeFat,
-        },
-        'preferences': _preferences,
-        'allergies': _allergies,
-        'cuisine_style': _cuisineStyle,
-        'add_exercise_calories_to_goal': _addExerciseCaloriesToGoal,
-        'last_sync_time': DateTime.now().toIso8601String(),
-      };
+      final Map<String, dynamic> fullUserData = _prepareUserDataForSync();
       
       // Sử dụng phương thức mới để đồng bộ đầy đủ dữ liệu
       final result = await ApiService.syncFullUserData(userId, fullUserData);
@@ -588,11 +568,94 @@ class UserDataProvider with ChangeNotifier {
     }
   }
   
+  // Chuẩn bị dữ liệu người dùng để đồng bộ
+  Map<String, dynamic> _prepareUserDataForSync() {
+    return {
+      'name': _name,
+      'gender': _gender,
+      'age': _age,
+      'height_cm': _heightCm,
+      'weight_kg': _weightKg,
+      'activity_level': _activityLevel,
+      'goal': _goal,
+      'pace': _pace,
+      'target_weight_kg': _targetWeightKg,
+      'event': _event,
+      'event_date': {
+        'day': _eventDay,
+        'month': _eventMonth,
+        'year': _eventYear,
+      },
+      'diet_restrictions': _dietRestrictions,
+      'diet_preference': _dietPreference,
+      'health_conditions': _healthConditions,
+      'nutrition_goals': _nutritionGoals,
+      'daily_calories': _dailyCalories,
+      'tdee': {
+        'calories': _tdeeCalories,
+        'protein': _tdeeProtein,
+        'carbs': _tdeeCarbs,
+        'fat': _tdeeFat,
+      },
+      'preferences': _preferences,
+      'allergies': _allergies,
+      'cuisine_style': _cuisineStyle,
+      'add_exercise_calories_to_goal': _addExerciseCaloriesToGoal,
+      'last_sync_time': DateTime.now().toIso8601String(),
+    };
+  }
+  
+  // Gửi dữ liệu trực tiếp đến Firebase
+  Future<bool> syncToFirebase() async {
+    try {
+      // Kiểm tra xem người dùng đã đăng nhập chưa
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint('Không thể gửi dữ liệu đến Firebase: Người dùng chưa đăng nhập');
+        return false;
+      }
+      
+      // Chuẩn bị dữ liệu người dùng
+      final Map<String, dynamic> userData = _prepareUserDataForSync();
+      
+      // Thêm các trường cần thiết
+      userData['user_id'] = user.uid;
+      userData['email'] = user.email ?? '';
+      userData['updated_at'] = DateTime.now().toIso8601String();
+      
+      // Xử lý dữ liệu để đảm bảo tương thích với Firestore
+      final preparedData = FirebaseHelpers.prepareDataForFirestore(userData);
+      
+      debugPrint('🔄 Đang gửi dữ liệu người dùng trực tiếp lên Firebase...');
+      
+      // Gửi dữ liệu lên Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(preparedData, SetOptions(merge: true));
+      
+      // Cập nhật thời gian đồng bộ cuối cùng
+      _lastSyncTime = DateTime.now();
+      
+      // Lưu thời gian đồng bộ vào SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastSyncTimeKey, _lastSyncTime!.toIso8601String());
+      
+      debugPrint('✅ Đã đồng bộ dữ liệu người dùng trực tiếp lên Firebase thành công');
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi gửi dữ liệu trực tiếp lên Firebase: $e');
+      return false;
+    }
+  }
+  
   // Load user data from API
   Future<bool> loadFromApi() async {
     if (!_isFirebaseAvailable) return false;
     
     try {
+      // Kiểm tra xem người dùng đã đăng nhập chưa
       if (Firebase.apps.isEmpty || FirebaseAuth.instance.currentUser == null) {
         return false;
       }
@@ -683,51 +746,61 @@ class UserDataProvider with ChangeNotifier {
   
   // Helper method for backwards compatibility
   void setGender(String value) {
-    gender = value;
+    if (_gender != value) {
+      _gender = value;
+      notifyListeners();
+      saveUserData();
+    }
   }
   
-  // Save user data to SharedPreferences
+  // Lưu dữ liệu người dùng vào SharedPreferences
   Future<void> saveUserData() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Save basic user info
-    await prefs.setString(_nameKey, _name);
-    await prefs.setString(_genderKey, _gender);
-    await prefs.setInt(_ageKey, _age);
-    await prefs.setDouble(_heightKey, _heightCm);
-    await prefs.setDouble(_weightKey, _weightKg);
-    await prefs.setString(_activityLevelKey, _activityLevel);
-    await prefs.setString(_goalKey, _goal);
-    await prefs.setDouble(_paceKey, _pace);
+    // Lưu thông tin cơ bản
+    prefs.setString(_nameKey, _name);
+    prefs.setString(_genderKey, _gender);
+    prefs.setInt(_ageKey, _age);
+    prefs.setDouble(_heightKey, _heightCm);
+    prefs.setDouble(_weightKey, _weightKg);
+    prefs.setString(_activityLevelKey, _activityLevel);
+    prefs.setString(_goalKey, _goal);
+    prefs.setDouble(_paceKey, _pace);
     
-    // Save nutritional targets
-    await prefs.setDouble(_tdeeCaloriesKey, _tdeeCalories);
-    await prefs.setDouble(_tdeeProteinKey, _tdeeProtein);
-    await prefs.setDouble(_tdeeCarbsKey, _tdeeCarbs);
-    await prefs.setDouble(_tdeeFatKey, _tdeeFat);
-    await prefs.setInt('daily_calories', _dailyCalories);
-    await prefs.setDouble('protein', _protein);
-    await prefs.setDouble('carbs', _carbs);
-    await prefs.setDouble('fat', _fat);
+    // Lưu giá trị TDEE
+    prefs.setDouble(_tdeeCaloriesKey, _tdeeCalories);
+    prefs.setDouble(_tdeeProteinKey, _tdeeProtein);
+    prefs.setDouble(_tdeeCarbsKey, _tdeeCarbs);
+    prefs.setDouble(_tdeeFatKey, _tdeeFat);
     
-    // Save additional data
-    await prefs.setDouble(_targetWeightKey, _targetWeightKg);
-    await prefs.setString(_eventKey, _event);
-    await prefs.setString(_eventDateKey, jsonEncode({
-      'day': _eventDay,
-      'month': _eventMonth,
-      'year': _eventYear
-    }));
-    await prefs.setString(_dietRestrictionKey, jsonEncode(_dietRestrictions));
-    await prefs.setString(_dietPreferenceKey, _dietPreference);
-    await prefs.setString(_healthConditionsKey, jsonEncode(_healthConditions));
-    await prefs.setString(_nutritionGoalsKey, jsonEncode(_nutritionGoals));
+    // Lưu dữ liệu bổ sung
+    prefs.setDouble(_targetWeightKey, _targetWeightKg);
+    prefs.setString(_eventKey, _event);
     
-    // Save sync settings
-    await prefs.setBool(_syncEnabledKey, _syncEnabled);
-    if (_lastSyncTime != null) {
-      await prefs.setString(_lastSyncTimeKey, _lastSyncTime!.toIso8601String());
+    // Lưu ngày sự kiện
+    if (_eventDay > 0 && _eventMonth > 0 && _eventYear > 0) {
+      final eventDateMap = {
+        'day': _eventDay,
+        'month': _eventMonth,
+        'year': _eventYear,
+      };
+      prefs.setString(_eventDateKey, jsonEncode(eventDateMap));
     }
+    
+    // Lưu các giới hạn chế và ưu tiên về chế độ ăn
+    prefs.setString(_dietRestrictionKey, jsonEncode(_allergies));
+    prefs.setString(_dietPreferenceKey, jsonEncode(_preferences));
+    
+    // Lưu trạng thái đồng bộ
+    prefs.setBool(_syncEnabledKey, _syncEnabled);
+    if (_lastSyncTime != null) {
+      prefs.setString(_lastSyncTimeKey, _lastSyncTime!.toIso8601String());
+    }
+    
+    // Đồng bộ lên Firebase nếu có thể
+    await syncToFirebase();
+    
+    notifyListeners();
   }
   
   // Load user data from SharedPreferences
@@ -960,6 +1033,14 @@ class UserDataProvider with ChangeNotifier {
 
   // Hàm đồng bộ hoặc lấy dữ liệu user sau khi đăng nhập
   Future<void> syncOrFetchUserData(BuildContext context) async {
+    // Kiểm tra trạng thái đăng nhập trước khi đồng bộ dữ liệu
+    if (!isUserAuthenticated()) {
+      debugPrint('⚠️ Người dùng chưa đăng nhập: Ưu tiên dữ liệu từ local, bỏ qua đồng bộ dữ liệu');
+      // Đảm bảo dữ liệu local được tải
+      await loadUserData();
+      return;
+    }
+    
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     
@@ -1276,6 +1357,12 @@ class UserDataProvider with ChangeNotifier {
   // Phương thức loadFromFirestore để đọc dữ liệu từ Firebase thông qua FastAPI
   Future<void> loadFromFirestore() async {
     try {
+      // Kiểm tra trạng thái đăng nhập trước khi tải dữ liệu từ Firestore
+      if (!isUserAuthenticated()) {
+        debugPrint('⚠️ Người dùng chưa đăng nhập: Ưu tiên dữ liệu từ local, bỏ qua tải dữ liệu từ Firestore');
+        return; // Bỏ qua việc tải dữ liệu từ Firestore nếu chưa đăng nhập
+      }
+      
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         print('🔄 Đang đọc dữ liệu người dùng từ Firebase với ID: ${user.uid}');
@@ -1696,11 +1783,7 @@ class UserDataProvider with ChangeNotifier {
 
   // Khi người dùng đăng nhập, gọi phương thức này
   Future<void> onUserLogin(BuildContext context) async {
-    if (_isFirebaseAvailable && _authService != null && _authService!.isAuthenticated) {
-      // Tạo DataIntegrationService nếu chưa có
-      if (_dataIntegrationService == null) {
-        _setDataIntegrationService(DataIntegrationService());
-      }
+    if (_isFirebaseAvailable && FirebaseAuth.instance.currentUser != null) {
       // Tải dữ liệu từ Firestore
       await loadFromFirestore();
       // Gửi dữ liệu lên API với token mới
@@ -1869,12 +1952,27 @@ class UserDataProvider with ChangeNotifier {
     debugPrint('Đã xóa $deleted documents từ collection');
   }
 
-  // Setters for email
+  // Setters for basic user info
+  void setUserId(String value) {
+    if (_userId != value) {
+      _userId = value;
+      // Sử dụng Future.microtask để tránh gọi notifyListeners trong build
+      Future.microtask(() {
+        notifyListeners();
+      });
+    }
+  }
+
   void setEmail(String? value) {
-    if (value != null && value.isNotEmpty) {
+    if (value != null && value.isNotEmpty && _email != value) {
       _email = value;
-      notifyListeners();
+      // Sử dụng Future.microtask để tránh gọi notifyListeners trong build
+      Future.microtask(() {
+        notifyListeners();
+      });
       saveUserData();
     }
   }
+
+  // setName đã được định nghĩa ở dòng 251
 } 

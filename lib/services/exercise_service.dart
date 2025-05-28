@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/exercise.dart';
+import '../providers/exercise_provider.dart';
 
 class ExerciseService {
   static const String _exercisesKey = 'exercises_by_date';
@@ -127,44 +129,122 @@ class ExerciseService {
   
   // Lưu danh sách Exercise theo ngày
   static Future<void> saveExercisesForDate(String date, List<Exercise> exercises) async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Lấy Map hiện tại từ SharedPreferences
-    final exercisesMapJson = prefs.getString(_exercisesKey) ?? '{}';
-    Map<String, dynamic> exercisesMap = jsonDecode(exercisesMapJson);
-    
-    // Chuyển danh sách Exercise thành List<Map>
-    final exercisesJson = exercises.map((e) => e.toJson()).toList();
-    
-    // Cập nhật Map với ngày mới
-    if (exercises.isEmpty) {
-      // Nếu danh sách rỗng, xóa key
-      exercisesMap.remove(date);
-    } else {
-      // Nếu có dữ liệu, cập nhật key
-      exercisesMap[date] = exercisesJson;
+    try {
+      // Sử dụng ExerciseProvider để lưu vào cả Firestore và local
+      final provider = ExerciseProvider();
+      provider.setSelectedDate(date);
+      
+      // Xóa các bài tập cũ trong ngày này
+      final currentExercises = provider.selectedDateExercises;
+      for (var exercise in currentExercises) {
+        if (exercise.id != null) {
+          await provider.deleteExercise(exercise.id!);
+        }
+      }
+      
+      // Thêm các bài tập mới
+      for (var exercise in exercises) {
+        // Đảm bảo exercise có ngày đúng
+        final updatedExercise = exercise.copyWith(
+          date: exercise.date.contains('T') ? exercise.date : '${exercise.date}T00:00:00.000Z'
+        );
+        await provider.addExercise(updatedExercise);
+      }
+      
+      // Dưới đây là cách lưu cũ vào SharedPreferences, vẫn giữ lại để đảm bảo tương thích ngược
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Lấy Map hiện tại từ SharedPreferences
+      final exercisesMapJson = prefs.getString(_exercisesKey) ?? '{}';
+      Map<String, dynamic> exercisesMap = jsonDecode(exercisesMapJson);
+      
+      // Chuyển danh sách Exercise thành List<Map>
+      final exercisesJson = exercises.map((e) => e.toJson()).toList();
+      
+      // Cập nhật Map với ngày mới
+      if (exercises.isEmpty) {
+        // Nếu danh sách rỗng, xóa key
+        exercisesMap.remove(date);
+      } else {
+        // Nếu có dữ liệu, cập nhật key
+        exercisesMap[date] = exercisesJson;
+      }
+      
+      // Lưu lại vào SharedPreferences
+      await prefs.setString(_exercisesKey, jsonEncode(exercisesMap));
+      
+      debugPrint('✅ Đã lưu ${exercises.length} bài tập cho ngày $date vào cả Firestore và SharedPreferences');
+    } catch (e) {
+      debugPrint('❌ Lỗi khi lưu bài tập vào Firestore: $e');
+      
+      // Dùng cách lưu cũ nếu gặp lỗi
+      final prefs = await SharedPreferences.getInstance();
+      final exercisesMapJson = prefs.getString(_exercisesKey) ?? '{}';
+      Map<String, dynamic> exercisesMap = jsonDecode(exercisesMapJson);
+      
+      // Chuyển danh sách Exercise thành List<Map>
+      final exercisesJson = exercises.map((e) => e.toJson()).toList();
+      
+      // Cập nhật Map với ngày mới
+      if (exercises.isEmpty) {
+        // Nếu danh sách rỗng, xóa key
+        exercisesMap.remove(date);
+      } else {
+        // Nếu có dữ liệu, cập nhật key
+        exercisesMap[date] = exercisesJson;
+      }
+      
+      // Lưu lại vào SharedPreferences
+      await prefs.setString(_exercisesKey, jsonEncode(exercisesMap));
     }
-    
-    // Lưu lại vào SharedPreferences
-    await prefs.setString(_exercisesKey, jsonEncode(exercisesMap));
   }
 
   // Lấy danh sách Exercise theo ngày
   static Future<List<Exercise>> getExercisesForDate(String date) async {
-    final prefs = await SharedPreferences.getInstance();
-    final exercisesMapJson = prefs.getString(_exercisesKey) ?? '{}';
-    Map<String, dynamic> exercisesMap = jsonDecode(exercisesMapJson);
-    
-    // Kiểm tra xem có dữ liệu cho ngày này không
-    if (!exercisesMap.containsKey(date)) {
-      return [];
+    try {
+      // Sử dụng ExerciseProvider để lấy dữ liệu từ Firestore
+      final provider = ExerciseProvider();
+      provider.setSelectedDate(date);
+      
+      // Đợi tải dữ liệu từ Firestore
+      await provider.loadData();
+      
+      // Lấy danh sách bài tập từ provider
+      final exercises = provider.selectedDateExercises;
+      
+      if (exercises.isNotEmpty) {
+        debugPrint('✅ Đã tải ${exercises.length} bài tập từ Firestore qua ExerciseProvider cho ngày $date');
+        return exercises;
+      } else {
+        debugPrint('ℹ️ Không có bài tập nào trên Firestore cho ngày $date, thử đọc từ SharedPreferences');
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi khi tải dữ liệu từ Firestore qua ExerciseProvider: $e');
     }
     
-    // Chuyển đổi dữ liệu từ JSON sang List<Exercise>
-    final exercisesJson = exercisesMap[date] as List;
-    return exercisesJson
-        .map((e) => Exercise.fromJson(e as Map<String, dynamic>))
-        .toList();
+    // Nếu không có dữ liệu từ Firestore hoặc có lỗi, dùng cách cũ đọc từ SharedPreferences
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final exercisesMapJson = prefs.getString(_exercisesKey) ?? '{}';
+      Map<String, dynamic> exercisesMap = jsonDecode(exercisesMapJson);
+      
+      // Kiểm tra xem có dữ liệu cho ngày này không
+      if (!exercisesMap.containsKey(date)) {
+        return [];
+      }
+      
+      // Chuyển đổi dữ liệu từ JSON sang List<Exercise>
+      final exercisesJson = exercisesMap[date] as List;
+      final localExercises = exercisesJson
+          .map((e) => Exercise.fromJson(e as Map<String, dynamic>))
+          .toList();
+      
+      debugPrint('✅ Đã tải ${localExercises.length} bài tập từ SharedPreferences cho ngày $date');
+      return localExercises;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi tải dữ liệu từ SharedPreferences: $e');
+      return [];
+    }
   }
 
   // Lấy tất cả Exercise từ tất cả các ngày

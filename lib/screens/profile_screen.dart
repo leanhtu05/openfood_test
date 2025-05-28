@@ -1052,8 +1052,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Lấy AuthService từ Provider
       final authService = Provider.of<AuthService>(context, listen: false);
       
-      // Gọi phương thức updateUserProfileViaApi từ AuthService
-      final success = await authService.updateUserProfileViaApi(userData);
+      // Gọi phương thức updateFullUserProfile từ AuthService để cập nhật trực tiếp với Firestore
+      final success = await authService.updateFullUserProfile(
+        // Chuyển đổi các trường từ userData sang tham số riêng lẻ
+        displayName: userData['display_name'],
+        photoURL: userData['photo_url'],
+        age: userData['age'],
+        gender: userData['gender'],
+        heightCm: userData['height_cm'],
+        weightKg: userData['weight_kg'],
+        targetWeightKg: userData['target_weight_kg'],
+        activityLevel: userData['activity_level'],
+        goal: userData['goal'],
+        pace: userData['pace'],
+        dietRestrictions: userData['diet_restrictions'] != null ? 
+          List<String>.from(userData['diet_restrictions']) : null,
+        healthConditions: userData['health_conditions'] != null ? 
+          List<String>.from(userData['health_conditions']) : null,
+        measurementSystem: userData['measurement_system'],
+        nutritionGoals: userData['nutrition_goals'],
+      );
       
       // Ẩn loading indicator
       setState(() {

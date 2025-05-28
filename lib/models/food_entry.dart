@@ -13,6 +13,7 @@ class FoodEntry {
   final Map<String, dynamic>? nutritionInfo; // Thông tin dinh dưỡng bổ sung
   final String mealType;
   final List<FoodItem> items;
+  final bool needsNutritionAnalysis; // Xác định có cần phân tích dinh dưỡng không
 
   FoodEntry({
     String? id,
@@ -26,6 +27,7 @@ class FoodEntry {
     this.nutritionInfo,
     required this.mealType,
     required this.items,
+    this.needsNutritionAnalysis = false,
   }) : this.id = id ?? Uuid().v4(),
        this.dateTime = dateTime ?? DateTime.now();
 
@@ -110,6 +112,7 @@ class FoodEntry {
     Map<String, dynamic>? nutritionInfo,
     String? mealType,
     List<FoodItem>? items,
+    bool? needsNutritionAnalysis,
   }) {
     return FoodEntry(
       id: id ?? this.id,
@@ -123,6 +126,7 @@ class FoodEntry {
       nutritionInfo: nutritionInfo ?? this.nutritionInfo,
       mealType: mealType ?? this.mealType,
       items: items ?? this.items,
+      needsNutritionAnalysis: needsNutritionAnalysis ?? this.needsNutritionAnalysis,
     );
   }
 
@@ -144,6 +148,7 @@ class FoodEntry {
       items: map.containsKey('items') && map['items'] != null
           ? (map['items'] as List).map((item) => FoodItem.fromMap(item)).toList()
           : [],
+      needsNutritionAnalysis: map['needsNutritionAnalysis'] ?? false,
     );
   }
 
@@ -161,6 +166,7 @@ class FoodEntry {
       'nutritionInfo': nutritionInfo,
       'mealType': mealType,
       'items': items.map((item) => item.toMap()).toList(),
+      'needsNutritionAnalysis': needsNutritionAnalysis,
     };
   }
 
@@ -182,6 +188,7 @@ class FoodEntry {
       items: json.containsKey('items') && json['items'] != null
           ? (json['items'] as List).map((item) => FoodItem.fromJson(item)).toList()
           : [],
+      needsNutritionAnalysis: json['needsNutritionAnalysis'] ?? false,
     );
   }
 
@@ -199,6 +206,7 @@ class FoodEntry {
       'nutritionInfo': nutritionInfo,
       'mealType': mealType,
       'items': items.map((item) => item.toJson()).toList(),
+      'needsNutritionAnalysis': needsNutritionAnalysis,
     };
   }
 

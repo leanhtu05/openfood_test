@@ -1441,6 +1441,15 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       print('📦 Dữ liệu gửi đi: ${jsonEncode(requestData)}');
       
       try {
+        // Hiển thị thông báo đang kết nối
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đang kết nối đến máy chủ...'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
         final response = await http.post(
           replaceUrl,
           headers: {
@@ -1670,11 +1679,31 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     } catch (e) {
       print('Lỗi khi thay thế bữa ăn: $e');
       
-      // Show error
+      // Xử lý lỗi kết nối
+      String errorMessage = 'Không thể thay thế bữa ăn';
+      Color errorColor = Colors.red;
+      
+      // Kiểm tra loại lỗi cụ thể
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('Connection refused') ||
+          e.toString().contains('Failed host lookup')) {
+        errorMessage = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra:\n'
+            '1. Kết nối mạng của bạn\n'
+            '2. Máy chủ API đã được khởi động\n'
+            '3. Địa chỉ IP trong cấu hình đã chính xác';
+        errorColor = Colors.orange;
+      } else if (e.toString().contains('Timeout')) {
+        errorMessage = 'Kết nối đến máy chủ quá chậm hoặc máy chủ không phản hồi. Vui lòng thử lại sau.';
+        errorColor = Colors.orange;
+      } else {
+        errorMessage = 'Không thể thay thế bữa ăn: ${e.toString()}';
+      }
+      
+      // Hiển thị thông báo lỗi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Không thể thay thế bữa ăn: ${e.toString()}'),
-          backgroundColor: Colors.red,
+          content: Text(errorMessage),
+          backgroundColor: errorColor,
           duration: Duration(seconds: 5),
         ),
       );
@@ -3173,18 +3202,32 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     } catch (e) {
       print('❌ Lỗi khi tạo kế hoạch ăn đa dạng: $e');
       
+      // Xử lý lỗi kết nối
+      String errorMessage = 'Không thể tạo kế hoạch ăn đa dạng';
+      Color errorColor = Colors.red;
+      
+      // Kiểm tra loại lỗi cụ thể
+      if (e.toString().contains('SocketException') || 
+          e.toString().contains('Connection refused') ||
+          e.toString().contains('Failed host lookup')) {
+        errorMessage = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng hoặc liên hệ hỗ trợ.';
+        errorColor = Colors.orange;
+      } else {
+        errorMessage = 'Không thể tạo kế hoạch ăn đa dạng: ${e.toString()}';
+      }
+      
       if (mounted) {
         setState(() {
           _isLoading = false;
           _hasError = true;
-          _errorMessage = 'Không thể tạo kế hoạch ăn đa dạng: ${e.toString()}';
+          _errorMessage = errorMessage;
         });
         
         // Hiển thị thông báo lỗi
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Không thể tạo kế hoạch ăn đa dạng: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage),
+            backgroundColor: errorColor,
             duration: Duration(seconds: 5),
           ),
         );

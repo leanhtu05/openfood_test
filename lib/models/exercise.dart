@@ -8,6 +8,7 @@ class Exercise {
   final String date;
   final bool isSelected;
   final String? id;
+  final bool needsAdvancedAnalysis; // Xác định có cần phân tích nâng cao không
 
   Exercise({
     required this.name,
@@ -19,6 +20,7 @@ class Exercise {
     this.isSelected = false,
     this.caloriesPerMinute = 5.0,
     this.id,
+    this.needsAdvancedAnalysis = false,
   });
 
   String generateId() {
@@ -35,6 +37,12 @@ class Exercise {
     
     return (minutes * caloriesPerMinute * multiplier).round();
   }
+  
+  // Getter cho duration (minutes)
+  int get duration => minutes;
+  
+  // Getter cho type (sử dụng name hoặc intensity tùy thuộc vào ngữ cảnh)
+  String get type => name;
 
   Exercise copyWith({
     String? name,
@@ -46,6 +54,7 @@ class Exercise {
     bool? isSelected,
     double? caloriesPerMinute,
     String? id,
+    bool? needsAdvancedAnalysis,
   }) {
     return Exercise(
       name: name ?? this.name,
@@ -57,6 +66,7 @@ class Exercise {
       isSelected: isSelected ?? this.isSelected,
       caloriesPerMinute: caloriesPerMinute ?? this.caloriesPerMinute,
       id: id ?? this.id,
+      needsAdvancedAnalysis: needsAdvancedAnalysis ?? this.needsAdvancedAnalysis,
     );
   }
 
@@ -71,6 +81,7 @@ class Exercise {
       'isSelected': isSelected,
       'caloriesPerMinute': caloriesPerMinute,
       'id': id ?? generateId(),
+      'needsAdvancedAnalysis': needsAdvancedAnalysis,
     };
   }
 
@@ -85,6 +96,7 @@ class Exercise {
       isSelected: json['isSelected'] as bool? ?? false,
       caloriesPerMinute: (json['caloriesPerMinute'] as num?)?.toDouble() ?? 5.0,
       id: json['id'] as String?,
+      needsAdvancedAnalysis: json['needsAdvancedAnalysis'] as bool? ?? false,
     );
   }
 

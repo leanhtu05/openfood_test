@@ -253,12 +253,11 @@ class _FoodRecognitionScreenState extends State<FoodRecognitionScreen> {
             onSave: (updatedEntry) {
               // Lưu vào FoodProvider khi người dùng nhấn lưu
               final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+              // Gọi phiên bản mới của addFoodEntryManual với các tham số vị trí
               foodProvider.addFoodEntryManual(
-                description: updatedEntry.description, 
-                items: updatedEntry.items,
-                dateTime: updatedEntry.dateTime,
-                mealType: updatedEntry.mealType,
-                image: _imageFile,
+                updatedEntry.description,
+                updatedEntry.mealType,
+                updatedEntry.items
               );
               Navigator.of(context).pop(true);
             },
