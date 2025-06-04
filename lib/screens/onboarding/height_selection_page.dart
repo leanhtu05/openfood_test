@@ -57,6 +57,31 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Nếu đang ở chế độ cập nhật, bọc trong Scaffold
+    if (widget.updateMode) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Cập nhật chiều cao'),
+          backgroundColor: OnboardingStyles.primaryColor,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: Material(
+          color: Colors.white,
+          child: _buildContent(context),
+        ),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, đã có Scaffold từ OnboardingScreen
+    return _buildContent(context);
+  }
+  
+  // Tách nội dung thành phương thức riêng để có thể tái sử dụng
+  Widget _buildContent(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -280,31 +305,34 @@ class _HeightSelectionPageState extends State<HeightSelectionPage> {
                     ),
                   ),
                   
-                  // Thanh trượt
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: OnboardingStyles.primaryColor,
-                      inactiveTrackColor: Colors.grey.shade300,
-                      thumbColor: OnboardingStyles.primaryColor,
-                      overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
-                      valueIndicatorColor: OnboardingStyles.primaryColor,
-                      valueIndicatorTextStyle: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                  // Thanh trượt - đảm bảo có Material ancestor
+                  Material(
+                    color: Colors.transparent,
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: OnboardingStyles.primaryColor,
+                        inactiveTrackColor: Colors.grey.shade300,
+                        thumbColor: OnboardingStyles.primaryColor,
+                        overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
+                        valueIndicatorColor: OnboardingStyles.primaryColor,
+                        valueIndicatorTextStyle: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    child: Slider(
-                      min: 140,
-                      max: 210,
-                      divisions: 140,
-                      value: heightCm,
-                      label: unit == 'cm' ? '${heightCm.toInt()} cm' : heightInFeetInches,
-                      onChanged: (value) {
-                        setState(() {
-                          heightCm = value;
-                        });
-                        _saveHeight(value);
-                      },
+                      child: Slider(
+                        min: 140,
+                        max: 210,
+                        divisions: 140,
+                        value: heightCm,
+                        label: unit == 'cm' ? '${heightCm.toInt()} cm' : heightInFeetInches,
+                        onChanged: (value) {
+                          setState(() {
+                            heightCm = value;
+                          });
+                          _saveHeight(value);
+                        },
+                      ),
                     ),
                   ),
                   

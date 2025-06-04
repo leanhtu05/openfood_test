@@ -41,7 +41,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '77790054986',
     projectId: 'food-ai-96ef6',
     authDomain: 'food-ai-96ef6.firebaseapp.com',
-    storageBucket: 'food-ai-96ef6.appspot.com',
+    storageBucket: 'food-ai-96ef6.firebasestorage.app',
   );
 
   // Cấu hình Firebase cho Android
@@ -50,7 +50,7 @@ class DefaultFirebaseOptions {
     appId: '1:77790054986:android:399319a808871431f4b4b3',
     messagingSenderId: '77790054986',
     projectId: 'food-ai-96ef6',
-    storageBucket: 'food-ai-96ef6.appspot.com',
+    storageBucket: 'food-ai-96ef6.firebasestorage.app',
   );
 
   // Cấu hình Firebase cho iOS - Cần điền các thông số chính xác sau khi tạo app iOS
@@ -59,7 +59,7 @@ class DefaultFirebaseOptions {
     appId: '1:77790054986:ios:YOUR_IOS_APP_ID_HERE',
     messagingSenderId: '77790054986',
     projectId: 'food-ai-96ef6',
-    storageBucket: 'food-ai-96ef6.appspot.com',
+    storageBucket: 'food-ai-96ef6.firebasestorage.app',
     iosClientId: 'YOUR_IOS_CLIENT_ID_HERE.apps.googleusercontent.com',
     iosBundleId: 'com.example.openfood_test',
   );

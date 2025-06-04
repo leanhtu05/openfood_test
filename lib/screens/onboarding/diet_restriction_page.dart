@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class DietRestrictionPage extends StatefulWidget {
-  const DietRestrictionPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const DietRestrictionPage({
+    Key? key,
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<DietRestrictionPage> createState() => _DietRestrictionPageState();
@@ -58,6 +63,19 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Sử dụng MaterialOnboardingPage wrapper nếu ở chế độ updateMode
+    if (widget.updateMode) {
+      return MaterialOnboardingPage(
+        title: 'Cập nhật hạn chế ăn uống',
+        child: _buildContent(context),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, trả về nội dung
+    return _buildContent(context);
+  }
+  
+  Widget _buildContent(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -72,39 +90,50 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo
-                  Center(
-                    child: Column(
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng giới hạn ăn uống
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/diet_restriction.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.no_food,
-                                size: 80,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng giới hạn ăn uống
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/diet_restriction.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.no_food,
+                                  size: 80,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.no_food,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 30),
                   
                   // Tiêu đề
                   Center(
                     child: Text(
-                      'Bạn có bất kỳ hạn chế về chế độ ăn uống, dị ứng hoặc thực phẩm nào bạn muốn tránh không?',
+                      widget.updateMode 
+                        ? 'Cập nhật hạn chế ăn uống' 
+                        : 'Bạn có bất kỳ hạn chế về chế độ ăn uống, dị ứng hoặc thực phẩm nào bạn muốn tránh không?',
                       style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
@@ -140,11 +169,49 @@ class _DietRestrictionPageState extends State<DietRestrictionPage> {
                             }
                           });
                           _saveDietRestrictions(selectedRestrictions);
+                          
+                          // Show success message if in update mode
+                          if (widget.updateMode) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Đã cập nhật hạn chế ăn uống thành công!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
                         },
                         showInfoIcon: restriction['id'] != 'none',
                       ),
                     );
                   }).toList(),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

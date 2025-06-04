@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
-import '../../styles/onboarding_styles.dart';
+import 'onboarding_screen.dart';
 
 class ActivityLevelPage extends StatefulWidget {
   final bool updateMode;
@@ -77,6 +77,19 @@ class _ActivityLevelPageState extends State<ActivityLevelPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Sử dụng MaterialOnboardingPage wrapper nếu ở chế độ updateMode
+    if (widget.updateMode) {
+      return MaterialOnboardingPage(
+        title: 'Cập nhật mức độ hoạt động',
+        child: _buildContent(context),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, trả về nội dung
+    return _buildContent(context);
+  }
+  
+  Widget _buildContent(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(

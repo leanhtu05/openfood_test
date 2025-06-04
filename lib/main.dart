@@ -30,6 +30,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:openfood/services/api_service.dart';
+import 'screens/admin/firestore_admin_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool isFirebaseInitialized = false;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -168,17 +170,72 @@ Future<void> main() async {
 
   // Sau khi app khởi động, tự động đồng bộ dữ liệu
   // Cần delay để context và provider sẵn sàng
-  Future.delayed(Duration(seconds: 2), () {
+  Future.delayed(Duration(seconds: 2), () async {
     final context = navigatorKey.currentContext;
     if (context != null) {
+      // Lấy UserDataProvider
+      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      
+      // Kiểm tra giá trị TDEE trước
+      print('🔍 Kiểm tra TDEE: ${userDataProvider.tdeeCalories} kcal');
+      
+      // Kiểm tra giá trị TDEE và khắc phục nếu không hợp lệ
+      bool needRecalculation = false;
+      
+      // Kiểm tra xem TDEE có bằng giá trị mặc định hoặc giá trị cố định không
+      double tdeeCalories = userDataProvider.tdeeCalories;
+      double nutritionGoalsCalories = userDataProvider.nutritionGoals['calories'] ?? 0.0;
+      
+      if (tdeeCalories <= 0 || 
+          (tdeeCalories - 2000.0).abs() < 1.0 || 
+          (tdeeCalories - 2468.0).abs() < 1.0 ||
+          nutritionGoalsCalories <= 0 ||
+          (nutritionGoalsCalories - 2000.0).abs() < 1.0 || 
+          (nutritionGoalsCalories - 2468.0).abs() < 1.0) {
+        
+        print('⚠️ Phát hiện TDEE không hợp lệ ($tdeeCalories kcal), cố gắng khắc phục tự động...');
+        needRecalculation = true;
+      }
+      
+      if (needRecalculation) {
+        try {
+          // Bước 1: Đặt lại cờ đồng bộ
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('data_loaded_from_firestore');
+          await prefs.setBool('data_loaded_from_firestore', false);
+          await prefs.setBool('use_firebase_data', false);
+          await prefs.setBool('data_changed', true);
+          await prefs.setString('last_local_update', DateTime.now().toIso8601String());
+          
+          // Bước 2: Tính toán lại TDEE
+          await userDataProvider.forceRecalculateTDEE();
+          
+          // Bước 3: Tải lại dữ liệu từ local
+          await userDataProvider.loadUserData();
+          
+          // Bước 4: Lưu giá trị mới vào local storage
+          await userDataProvider.saveUserData();
+          
+          print('✅ Đã tự động khắc phục TDEE. Giá trị mới: ${userDataProvider.tdeeCalories} kcal');
+        } catch (e) {
+          print('❌ Lỗi khi khắc phục TDEE: $e');
+        }
+      } else {
+        print('✅ TDEE hợp lệ: $tdeeCalories kcal');
+        
+        // Cập nhật lại giá trị trong SharedPreferences để đảm bảo
+        try {
+          await userDataProvider.saveUserData();
+        } catch (e) {
+          print('❌ Lỗi khi lưu TDEE hợp lệ: $e');
+        }
+      }
+      
+      // Tự động tính toán TDEE nếu cần
+      await userDataProvider.autoCalculateTDEE();
+      
       // Đồng bộ dữ liệu với server
       syncAllDataToServer(context);
-      
-      // Tự động tính toán TDEE
-      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-      userDataProvider.autoCalculateTDEE().then((_) {
-        print('Đã tự động tính toán TDEE khi khởi động ứng dụng');
-      });
     }
   });
 }

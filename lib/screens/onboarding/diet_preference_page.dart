@@ -4,7 +4,12 @@ import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
 
 class DietPreferencePage extends StatefulWidget {
-  const DietPreferencePage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const DietPreferencePage({
+    Key? key,
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<DietPreferencePage> createState() => _DietPreferencePageState();
@@ -54,94 +59,156 @@ class _DietPreferencePageState extends State<DietPreferencePage> {
   void _saveDietPreference(String preference) {
     final userData = Provider.of<UserDataProvider>(context, listen: false);
     userData.dietPreference = preference;
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật chế độ ăn thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Sử dụng MaterialOnboardingPage wrapper nếu ở chế độ updateMode
+    if (widget.updateMode) {
+      return MaterialOnboardingPage(
+        title: 'Cập nhật chế độ ăn',
+        child: _buildContent(context),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, trả về Scaffold
     return Scaffold(
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: Container(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
-                ),
-                child: Padding(
-                  padding: OnboardingStyles.screenPadding,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Logo và Biểu tượng
-                      Center(
-                        child: Column(
-                          children: [
-                            Text(
-                              'DietAI',
-                              style: OnboardingStyles.appTitleStyle,
-                            ),
-                            const SizedBox(height: 24),
-                            
-                            // Biểu tượng thực phẩm
-                            SizedBox(
-                              width: OnboardingStyles.iconSize,
-                              height: OnboardingStyles.iconSize,
-                              child: Image.asset(
-                                'assets/images/diet_preference.png',
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Icon(
-                                    Icons.restaurant_menu,
-                                    size: 100,
-                                    color: OnboardingStyles.accentColor,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      
-                      // Tiêu đề
-                      Center(
-                        child: Text(
-                          'Bạn thích loại chế độ ăn uống nào?',
-                          style: OnboardingStyles.pageTitleStyle,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      
-                      // Lựa chọn các loại chế độ ăn uống
-                      ...dietPreferences.map((preference) {
-                        final bool isSelected = selectedDiet == preference['id'];
+        child: _buildContent(context),
+      ),
+    );
+  }
+  
+  Widget _buildContent(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: Container(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: Padding(
+              padding: OnboardingStyles.screenPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Logo và Biểu tượng
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
+                          ),
+                          const SizedBox(height: 24),
                           
-                        return Column(
-                          children: [
-                            _buildDietPreferenceOption(
-                              emoji: preference['emoji'],
-                              label: preference['label'],
-                              isSelected: isSelected,
-                              onTap: () {
-                                setState(() {
-                                  selectedDiet = preference['id'];
-                                });
-                                _saveDietPreference(preference['id']);
+                          // Biểu tượng thực phẩm
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/diet_preference.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.restaurant_menu,
+                                  size: 100,
+                                  color: OnboardingStyles.accentColor,
+                                );
                               },
                             ),
-                            SizedBox(height: 16),
-                          ],
-                        );
-                      }).toList(),
-                    ],
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.restaurant_menu,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
+                    ),
+                  const SizedBox(height: 30),
+                  
+                  // Tiêu đề
+                  Center(
+                    child: Text(
+                      widget.updateMode 
+                          ? 'Cập nhật chế độ ăn' 
+                          : 'Bạn thích loại chế độ ăn uống nào?',
+                      style: OnboardingStyles.pageTitleStyle,
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 40),
+                  
+                  // Lựa chọn các loại chế độ ăn uống
+                  ...dietPreferences.map((preference) {
+                    final bool isSelected = selectedDiet == preference['id'];
+                      
+                    return Column(
+                      children: [
+                        _buildDietPreferenceOption(
+                          emoji: preference['emoji'],
+                          label: preference['label'],
+                          isSelected: isSelected,
+                          onTap: () {
+                            setState(() {
+                              selectedDiet = preference['id'];
+                            });
+                            _saveDietPreference(preference['id']);
+                          },
+                        ),
+                        SizedBox(height: 16),
+                      ],
+                    );
+                  }).toList(),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            );
-          }
-        ),
-      ),
+            ),
+          ),
+        );
+      }
     );
   }
   

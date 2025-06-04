@@ -5,6 +5,7 @@ class FoodEntry {
   final String id;
   final String description;
   final String? imagePath;
+  final String? imageUrl;
   final String? audioPath;
   final DateTime dateTime;
   final bool isFavorite;
@@ -19,6 +20,7 @@ class FoodEntry {
     String? id,
     required this.description,
     this.imagePath,
+    this.imageUrl,
     this.audioPath,
     DateTime? dateTime,
     this.isFavorite = false,
@@ -104,6 +106,7 @@ class FoodEntry {
     String? id,
     String? description,
     String? imagePath,
+    String? imageUrl,
     String? audioPath,
     DateTime? dateTime,
     bool? isFavorite,
@@ -118,6 +121,7 @@ class FoodEntry {
       id: id ?? this.id,
       description: description ?? this.description,
       imagePath: imagePath ?? this.imagePath,
+      imageUrl: imageUrl ?? this.imageUrl,
       audioPath: audioPath ?? this.audioPath,
       dateTime: dateTime ?? this.dateTime,
       isFavorite: isFavorite ?? this.isFavorite,
@@ -136,6 +140,7 @@ class FoodEntry {
       id: map['id'],
       description: map['description'],
       imagePath: map['imagePath'],
+      imageUrl: map['imageUrl'],
       audioPath: map['audioPath'],
       dateTime: DateTime.parse(map['dateTime']),
       isFavorite: map['isFavorite'] == 1,
@@ -158,6 +163,7 @@ class FoodEntry {
       'id': id,
       'description': description,
       'imagePath': imagePath,
+      'imageUrl': imageUrl,
       'audioPath': audioPath,
       'dateTime': dateTime.toIso8601String(),
       'isFavorite': isFavorite ? 1 : 0,
@@ -176,6 +182,7 @@ class FoodEntry {
       id: json['id'],
       description: json['description'],
       imagePath: json['imagePath'],
+      imageUrl: json['imageUrl'],
       audioPath: json['audioPath'],
       dateTime: DateTime.parse(json['dateTime']),
       isFavorite: json['isFavorite'] == 1,
@@ -198,6 +205,7 @@ class FoodEntry {
       'id': id,
       'description': description,
       'imagePath': imagePath,
+      'imageUrl': imageUrl,
       'audioPath': audioPath,
       'dateTime': dateTime.toIso8601String(),
       'isFavorite': isFavorite ? 1 : 0,

@@ -10,7 +10,7 @@
 // API URL cho máy thật
 // Thay đổi IP tại đây để kết nối với máy chủ cục bộ
 // Cấu hình cho máy thật - sử dụng địa chỉ IP của máy tính trong mạng LAN
-const String apiLocalUrl = 'http://192.168.0.104:8000';
+const String apiLocalUrl = 'https://backend-openfood.onrender.com';
 
 // Các cấu hình thay thế nếu cần:
 // - Cho emulator: 'http://10.0.2.2:8000' (đặc biệt cho Android Emulator khi kết nối đến localhost của máy host)
@@ -18,7 +18,7 @@ const String apiLocalUrl = 'http://192.168.0.104:8000';
 // - Cho web: 'http://127.0.0.1:8000'
 
 // URL khi deploy trên hosting
-const String apiProductionUrl = 'http://192.168.0.104:8000'; // Sử dụng cùng địa chỉ với apiLocalUrl
+const String apiProductionUrl = 'https://backend-openfood.onrender.com'; // Sử dụng cùng địa chỉ với apiLocalUrl
 
 // URL mặc định để sử dụng
 // Cho phép đè cấu hình trong runtime từ biến apiOverrideUrl

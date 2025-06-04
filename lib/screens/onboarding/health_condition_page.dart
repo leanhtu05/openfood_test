@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
-import '../../styles/onboarding_styles.dart';
+import 'onboarding_screen.dart';
 
 class HealthConditionPage extends StatefulWidget {
-  const HealthConditionPage({Key? key}) : super(key: key);
+  final bool updateMode;
+  
+  const HealthConditionPage({
+    Key? key, 
+    this.updateMode = false
+  }) : super(key: key);
 
   @override
   State<HealthConditionPage> createState() => _HealthConditionPageState();
@@ -54,10 +59,33 @@ class _HealthConditionPageState extends State<HealthConditionPage> {
   void _saveHealthConditions(List<String> conditions) {
     final userData = Provider.of<UserDataProvider>(context, listen: false);
     userData.healthConditions = conditions;
+    
+    // If in update mode, show success message
+    if (widget.updateMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã cập nhật tình trạng sức khỏe thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Sử dụng MaterialOnboardingPage wrapper nếu ở chế độ updateMode
+    if (widget.updateMode) {
+      return MaterialOnboardingPage(
+        title: 'Cập nhật tình trạng sức khỏe',
+        child: _buildContent(context),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, trả về nội dung
+    return _buildContent(context);
+  }
+  
+  Widget _buildContent(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -72,39 +100,50 @@ class _HealthConditionPageState extends State<HealthConditionPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Logo và Biểu tượng
-                  Center(
-                    child: Column(
-                      children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Biểu tượng sức khỏe
-                        SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
-                          child: Image.asset(
-                            'assets/images/health_condition.png',
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(
-                                Icons.favorite,
-                                size: 100,
-                                color: OnboardingStyles.accentColor,
-                              );
-                            },
+                  if (!widget.updateMode)
+                    Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            'DietAI',
+                            style: OnboardingStyles.appTitleStyle,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          
+                          // Biểu tượng sức khỏe
+                          SizedBox(
+                            width: OnboardingStyles.iconSize,
+                            height: OnboardingStyles.iconSize,
+                            child: Image.asset(
+                              'assets/images/health_condition.png',
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.favorite,
+                                  size: 100,
+                                  color: OnboardingStyles.accentColor,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Icon(
+                        Icons.favorite,
+                        size: 80,
+                        color: OnboardingStyles.accentColor,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 30),
                   
                   // Tiêu đề
                   Center(
                     child: Text(
-                      'Bạn có bất kỳ tình trạng sức khỏe nào không?',
+                      widget.updateMode 
+                          ? 'Cập nhật tình trạng sức khỏe' 
+                          : 'Bạn có bất kỳ tình trạng sức khỏe nào không?',
                       style: OnboardingStyles.pageTitleStyle,
                       textAlign: TextAlign.center,
                     ),
@@ -146,6 +185,34 @@ class _HealthConditionPageState extends State<HealthConditionPage> {
                       ],
                     );
                   }).toList(),
+                  
+                  // Add "Done" button when in update mode
+                  if (widget.updateMode) ...[
+                    const SizedBox(height: 30),
+                    Container(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OnboardingStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                        ),
+                        child: Text(
+                          'Hoàn thành',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

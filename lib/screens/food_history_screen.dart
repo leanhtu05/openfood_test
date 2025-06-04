@@ -110,7 +110,8 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
     });
     
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    await foodProvider.loadFoodEntries();
+    // Sử dụng loadData() thay vì loadFoodEntries() không tồn tại
+    await foodProvider.loadData();
     
     setState(() {
       _isLoading = false;

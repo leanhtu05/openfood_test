@@ -39,16 +39,17 @@ class FirestoreService {
       // Kiểm tra Google Play Services
       final isGooglePlayAvailable = await FirebaseHelpers.isGooglePlayServicesAvailable();
       if (!isGooglePlayAvailable) {
-        debugPrint('⚠️ Google Play Services không khả dụng, sẽ thử lấy dữ liệu từ API');
-        // Thử lấy dữ liệu từ API
+        debugPrint('⚠️ Google Play Services không khả dụng, sẽ thử lấy dữ liệu trực tiếp từ Firestore');
+        // Thử lấy dữ liệu trực tiếp từ Firestore
         try {
-          final apiData = await ApiService.getUserProfile(uid);
-          if (apiData != null) {
-            debugPrint('✅ Đã lấy dữ liệu người dùng từ API');
-            return apiData;
+          final docSnapshot = await _firestore.collection('users').doc(uid).get();
+          
+          if (docSnapshot.exists && docSnapshot.data() != null) {
+            debugPrint('✅ Đã lấy dữ liệu người dùng trực tiếp từ Firestore');
+            return docSnapshot.data()!;
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi lấy dữ liệu từ API: $e');
+          debugPrint('❌ Lỗi khi lấy dữ liệu trực tiếp từ Firestore: $e');
         }
         return {};
       }

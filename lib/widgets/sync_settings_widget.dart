@@ -46,50 +46,45 @@ class SyncSettingsWidget extends StatelessWidget {
                 
                 const SizedBox(height: 16),
                 
-                // Nút đồng bộ thủ công
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.sync),
-                  label: const Text('Đồng bộ ngay'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 40),
+                // Thông tin đồng bộ tự động
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
                   ),
-                  onPressed: () async {
-                    final scaffoldMessenger = ScaffoldMessenger.of(context);
-                    
-                    // Hiển thị snackbar đang đồng bộ
-                    scaffoldMessenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Đang đồng bộ dữ liệu...'),
-                        duration: Duration(seconds: 1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Đồng bộ tự động',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                    
-                    // Gọi API
-                    final result = await userData.sendToApi();
-                    
-                    // Hiển thị kết quả
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          result 
-                              ? 'Đồng bộ dữ liệu thành công!' 
-                              : 'Đồng bộ dữ liệu thất bại. Vui lòng thử lại sau.',
+                      SizedBox(height: 8),
+                      Text(
+                        'Dữ liệu của bạn được tự động đồng bộ mỗi khi có thay đổi và định kỳ mỗi 15 phút khi kết nối internet.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue.shade800,
                         ),
-                        backgroundColor: result ? Colors.green : Colors.red,
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
                 
-                const SizedBox(height: 8),
-                
-                // Thông tin về lần đồng bộ gần nhất
-                Text(
-                  'API URL: ${ApiService.userProfileUrl}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                
-                const SizedBox(height: 4),
+                const SizedBox(height: 16),
                 
                 // Hiển thị trạng thái đồng bộ
                 Text(
@@ -102,6 +97,14 @@ class SyncSettingsWidget extends StatelessWidget {
                 // Hiển thị thời gian đồng bộ gần nhất
                 Text(
                   'Lần đồng bộ gần nhất: ${userData.getFormattedLastSyncTime()}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                
+                const SizedBox(height: 4),
+                
+                // Thông tin API
+                Text(
+                  'API URL: ${ApiService.userProfileUrl}',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],

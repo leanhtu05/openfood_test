@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../providers/exercise_provider.dart';
 import '../providers/water_provider.dart';
 import '../providers/food_provider.dart';
+import '../providers/user_data_provider.dart' as udp;
 import '../widgets/home/calorie_progress.dart';
 import '../widgets/home/exercise_section.dart';
 import '../widgets/home/meals_section.dart';
@@ -18,7 +19,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../screens/food_logging_screen.dart';
 import '../widgets/draggable_floating_action_button.dart';
 import '../services/onboarding_service.dart';
-import 'tdee_info_screen.dart';
+
 import '../screens/food_nutrition_detail_screen.dart';
 import '../models/food_entry.dart';
 import '../screens/meal_recording_screen.dart';
@@ -28,6 +29,14 @@ import 'profile_screen.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import '../screens/ai_chat_screen.dart';
+import '../screens/settings_screen.dart';
+import '../screens/sync_reset_screen.dart';
+
+import '../widgets/home/nutrition_section.dart';
+import '../widgets/home/exercise_section.dart';
+import '../widgets/home/water_section.dart';
+import 'package:flutter/services.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -37,7 +46,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _selectedDay = DateTime.now().day;
-  int _selectedNavIndex = 3;
+  int _selectedNavIndex = 3; // Đặt mặc định là tab 3 (Tập luyện)
   Map<String, int> _exerciseCalories = {};
   List<Exercise> _selectedExercises = [];
   DateTime? _exerciseTimestamp;
@@ -71,6 +80,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    
+    // Đặt trạng thái onboarding là "đã hoàn thành" để tránh quay lại màn hình onboarding
+    OnboardingService.setOnboardingComplete();
     
     print('🏠 HomeScreen đang được khởi tạo...');
     
@@ -110,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
       final waterProvider = Provider.of<WaterProvider>(context, listen: false);
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
       
       exerciseProvider.setSelectedDate(_selectedDate);
       waterProvider.setSelectedDate(_selectedDate);
@@ -199,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.didChangeDependencies();
     
     // Thiết lập listener cho UserDataProvider để bắt các thay đổi về TDEE
-    final userDataProvider = Provider.of<UserDataProvider>(context);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context);
     
     // Cập nhật ngay lập tức mục tiêu dinh dưỡng khi provider thay đổi
     // Điều này sẽ xảy ra khi người dùng điều chỉnh từ TDEE calculator hoặc các màn hình khác
@@ -228,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
       final waterProvider = Provider.of<WaterProvider>(context, listen: false);
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
       exerciseProvider.setSelectedDate(_selectedDate);
       waterProvider.setSelectedDate(_selectedDate);
       foodProvider.clearNutritionCache();
@@ -351,6 +363,65 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
       centerTitle: true,
+      actions: [
+        PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert, color: AppColors.primary),
+          onSelected: (value) {
+            switch (value) {
+              case 'settings':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SettingsScreen()),
+                );
+                break;
+              case 'profile':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ProfileScreen()),
+                );
+                break;
+              case 'sync_fix':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SyncResetScreen()),
+                );
+                break;
+            }
+          },
+          itemBuilder: (BuildContext context) => [
+            PopupMenuItem<String>(
+              value: 'profile',
+              child: Row(
+                children: [
+                  Icon(Icons.person, color: AppColors.primary, size: 20),
+                  SizedBox(width: 10),
+                  Text('Hồ sơ cá nhân'),
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'settings',
+              child: Row(
+                children: [
+                  Icon(Icons.settings, color: AppColors.primary, size: 20),
+                  SizedBox(width: 10),
+                  Text('Cài đặt'),
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'sync_fix',
+              child: Row(
+                children: [
+                  Icon(Icons.build_circle, color: Colors.orange, size: 20),
+                  SizedBox(width: 10),
+                  Text('Khắc phục lỗi đồng bộ'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -709,7 +780,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 await OnboardingService.resetOnboardingStatus();
                 
                 // Reset user data to defaults
-                final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+                final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
                 await userDataProvider.resetData();
                 
                 print('Đã reset toàn bộ dữ liệu người dùng và trạng thái onboarding');
@@ -742,10 +813,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildBody() {
+    // Kiểm tra nếu đang tải dữ liệu
+    if (_isLoadingData) {
+      return Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+    
     switch (_selectedNavIndex) {
       case 0:
-        // Tab 0
-        return Center(child: Text('Tab 0'));
+        // Tab 0 - AI Chat
+        return AIChatScreen();
       case 1:
         // Tab Nutrition - DietPlan
         return DietPlanScreen();
@@ -753,8 +831,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Icon ghi lại hiển thị MealRecordingScreen
         return MealRecordingScreen(initialDate: _selectedDate);
       case 3:
-        return _buildHomeContent();
+        // Tab Tập luyện
+        return AnimatedBuilder(
+          animation: _animationController,
+          builder: (context, child) {
+            return FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: _buildHomeContent(),
+              ),
+            );
+          },
+        );
       case 4:
+        // Tab Tài khoản
         return ProfileScreen();
       default:
         return _buildHomeContent();
@@ -1007,7 +1098,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   
   void _handleFoodEntrySave(FoodEntry updatedEntry) {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -1192,7 +1283,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _checkFirebaseDataStatus() {
     // Lấy các provider cần thiết
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
     final waterProvider = Provider.of<WaterProvider>(context, listen: false);
@@ -1363,7 +1454,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // Phương thức để đồng bộ hóa giá trị mục tiêu calo trên tất cả các màn hình
   Future<void> _synchronizeCalorieGoals() async {
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     
     // Luôn tính toán lại TDEE từ đầu để đảm bảo tính nhất quán
     await userDataProvider.forceRecalculateTDEE();

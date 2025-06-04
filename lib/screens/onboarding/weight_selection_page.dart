@@ -71,6 +71,31 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Nếu đang ở chế độ cập nhật, bọc trong Scaffold
+    if (widget.updateMode) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Cập nhật cân nặng'),
+          backgroundColor: OnboardingStyles.primaryColor,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: Material(
+          color: Colors.white,
+          child: _buildContent(context),
+        ),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, đã có Scaffold từ OnboardingScreen
+    return _buildContent(context);
+  }
+  
+  // Tách nội dung thành phương thức riêng để có thể tái sử dụng
+  Widget _buildContent(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -252,32 +277,35 @@ class _WeightSelectionPageState extends State<WeightSelectionPage> {
                           ),
                           const SizedBox(height: 20),
                           
-                          // Thanh trượt
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: OnboardingStyles.primaryColor,
-                              inactiveTrackColor: Colors.grey.shade300,
-                              thumbColor: OnboardingStyles.primaryColor,
-                              overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
-                              valueIndicatorColor: OnboardingStyles.primaryColor,
-                              valueIndicatorTextStyle: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                          // Thanh trượt - đảm bảo có Material ancestor
+                          Material(
+                            color: Colors.transparent,
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: OnboardingStyles.primaryColor,
+                                inactiveTrackColor: Colors.grey.shade300,
+                                thumbColor: OnboardingStyles.primaryColor,
+                                overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
+                                valueIndicatorColor: OnboardingStyles.primaryColor,
+                                valueIndicatorTextStyle: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            child: Slider(
-                              min: 40,
-                              max: 150,
-                              divisions: 110,
-                              // Ensure weight value is within valid range
-                              value: weightKg < 40 ? 40 : (weightKg > 150 ? 150 : weightKg),
-                              label: '${weightKg.toInt()} kg',
-                              onChanged: (double value) {
-                                setState(() {
-                                  weightKg = value;
-                                });
-                                _saveWeight(value);
-                              },
+                              child: Slider(
+                                min: 40,
+                                max: 150,
+                                divisions: 110,
+                                // Ensure weight value is within valid range
+                                value: weightKg < 40 ? 40 : (weightKg > 150 ? 150 : weightKg),
+                                label: '${weightKg.toInt()} kg',
+                                onChanged: (double value) {
+                                  setState(() {
+                                    weightKg = value;
+                                  });
+                                  _saveWeight(value);
+                                },
+                              ),
                             ),
                           ),
                         ],

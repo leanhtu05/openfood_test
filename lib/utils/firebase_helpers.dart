@@ -83,7 +83,18 @@ class FirebaseHelpers {
   /// Tiền xử lý dữ liệu Firebase trước khi sử dụng
   /// Xử lý các vấn đề phổ biến như Timestamp vs String
   static Map<String, dynamic> processFirestoreData(Map<String, dynamic> data) {
+    debugPrint('🔄 Trước khi xử lý Firestore data: $data');
+    debugPrint('🔑 Các khóa cấp cao nhất: ${data.keys.toList()}');
+    
     final result = Map<String, dynamic>.from(data);
+    
+    // Kiểm tra cấu trúc dữ liệu meal plan
+    if (data.containsKey('days')) {
+      debugPrint('📊 Tìm thấy mảng days trong dữ liệu: ${data['days']}');
+    }
+    if (data.containsKey('weekly_plan')) {
+      debugPrint('📊 Tìm thấy weekly_plan trong dữ liệu: ${data['weekly_plan']}');
+    }
     
     // Danh sách các trường thường là timestamp
     final timestampFields = [
@@ -104,27 +115,42 @@ class FirebaseHelpers {
     // Xử lý các trường thời gian
     for (final field in timestampFields) {
       if (result.containsKey(field)) {
+        debugPrint('⏰ Xử lý trường thời gian $field: ${result[field]} (${result[field].runtimeType})');
         final dateTime = toDateTime(result[field]);
         if (dateTime != null) {
           // Lưu lại dưới dạng DateTime để dễ xử lý trong ứng dụng
           result[field] = dateTime;
+          debugPrint('✅ Đã chuyển đổi $field thành DateTime: $dateTime');
         }
       }
     }
     
+    debugPrint('✅ Sau khi xử lý Firestore data: $result');
     return result;
   }
   
   /// Chuẩn bị dữ liệu trước khi gửi lên Firestore
   /// Chuyển đổi các trường thời gian thành định dạng chuỗi ISO8601 để có thể encode JSON
   static Map<String, dynamic> prepareDataForFirestore(Map<String, dynamic> data) {
+    debugPrint('📤 Chuẩn bị dữ liệu gửi lên Firestore: ${data.keys.toList()}');
+    
+    // Kiểm tra cấu trúc meal plan
+    if (data.containsKey('weekly_plan')) {
+      debugPrint('📝 Cấu trúc weekly_plan gửi lên: ${data['weekly_plan'].keys.toList()}');
+    }
+    if (data.containsKey('days')) {
+      debugPrint('📝 Đang gửi lên dạng mảng days');
+    }
+    
     final result = Map<String, dynamic>.from(data);
     
     // Xử lý tất cả các giá trị map lồng nhau trước
     result.forEach((key, value) {
       if (value is Map<String, dynamic>) {
+        debugPrint('🔄 Xử lý map lồng nhau cho trường: $key');
         result[key] = prepareDataForFirestore(value);
       } else if (value is List) {
+        debugPrint('🔄 Xử lý danh sách cho trường: $key');
         result[key] = _prepareListForJson(value);
       }
     });
@@ -149,14 +175,29 @@ class FirebaseHelpers {
     // Xử lý các trường thời gian
     for (final field in timestampFields) {
       if (result.containsKey(field)) {
+        debugPrint('⏰ Xử lý trường thời gian $field: ${result[field]} (${result[field].runtimeType})');
         // Chuyển đổi sang chuỗi ISO8601 để có thể encode JSON
         final isoString = toISOString(result[field]);
         if (isoString != null) {
           result[field] = isoString;
+          debugPrint('✅ Đã chuyển đổi $field thành ISO8601: $isoString');
         }
       }
     }
     
+    // Đảm bảo có id, user_id
+    if (!result.containsKey('id') && result.containsKey('meal_plan_id')) {
+      result['id'] = result['meal_plan_id'];
+      debugPrint('ℹ️ Đã sao chép meal_plan_id sang id');
+    }
+    
+    // Thêm trường timestamp nếu không có
+    if (!result.containsKey('timestamp') && !result.containsKey('created_at')) {
+      result['timestamp'] = DateTime.now().toIso8601String();
+      debugPrint('ℹ️ Đã thêm timestamp hiện tại');
+    }
+    
+    debugPrint('✅ Dữ liệu sau khi chuẩn bị cho Firestore: ${result.keys.toList()}');
     return result;
   }
   

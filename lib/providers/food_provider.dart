@@ -12,7 +12,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../adapters/food_data_adapter.dart';
 import 'dart:async'; // Added for Timer
-import '../providers/user_data_provider.dart';
+import '../providers/user_data_provider.dart' as udp;
 import '../utils/tdee_calculator.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
@@ -51,6 +51,46 @@ class FoodProvider with ChangeNotifier {
   FoodProvider({FirebaseAuth? authService}) 
       : _authService = authService ?? FirebaseAuth.instance {
     _loadFoodEntriesFromPrefs();
+    
+    // Listen for auth state changes
+    _authService.authStateChanges().listen((User? user) {
+      if (user != null) {
+        // User logged in, sync data from Firebase
+        syncFromFirebase();
+      } else {
+        // User logged out, clear data
+        clearDataOnLogout();
+      }
+    });
+  }
+  
+  // Method to clear data when user logs out
+  Future<void> clearDataOnLogout() async {
+    try {
+      debugPrint('🧹 FoodProvider: Clearing data on logout...');
+      
+      // Clear all food entries
+      _foodEntries = [];
+      
+      // Clear caches
+      _calculationCache.clear();
+      _dailySummaryCache.clear();
+      _dailyMealsCache.clear();
+      
+      // Reset nutritional data
+      _dailyNutritionSummary = null;
+      _dailyMeals = [];
+      
+      // Update SharedPreferences
+      await _saveFoodEntriesToPrefs();
+      
+      // Notify UI to update
+      notifyListeners();
+      
+      debugPrint('✅ FoodProvider: Data cleared successfully on logout');
+    } catch (e) {
+      debugPrint('❌ FoodProvider: Error clearing data on logout: $e');
+    }
   }
   
   // Getters
@@ -621,33 +661,40 @@ class FoodProvider with ChangeNotifier {
   // Thêm mục nhập thực phẩm mới
   Future<bool> addFoodEntry(FoodEntry entry) async {
     try {
+      debugPrint('🔄 addFoodEntry: Đang thêm mục nhập thực phẩm "${entry.description}" với ID ${entry.id}');
+      
       // Thêm vào danh sách local
-    _foodEntries.add(entry);
+      _foodEntries.add(entry);
       notifyListeners();
       
       // Lưu vào SharedPreferences
       await _saveFoodEntriesToPrefs();
+      debugPrint('💾 addFoodEntry: Đã lưu mục nhập thực phẩm vào SharedPreferences');
       
       // Gửi đến API
       final userId = _authService.currentUser?.uid;
       if (userId != null) {
         try {
+          debugPrint('🔄 addFoodEntry: Bắt đầu gửi mục nhập thực phẩm "${entry.description}" lên collection food_records...');
+          
           final result = await ApiService.sendFoodEntry(entry, userId);
           if (result) {
-            debugPrint('✅ Đã gửi mục nhập thực phẩm đến API thành công');
+            debugPrint('✅ addFoodEntry: Đã gửi mục nhập thực phẩm đến collection food_records thành công');
           } else {
-            debugPrint('⚠️ Không thể gửi mục nhập thực phẩm đến API');
+            debugPrint('⚠️ addFoodEntry: Không thể gửi mục nhập thực phẩm đến collection food_records');
           }
           return result;
         } catch (e) {
-          debugPrint('❌ Lỗi khi gửi mục nhập thực phẩm đến API: $e');
+          debugPrint('❌ addFoodEntry: Lỗi khi gửi mục nhập thực phẩm đến collection food_records: $e');
           return false;
         }
+      } else {
+        debugPrint('⚠️ addFoodEntry: Không thể gửi mục nhập thực phẩm: Người dùng chưa đăng nhập');
       }
       
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi thêm mục nhập thực phẩm: $e');
+      debugPrint('❌ addFoodEntry: Lỗi khi thêm mục nhập thực phẩm: $e');
       return false;
     }
   }
@@ -773,28 +820,93 @@ class FoodProvider with ChangeNotifier {
 
   // Khi thêm FoodEntry từ màn hình tìm kiếm vào nhật ký
   Future<FoodEntry> addCopiedFoodEntry(FoodEntry originalEntry, String mealType, DateTime dateTime) async {
-    // Tạo bản sao hoàn toàn mới
-    final newEntry = createDeepCopy(originalEntry);
-    
-    // Cập nhật mealType và dateTime
-    final updatedEntry = newEntry.copyWith(
-      mealType: mealType,
-      dateTime: dateTime,
-    );
-    
-    // Thêm vào danh sách
-    _foodEntries.add(updatedEntry);
-    notifyListeners();
-    _saveData();
-    
-    return updatedEntry;
+  // Tạo bản sao hoàn toàn mới
+  final newEntry = createDeepCopy(originalEntry);
+  
+  // Cập nhật mealType và dateTime
+  final updatedEntry = newEntry.copyWith(
+    mealType: mealType,
+    dateTime: dateTime,
+    id: FirebaseFirestore.instance.collection('food_entries').doc().id, // Tạo ID mới cho entry
+  );
+  
+  // Thêm vào danh sách local
+  _foodEntries.add(updatedEntry);
+  notifyListeners();
+  await _saveData();
+  
+  // Lưu vào Firestore nếu người dùng đã đăng nhập
+  final user = FirebaseAuth.instance.currentUser;
+  if (user != null && ApiService.useDirectFirestore) {
+    try {
+      debugPrint('🔄 Đang lưu thông tin đầy đủ của bữa ăn vào Firestore...');
+      
+      // Chuẩn bị dữ liệu để lưu vào Firestore
+      final date = dateTime.toIso8601String().split('T')[0];
+      final entryData = {
+        ...updatedEntry.toJson(),
+        'user_id': user.uid,
+        'date': date, // Thêm trường date để dễ truy vấn
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+        'id': updatedEntry.id,
+        'description': updatedEntry.description,
+        'dateTime': dateTime.toIso8601String(),
+        'mealType': mealType,
+      };
+      
+      // In ra dữ liệu để kiểm tra
+      debugPrint('   📝 Dữ liệu đầy đủ sẽ lưu vào Firestore:');
+      entryData.forEach((key, value) {
+        if (value is Map || value is List) {
+          debugPrint('      - $key: [Dữ liệu phức tạp]');
+        } else {
+          debugPrint('      - $key: $value');
+        }
+      });
+      
+      // Sử dụng set với merge: true thay vì update để tránh lỗi NOT_FOUND
+      await FirebaseFirestore.instance
+        .collection('food_entries')
+        .doc(updatedEntry.id)
+        .set(entryData, SetOptions(merge: true));
+      
+      debugPrint('✅ Đã lưu thông tin đầy đủ bữa ăn vào Firestore thành công');
+      
+      // Kiểm tra collection có tồn tại không
+      final countQuery = await FirebaseFirestore.instance
+          .collection('food_entries')
+          .where('user_id', isEqualTo: user.uid)
+          .get();
+      
+      debugPrint('   - Tổng số mục nhập thực phẩm của người dùng: ${countQuery.docs.length}');
+    } catch (e) {
+      debugPrint('❌ Lỗi khi lưu dữ liệu vào Firestore: $e');
+      
+      // Thử phương pháp 2: Sử dụng ApiService
+      try {
+        final success = await ApiService.sendFoodEntry(updatedEntry, user.uid);
+        if (success) {
+          debugPrint('✅ Đã lưu thông tin bữa ăn vào Firestore thành công qua ApiService');
+        } else {
+          debugPrint('❌ Không thể lưu thông tin bữa ăn vào Firestore qua ApiService');
+        }
+      } catch (apiError) {
+        debugPrint('❌ Lỗi khi gọi ApiService.sendFoodEntry: $apiError');
+      }
+    }
   }
+  
+  return updatedEntry;
+}  
 
   Future<void> updateServingSize(String entryId, double newServingSize) async {
     final entryIndex = _foodEntries.indexWhere((entry) => entry.id == entryId);
     if (entryIndex == -1) return;
     
     final entry = _foodEntries[entryIndex];
+    FoodEntry updatedEntry;
+    
     if (entry.nutritionInfo != null) {
       // Cập nhật nutritionInfo
       final updatedNutritionInfo = Map<String, dynamic>.from(entry.nutritionInfo!);
@@ -804,19 +916,60 @@ class FoodProvider with ChangeNotifier {
       updatedNutritionInfo['totalWeight'] = newServingSize * 100;
       
       // Cập nhật entry
-      _foodEntries[entryIndex] = entry.copyWith(
+      updatedEntry = entry.copyWith(
         nutritionInfo: updatedNutritionInfo,
       );
+      
+      // Cập nhật vào danh sách local
+      _foodEntries[entryIndex] = updatedEntry;
       
       // Đảm bảo cập nhật lại các items nếu cần
       await synchronizeNutrition(
         entryId: entryId,
         servingSize: newServingSize,
       );
+      
+      // Lưu vào Firestore nếu người dùng đã đăng nhập
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && ApiService.useDirectFirestore) {
+        try {
+          debugPrint('🔄 Đang cập nhật khẩu phần ăn trên Firestore...');
+          
+          // Chuẩn bị dữ liệu để cập nhật
+          final date = updatedEntry.dateTime.toIso8601String().split('T')[0];
+          final updateData = {
+            'nutritionInfo': updatedEntry.nutritionInfo,
+            'updated_at': DateTime.now().toIso8601String(),
+            'date': date, // Đảm bảo trường date được cập nhật
+          };
+          
+          // Sử dụng set với merge: true thay vì update để tránh lỗi NOT_FOUND
+          await FirebaseFirestore.instance
+            .collection('food_entries')
+            .doc(entryId)
+            .set(updateData, SetOptions(merge: true));
+          
+          debugPrint('✅ Đã cập nhật khẩu phần ăn trên Firestore thành công');
+        } catch (e) {
+          debugPrint('❌ Lỗi khi cập nhật khẩu phần ăn trên Firestore: $e');
+          
+          // Thử phương pháp 2: Sử dụng ApiService
+          try {
+            final success = await ApiService.updateFoodEntry(updatedEntry, user.uid);
+            if (success) {
+              debugPrint('✅ Đã cập nhật khẩu phần ăn qua ApiService thành công');
+            } else {
+              debugPrint('❌ Không thể cập nhật khẩu phần ăn qua ApiService');
+            }
+          } catch (apiError) {
+            debugPrint('❌ Lỗi khi gọi ApiService.updateFoodEntry: $apiError');
+          }
+        }
+      }
     }
     
     notifyListeners();
-    _saveData();
+    await _saveData();
   }
 
   // Tính toán và tổng hợp giá trị dinh dưỡng cho một ngày
@@ -842,7 +995,7 @@ class FoodProvider with ChangeNotifier {
     if (context != null) {
       try {
         // Get UserDataProvider
-        final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+        final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
 
         // Ưu tiên sử dụng mục tiêu dinh dưỡng từ UserDataProvider
         if (userDataProvider.nutritionGoals.isNotEmpty) {
@@ -1115,65 +1268,156 @@ class FoodProvider with ChangeNotifier {
   
   // Tải dữ liệu
   Future<void> loadData() async {
-    if (_selectedDate.isEmpty) return;
+    // Kiểm tra xem có người dùng đang đăng nhập không
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('⚠️ Không có người dùng đăng nhập, không thể tải dữ liệu từ Firestore');
+      return;
+    }
     
-    // Tải dữ liệu từ SharedPreferences trước
-    await _loadFoodEntriesFromPrefs();
+    // Kiểm tra xem đã có dữ liệu cho ngày được chọn chưa
+    final hasDataForSelectedDate = _foodEntries.any((entry) => 
+        entry.dateTime.toIso8601String().split('T')[0] == _selectedDate);
     
-    // Nếu người dùng đã đăng nhập, thử tải từ Firebase
-    final user = _authService.currentUser;
-    if (user != null) {
-      try {
+    // Nếu đã có dữ liệu cho ngày được chọn, không cần tải lại
+    if (hasDataForSelectedDate) {
+      debugPrint('ℹ️ Đã có dữ liệu cho ngày $_selectedDate, không cần tải lại');
+      return;
+    }
+    
+    try {
+      if (ApiService.useDirectFirestore) {
         // Ưu tiên lấy dữ liệu từ Firestore trực tiếp
         try {
           final firestore = FirebaseFirestore.instance;
-          final querySnapshot = await firestore
+          debugPrint('🔄 Truy vấn trực tiếp vào Firestore cho thực phẩm ngày $_selectedDate...');
+          
+          // Thử truy vấn trực tiếp bằng trường date
+          debugPrint('   🔍 Thử truy vấn với trường date="$_selectedDate"');
+          final directQuery = await firestore
               .collection('food_entries')
               .where('user_id', isEqualTo: user.uid)
               .where('date', isEqualTo: _selectedDate)
               .get();
           
-          if (querySnapshot.docs.isNotEmpty) {
-            // Chỉ cập nhật entries cho ngày được chọn
+          if (directQuery.docs.isNotEmpty) {
+            debugPrint('   ✅ Tìm thấy ${directQuery.docs.length} mục thực phẩm bằng truy vấn trực tiếp');
+            
+            // Xóa các mục nhập cũ cho ngày được chọn
             _foodEntries.removeWhere((entry) => 
                 entry.dateTime.toIso8601String().split('T')[0] == _selectedDate);
             
             // Chuyển đổi dữ liệu từ Firestore sang FoodEntry
-            final firestoreEntries = querySnapshot.docs.map((doc) {
-              final data = doc.data();
-              return FoodEntry.fromJson(data);
-            }).toList();
+            final directEntries = <FoodEntry>[];
+            for (var doc in directQuery.docs) {
+              try {
+                final data = doc.data();
+                final entry = FoodEntry.fromJson(data);
+                directEntries.add(entry);
+                debugPrint('   ✅ Đã tải mục nhập: ${entry.description}');
+              } catch (e) {
+                debugPrint('   ⚠️ Lỗi khi chuyển đổi dữ liệu: $e');
+              }
+            }
             
-            _foodEntries.addAll(firestoreEntries);
-            debugPrint('✅ Đã tải ${firestoreEntries.length} mục nhập thực phẩm từ Firestore trực tiếp');
+            // Thêm các mục nhập vào danh sách
+            _foodEntries.addAll(directEntries);
+            debugPrint('✅ Đã tải ${directEntries.length} mục nhập thực phẩm từ Firestore cho ngày $_selectedDate');
             
             // Lưu dữ liệu vào bộ nhớ cục bộ
             await _saveData();
             notifyListeners();
             return;
           }
+          
+          // Nếu không tìm thấy bằng truy vấn trực tiếp, thử lấy tất cả và lọc
+          debugPrint('   ⚠️ Không tìm thấy mục nào bằng truy vấn trực tiếp, thử lấy tất cả và lọc');
+          final allQuery = await firestore
+              .collection('food_entries')
+              .where('user_id', isEqualTo: user.uid)
+              .get();
+              
+          debugPrint('   ℹ️ Tìm thấy ${allQuery.docs.length} mục thực phẩm tổng cộng, đang lọc theo ngày $_selectedDate');
+          
+          if (allQuery.docs.isNotEmpty) {
+            // Xóa các mục nhập cũ cho ngày được chọn
+            _foodEntries.removeWhere((entry) => 
+                entry.dateTime.toIso8601String().split('T')[0] == _selectedDate);
+            
+            // Lọc các mục nhập theo ngày được chọn
+            final filteredEntries = <FoodEntry>[];
+            
+            for (var doc in allQuery.docs) {
+              try {
+                final data = doc.data();
+                String? entryDate;
+                
+                // In dữ liệu gốc để kiểm tra
+                debugPrint('   📄 Dữ liệu gốc: ${data.toString().substring(0, min(100, data.toString().length))}...');
+                
+                // Thử lấy trường date trước
+                if (data.containsKey('date') && data['date'] != null) {
+                  entryDate = data['date'];
+                  debugPrint('   🔍 Tìm thấy trường date: $entryDate');
+                } else if (data.containsKey('dateTime') && data['dateTime'] != null) {
+                  // Nếu không có trường date, thử lấy từ dateTime
+                  String dateTimeStr = data['dateTime'];
+                  if (dateTimeStr.contains('T')) {
+                    entryDate = dateTimeStr.split('T')[0];
+                  } else {
+                    entryDate = dateTimeStr;
+                  }
+                  debugPrint('   🔍 Lấy ngày từ trường dateTime: $entryDate');
+                }
+                
+                // Nếu ngày khớp với ngày được chọn, thêm vào danh sách
+                if (entryDate == _selectedDate) {
+                  final entry = FoodEntry.fromJson(data);
+                  filteredEntries.add(entry);
+                  debugPrint('   ✅ Đã tìm thấy mục nhập thực phẩm cho ngày $_selectedDate: ${entry.description}');
+                }
+              } catch (e) {
+                debugPrint('   ⚠️ Lỗi khi xử lý mục nhập thực phẩm: $e');
+              }
+            }
+            
+            // Thêm các mục nhập đã lọc vào danh sách
+            _foodEntries.addAll(filteredEntries);
+            debugPrint('✅ Đã tải ${filteredEntries.length} mục nhập thực phẩm từ Firestore cho ngày $_selectedDate');
+            
+            // Lưu dữ liệu vào bộ nhớ cục bộ
+            await _saveData();
+            notifyListeners();
+            return;
+          } else {
+            debugPrint('   ⚠️ Không tìm thấy mục nhập thực phẩm nào cho người dùng ${user.uid}');
+          }
         } catch (firestoreError) {
           debugPrint('⚠️ Lỗi khi lấy dữ liệu từ Firestore trực tiếp: $firestoreError');
         }
         
         // Nếu không thể lấy từ Firestore trực tiếp, thử lấy từ API
-        final firebaseEntries = await ApiService.getFoodEntriesFromFirebase(user.uid, _selectedDate);
-        
-        if (firebaseEntries != null && firebaseEntries.isNotEmpty) {
-          // Chỉ cập nhật entries cho ngày được chọn
-          _foodEntries.removeWhere((entry) => 
-              entry.dateTime.toIso8601String().split('T')[0] == _selectedDate);
-          _foodEntries.addAll(firebaseEntries);
-          debugPrint('✅ Đã tải ${firebaseEntries.length} mục nhập thực phẩm từ API');
+        try {
+          final firebaseEntries = await ApiService.getFoodEntriesFromFirebase(user.uid, _selectedDate);
           
-          // Lưu dữ liệu vào bộ nhớ cục bộ
-          await _saveData();
-      notifyListeners();
-          return;
+          if (firebaseEntries != null && firebaseEntries.isNotEmpty) {
+            // Chỉ cập nhật entries cho ngày được chọn
+            _foodEntries.removeWhere((entry) => 
+                entry.dateTime.toIso8601String().split('T')[0] == _selectedDate);
+            _foodEntries.addAll(firebaseEntries);
+            debugPrint('✅ Đã tải ${firebaseEntries.length} mục nhập thực phẩm từ API');
+            
+            // Lưu dữ liệu vào bộ nhớ cục bộ
+            await _saveData();
+            notifyListeners();
+            return;
+          }
+        } catch (apiError) {
+          debugPrint('❌ Lỗi khi tải dữ liệu từ API: $apiError');
         }
+      }
     } catch (e) {
-        debugPrint('❌ Lỗi khi tải dữ liệu từ Firebase: $e');
-    }
+      debugPrint('❌ Lỗi khi tải dữ liệu: $e');
     }
     
     // Nếu không thể tải từ Firebase hoặc API, sử dụng dữ liệu cục bộ
@@ -1489,7 +1733,7 @@ class FoodProvider with ChangeNotifier {
   // Lấy mục tiêu dinh dưỡng từ UserDataProvider hoặc tính toán từ TDEE
   Map<String, dynamic> getNutritionGoals(BuildContext context) {
     try {
-      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
       
       // Ưu tiên sử dụng mục tiêu dinh dưỡng trực tiếp từ UserDataProvider
       if (userDataProvider.nutritionGoals.isNotEmpty) {
@@ -1737,15 +1981,28 @@ class FoodProvider with ChangeNotifier {
         debugPrint('⚠️ Lỗi khi tải từ Firestore trực tiếp: $firestoreError');
       }
       
-      // Nếu không có dữ liệu từ Firestore trực tiếp, thử qua ApiService
-      final entries = await ApiService.getFoodEntriesByDate(user.uid, _selectedDate);
-      
-      if (entries != null && entries.isNotEmpty) {
-        _foodEntries = entries;
-        debugPrint('✅ Đã tải ${entries.length} mục thực phẩm qua ApiService cho ngày $_selectedDate');
-      } else {
+      // Thử lấy dữ liệu trực tiếp từ Firestore một lần nữa với cách khác
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('food_entries')
+            .where('user_id', isEqualTo: user.uid)
+            .where('date', isEqualTo: _selectedDate)
+            .get();
+        
+        if (querySnapshot.docs.isNotEmpty) {
+          final List<FoodEntry> entries = querySnapshot.docs
+              .map((doc) => FoodEntry.fromJson(doc.data()))
+              .toList();
+          
+          _foodEntries = entries;
+          debugPrint('✅ Đã tải ${entries.length} mục thực phẩm trực tiếp từ Firestore cho ngày $_selectedDate');
+        } else {
+          _foodEntries = [];
+          debugPrint('ℹ️ Không có mục thực phẩm nào cho ngày $_selectedDate trong Firestore');
+        }
+      } catch (e) {
+        debugPrint('❌ Lỗi khi truy vấn dữ liệu thực phẩm từ Firestore: $e');
         _foodEntries = [];
-        debugPrint('ℹ️ Không có mục thực phẩm nào cho ngày $_selectedDate qua cả Firestore lẫn API');
       }
     } catch (e) {
       debugPrint('❌ Lỗi khi tải dữ liệu thực phẩm: $e');
@@ -1773,24 +2030,42 @@ class FoodProvider with ChangeNotifier {
         final userId = _authService.currentUser?.uid;
         if (userId != null) {
           try {
-            final result = await ApiService.updateFoodEntry(updatedEntry, userId);
-            if (result) {
-              debugPrint('✅ Đã cập nhật mục nhập thực phẩm trên API thành công');
+            debugPrint('🔄 Đang gửi cập nhật mục nhập thực phẩm đến collection food_records...');
+            
+            // Thử kiểm tra xem bản ghi có tồn tại trong collection mới chưa
+            bool result = await ApiService.updateFoodEntry(updatedEntry, userId);
+            
+            // Nếu cập nhật không thành công, thử tạo mới bản ghi
+            if (!result) {
+              debugPrint('⚠️ Không tìm thấy bản ghi trong collection food_records, thử tạo mới...');
+              result = await ApiService.sendFoodEntry(updatedEntry, userId);
+              
+              if (result) {
+                debugPrint('✅ updateFoodEntry: Đã tạo mới mục nhập thực phẩm trong collection food_records thành công');
+              } else {
+                debugPrint('❌ updateFoodEntry: Không thể tạo mới mục nhập thực phẩm trong collection food_records');
+              }
             } else {
-              debugPrint('⚠️ Không thể cập nhật mục nhập thực phẩm trên API');
+              debugPrint('✅ updateFoodEntry: Đã cập nhật mục nhập thực phẩm trong collection food_records thành công');
             }
+            
             return result;
           } catch (e) {
-            debugPrint('❌ Lỗi khi cập nhật mục nhập thực phẩm trên API: $e');
+            debugPrint('❌ updateFoodEntry: Lỗi khi cập nhật mục nhập thực phẩm: $e');
             return false;
           }
+        } else {
+          debugPrint('⚠️ updateFoodEntry: Không thể cập nhật mục nhập thực phẩm: Người dùng chưa đăng nhập');
+          return false;
         }
-        
-        return true;
+      } else {
+        // Nếu không tìm thấy trong danh sách, thêm mới
+        debugPrint('⚠️ updateFoodEntry: Không tìm thấy mục nhập thực phẩm với ID ${updatedEntry.id}, thử thêm mới');
+        debugPrint('🔄 updateFoodEntry: Chuyển qua phương thức addFoodEntry để thêm mới');
+        return await addFoodEntry(updatedEntry);
       }
-      return false;
     } catch (e) {
-      debugPrint('❌ Lỗi khi cập nhật mục nhập thực phẩm: $e');
+      debugPrint('❌ updateFoodEntry: Lỗi khi cập nhật mục nhập thực phẩm: $e');
       return false;
     }
   }
@@ -1921,13 +2196,13 @@ class FoodProvider with ChangeNotifier {
       final userId = _authService.currentUser?.uid;
       if (userId != null) {
         try {
-          debugPrint('🔄 Bắt đầu gửi food entry lên Firestore với ID: ${entry.id}');
-          debugPrint('📝 Chi tiết food entry: Mô tả="${entry.description}", Bữa ăn="${entry.mealType}", Calo=${entry.calories}');
-          debugPrint('📅 Ngày của food entry: ${entry.dateTime.toIso8601String()}');
+          debugPrint('🔄 addFoodEntryManual: Bắt đầu gửi food entry lên collection food_records với ID: ${entry.id}');
+          debugPrint('📝 addFoodEntryManual: Chi tiết food entry: Mô tả="${entry.description}", Bữa ăn="${entry.mealType}", Calo=${entry.calories}');
+          debugPrint('📅 addFoodEntryManual: Ngày của food entry: ${entry.dateTime.toIso8601String()}');
           
           final result = await ApiService.sendFoodEntry(entry, userId);
           if (result) {
-            debugPrint('✅ Đã gửi food entry lên API/Firestore thành công');
+            debugPrint('✅ addFoodEntryManual: Đã gửi food entry lên collection food_records thành công');
             
             // Kiểm tra xem dữ liệu đã được lưu vào Firestore chưa
             await checkFoodEntriesInFirebase();
@@ -1936,18 +2211,18 @@ class FoodProvider with ChangeNotifier {
             if (_selectedDate.isNotEmpty) {
               final today = DateTime.now().toIso8601String().split('T')[0];
               if (_selectedDate == today) {
-                debugPrint('🔄 Tải lại dữ liệu cho ngày hiện tại: $_selectedDate');
+                debugPrint('🔄 addFoodEntryManual: Tải lại dữ liệu cho ngày hiện tại: $_selectedDate');
                 await loadFoodEntries();
               }
             }
           } else {
-            debugPrint('⚠️ Không thể gửi food entry lên API/Firestore');
+            debugPrint('⚠️ addFoodEntryManual: Không thể gửi food entry lên collection food_records');
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi gửi food entry lên API/Firestore: $e');
+          debugPrint('❌ addFoodEntryManual: Lỗi khi gửi food entry lên collection food_records: $e');
         }
       } else {
-        debugPrint('⚠️ Không thể gửi food entry lên API/Firestore: Người dùng chưa đăng nhập');
+        debugPrint('⚠️ addFoodEntryManual: Không thể gửi food entry lên collection food_records: Người dùng chưa đăng nhập');
       }
       
       // Thêm các item vào danh sách gần đây

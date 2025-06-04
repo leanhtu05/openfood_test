@@ -951,14 +951,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
 
   @override
   void dispose() {
-    // Đảm bảo làm sạch cache khi thoát màn hình
-    try {
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      foodProvider.refreshNutrition();
-    } catch (e) {
-      print('Lỗi trong phương thức dispose: $e');
-    }
-    
+    // Lưu trữ tham chiếu đến provider trong initState hoặc didChangeDependencies để sử dụng ở đây
+    // Không sử dụng Provider.of với context trong dispose() vì widget đã bị deactivated
+  
+    // Thực hiện các thao tác cần thiết không sử dụng context
+    // Nếu cần phải làm mới dữ liệu, hãy gọi trước khi pop() màn hình trong các hàm khác
+  
     super.dispose();
   }
 } 

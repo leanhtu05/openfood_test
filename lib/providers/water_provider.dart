@@ -38,11 +38,14 @@ class WaterProvider with ChangeNotifier {
       : _authService = authService ?? FirebaseAuth.instance {
     _loadInitialData();
     
-    // Lắng nghe sự kiện đăng nhập để đồng bộ dữ liệu từ Firebase
+    // Listen for auth state changes
     _authService.authStateChanges().listen((User? user) {
       if (user != null) {
-        // Người dùng đã đăng nhập, đồng bộ dữ liệu từ Firebase
+        // User logged in, sync data from Firebase
         syncFromFirebase();
+      } else {
+        // User logged out, clear data
+        clearDataOnLogout();
       }
     });
   }
@@ -91,8 +94,10 @@ class WaterProvider with ChangeNotifier {
   Future<void> loadData() async {
     if (_selectedDate.isEmpty) return;
     
+    // Đặt cờ đang tải dữ liệu
     _isLoading = true;
-    notifyListeners();
+    // Sử dụng Future.microtask để tránh gọi notifyListeners trong quá trình build
+    Future.microtask(() => notifyListeners());
     
     try {
       // Tải dữ liệu từ SharedPreferences trước
@@ -101,46 +106,34 @@ class WaterProvider with ChangeNotifier {
       // Nếu người dùng đã đăng nhập, ưu tiên lấy dữ liệu từ Firebase
       final user = _authService.currentUser;
       if (user != null) {
+        debugPrint('🔄 Đang tải dữ liệu nước từ Firebase cho ngày $_selectedDate');
         try {
-          // Ưu tiên lấy dữ liệu từ Firestore trực tiếp
-          final firestore = FirebaseFirestore.instance;
-          final querySnapshot = await firestore
-              .collection('water_entries')
-              .where('user_id', isEqualTo: user.uid)
-              .where('date', isEqualTo: _selectedDate)
-              .get();
+          // Chuyển đổi selectedDate thành đối tượng DateTime
+          final selectedDateTime = DateTime.parse(_selectedDate);
           
-          if (querySnapshot.docs.isNotEmpty) {
+          // Sử dụng WaterFirebaseService để tải dữ liệu cho ngày được chọn
+          final firebaseEntries = await _waterFirebaseService.getWaterEntriesForDate(selectedDateTime);
+          
+          if (firebaseEntries.isNotEmpty) {
+            debugPrint('✅ Đã tải ${firebaseEntries.length} bản ghi nước từ Firebase');
+            
             // Lọc các bản ghi hiện có cho ngày được chọn
             _entries.removeWhere((entry) => 
               DateFormat('yyyy-MM-dd').format(entry.timestamp) == _selectedDate);
             
-            // Thêm các bản ghi mới từ Firestore
-            for (var doc in querySnapshot.docs) {
-              final data = doc.data();
-              final timestamp = data['timestamp'] is Timestamp
-                  ? (data['timestamp'] as Timestamp).toDate()
-                  : DateTime.parse(data['timestamp'].toString());
-              
-              final waterEntry = WaterEntry(
-                id: doc.id,
-                timestamp: timestamp,
-                amount: data['amount'],
-              );
-              
-              _entries.add(waterEntry);
-            }
+            // Thêm các bản ghi mới từ Firebase
+            _entries.addAll(firebaseEntries);
             
             // Sắp xếp lại danh sách theo thời gian gần nhất trước
             _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-            
-            debugPrint('✅ Đã tải ${querySnapshot.docs.length} bản ghi nước từ Firestore');
           } else {
-            debugPrint('ℹ️ Không có bản ghi nước nào trên Firestore cho ngày $_selectedDate');
+            debugPrint('ℹ️ Không tìm thấy bản ghi nước nào trên Firebase cho ngày $_selectedDate');
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi tải dữ liệu nước từ Firestore: $e');
+          debugPrint('❌ Lỗi khi tải dữ liệu nước từ Firebase: $e');
         }
+      } else {
+        debugPrint('ℹ️ Người dùng chưa đăng nhập, chỉ sử dụng dữ liệu local');
       }
       
       // Cập nhật tổng lượng nước và thời gian lần cuối
@@ -150,12 +143,12 @@ class WaterProvider with ChangeNotifier {
       // Lưu vào SharedPreferences
       await _saveWaterEntriesToPrefs();
     } finally {
+      // Đặt lại cờ đang tải dữ liệu
       _isLoading = false;
-      notifyListeners();
+      // Sử dụng Future.microtask để tránh gọi notifyListeners trong quá trình build
+      Future.microtask(() => notifyListeners());
     }
   }
-  
-
   
   // Thêm một bản ghi nước mới
   Future<bool> addWaterEntry(int amount, {DateTime? timestamp}) async {
@@ -434,10 +427,6 @@ class WaterProvider with ChangeNotifier {
     }
   }
   
-
-  
-
-  
   // Tải dữ liệu nước từ SharedPreferences
   Future<void> _loadWaterEntriesFromPrefs() async {
     try {
@@ -569,24 +558,27 @@ class WaterProvider with ChangeNotifier {
                       SizedBox(height: 20),
                       
                       // Thanh trượt chọn lượng nước
-                      SliderTheme(
-                        data: SliderThemeData(
-                          activeTrackColor: drinkColors[selectedType],
-                          thumbColor: drinkColors[selectedType],
-                          overlayColor: drinkColors[selectedType]!.withOpacity(0.2),
-                          thumbShape: RoundSliderThumbShape(enabledThumbRadius: 12),
-                          overlayShape: RoundSliderOverlayShape(overlayRadius: 20),
-                        ),
-                        child: Slider(
-                          min: 50,
-                          max: 1000,
-                          divisions: 19,
-                          value: selectedAmount.toDouble(),
-                          onChanged: (value) {
-                            setState(() {
-                              selectedAmount = value.round();
-                            });
-                          },
+                      Material(
+                        color: Colors.transparent,
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            activeTrackColor: drinkColors[selectedType],
+                            thumbColor: drinkColors[selectedType],
+                            overlayColor: drinkColors[selectedType]!.withOpacity(0.2),
+                            thumbShape: RoundSliderThumbShape(enabledThumbRadius: 12),
+                            overlayShape: RoundSliderOverlayShape(overlayRadius: 20),
+                          ),
+                          child: Slider(
+                            min: 50,
+                            max: 1000,
+                            divisions: 19,
+                            value: selectedAmount.toDouble(),
+                            onChanged: (value) {
+                              setState(() {
+                                selectedAmount = value.round();
+                              });
+                            },
+                          ),
                         ),
                       ),
                       
@@ -729,6 +721,30 @@ class WaterProvider with ChangeNotifier {
       }
     } catch (e) {
       debugPrint('❌ Lỗi khi đồng bộ dữ liệu nước từ Firebase: $e');
+    }
+  }
+
+  // Method to clear data when user logs out
+  Future<void> clearDataOnLogout() async {
+    try {
+      debugPrint('🧹 WaterProvider: Clearing data on logout...');
+      
+      // Clear all water entries
+      _entries = [];
+      
+      // Reset water statistics
+      _totalWaterToday = 0;
+      _lastWaterTime = null;
+      
+      // Update SharedPreferences
+      await _saveWaterEntriesToPrefs();
+      
+      // Notify UI to update
+      notifyListeners();
+      
+      debugPrint('✅ WaterProvider: Data cleared successfully on logout');
+    } catch (e) {
+      debugPrint('❌ WaterProvider: Error clearing data on logout: $e');
     }
   }
 }

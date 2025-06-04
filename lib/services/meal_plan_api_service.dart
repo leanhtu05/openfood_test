@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
@@ -108,8 +109,8 @@ class MealPlanApiService {
         'carbs_target': carbsTarget,
       };
       
-      // Chuẩn bị URL với query parameters
-      final uri = Uri.parse('$baseUrl/generate-weekly-meal-personalized')
+      // Chuẩn bị URL với endpoint chính xác từ config
+      final uri = Uri.parse('${baseUrl}${app_config.ApiEndpoints.generateMealPlan}')
         .replace(queryParameters: {
           'user_id': 'flutter_app',
           'use_ai': useAI.toString(),

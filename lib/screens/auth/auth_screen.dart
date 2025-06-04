@@ -96,39 +96,72 @@ class _AuthScreenState extends State<AuthScreen> {
         });
         
         if (success && mounted) {
-          // Đồng bộ dữ liệu từ Firebase sau khi đăng nhập thành công
+          final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+          final mealPlanProvider = Provider.of<MealPlanProvider>(context, listen: false);
+          // final dailyDataNotifier = Provider.of<DailyDataNotifier>(context, listen: false); // Uncomment if needed
+
           try {
-            // Đồng bộ dữ liệu người dùng
-            final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-            await userDataProvider.loadFromFirestore();
-            print('✅ Đã đồng bộ dữ liệu người dùng từ Firebase');
+            print('🔄 Bắt đầu đồng bộ/tải dữ liệu người dùng và kế hoạch bữa ăn...');
+            await userDataProvider.syncOrFetchUserData(context);
+            print('✅ Hoàn tất đồng bộ/tải dữ liệu người dùng.');
             
-            // Đồng bộ dữ liệu bữa ăn
-            final mealPlanProvider = Provider.of<MealPlanProvider>(context, listen: false);
             await mealPlanProvider.initializeAfterLogin();
-            print('✅ Đã đồng bộ dữ liệu bữa ăn từ Firebase');
-          } catch (syncError) {
-            print('⚠️ Lỗi khi đồng bộ dữ liệu từ Firebase: $syncError');
-          }
-          
-          // Hiển thị thông báo thành công
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(isLogin ? 'Đăng nhập thành công!' : 'Đăng ký thành công!'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-          
-          // Chuyển hướng ngay lập tức
-          if (widget.onAuthSuccess != null) {
-            print('✅ Gọi onAuthSuccess callback');
-            widget.onAuthSuccess!();
-          } else {
-            print('✅ Chuyển hướng đến màn hình chính');
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => HomeScreen()),
+            print('✅ Hoàn tất tải dữ liệu kế hoạch bữa ăn.');
+
+            // if (dailyDataNotifier != null) { // Uncomment if needed
+            //   await dailyDataNotifier.loadDailyData(DateTime.now());
+            //   print('✅ Hoàn tất tải dữ liệu hàng ngày.');
+            // }
+
+            // Hiển thị thông báo thành công
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(isLogin ? 'Đăng nhập thành công!' : 'Đăng ký thành công!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
             );
+            
+            // Chuyển hướng ngay lập tức
+            if (widget.onAuthSuccess != null) {
+              print('✅ Gọi onAuthSuccess callback');
+              widget.onAuthSuccess!();
+            } else {
+              print('✅ Chuyển hướng đến màn hình chính');
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => HomeScreen()),
+              );
+            }
+          } catch (syncError) {
+            print('❌ Lỗi nghiêm trọng khi đồng bộ/tải dữ liệu sau khi xác thực: $syncError');
+            String displayError = 'Đã xảy ra lỗi khi chuẩn bị dữ liệu của bạn. Vui lòng thử lại.';
+            if (syncError is FirebaseException) {
+              if (syncError.code == 'unavailable') {
+                displayError = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng của bạn và thử lại.';
+              } else if (syncError.message != null && syncError.message!.isNotEmpty) {
+                displayError = 'Lỗi máy chủ: ${syncError.message}';
+              }
+            } else {
+              displayError = 'Lỗi không mong muốn: ${syncError.toString()}';
+            }
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(displayError),
+                  backgroundColor: Colors.redAccent,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              
+              if (widget.onAuthSuccess != null) {
+                widget.onAuthSuccess!(); // Consider passing an error flag or specific error state
+              } else {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (context) => HomeScreen()),
+                );
+              }
+            }
           }
         } else if (mounted) {
           setState(() {

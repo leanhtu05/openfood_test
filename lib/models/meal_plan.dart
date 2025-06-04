@@ -18,6 +18,7 @@ class MealPlan {
 
   factory MealPlan.fromJson(Map<String, dynamic> json) {
     // Debug để xem cấu trúc JSON thực tế
+    print('📦 JSON gốc từ Firebase: $json');
     print('🔍 Đang phân tích dữ liệu MealPlan...');
     print('🔑 Các khóa cấp cao nhất: ${json.keys.toList()}');
     
@@ -26,11 +27,13 @@ class MealPlan {
     // Kiểm tra cấu trúc từ API thực tế (meal_plan.days hoặc days trực tiếp)
     if (json['days'] != null) {
       print('📅 Số ngày từ Firebase: ${json['days'].length}');
+      print('📅 Cấu trúc mảng days: ${json['days']}');
       List<dynamic> days = json['days'];
       
       for (var day in days) {
         String dayOfWeek = day['day_of_week'];
         print('📆 Ngày tiếng Việt: $dayOfWeek');
+        print('📆 Cấu trúc ngày: $day');
         // Chuyển đổi tên ngày tiếng Việt sang tiếng Anh
         String englishDay = _convertVietnameseDayToEnglish(dayOfWeek);
         print('📆 Ngày sau khi chuyển đổi: $englishDay');
@@ -39,24 +42,26 @@ class MealPlan {
     }
     // Cấu trúc cũ từ mock data
     else if (json['weekly_plan'] != null) {
+      print('📒 Cấu trúc weekly_plan: ${json['weekly_plan']}');
       try {
         dynamic weeklyPlanData = json['weekly_plan'];
         if (weeklyPlanData is Map) {
           weeklyPlanData.forEach((key, value) {
             try {
+              print('🔄 Xử lý ngày $key với dữ liệu: $value');
               if (key is String && value is Map) {
                 // Chuyển đổi map để đảm bảo đúng kiểu dữ liệu
                 final Map<String, dynamic> cleanValue = Map<String, dynamic>.from(value);
                 weeklyPlanMap[key] = DayMealPlan.fromJson(cleanValue);
               } else {
-                print('Bỏ qua day plan không hợp lệ: key=$key, value type=${value.runtimeType}');
+                print('⚠️ Bỏ qua day plan không hợp lệ: key=$key, value type=${value.runtimeType}');
               }
             } catch (dayError) {
-              print('Lỗi khi xử lý day plan cho $key: $dayError');
+              print('❌ Lỗi khi xử lý day plan cho $key: $dayError');
             }
           });
         } else {
-          print('json["weekly_plan"] không phải là Map: ${weeklyPlanData.runtimeType}');
+          print('⚠️ json["weekly_plan"] không phải là Map: ${weeklyPlanData.runtimeType}');
         }
       } catch (e) {
         print('Lỗi khi xử lý weekly_plan: $e');
@@ -156,7 +161,7 @@ class MealPlan {
   // API integration methods
   
   // Lấy kế hoạch bữa ăn mới nhất của người dùng từ API
-  static Future<MealPlan?> getLatestMealPlan(String userId, {String baseUrl = 'http://192.168.0.101:8000'}) async {
+  static Future<MealPlan?> getLatestMealPlan(String userId, {String baseUrl = 'https://backend-openfood.onrender.com'}) async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/firestore/latest-meal-plan/$userId'),
@@ -188,7 +193,7 @@ class MealPlan {
     List<String> preferences = const [],
     List<String> allergies = const [],
     String? cuisineStyle,
-    String baseUrl = 'http://192.168.0.101:8000',
+    String baseUrl = 'https://backend-openfood.onrender.com',
   }) async {
     try {
       final queryParams = {
@@ -253,7 +258,7 @@ class MealPlan {
     List<String> preferences = const [],
     List<String> allergies = const [],
     String? cuisineStyle,
-    String baseUrl = 'http://192.168.0.101:8000',
+    String baseUrl = 'https://backend-openfood.onrender.com',
   }) async {
     try {
       final body = {
@@ -326,7 +331,7 @@ class MealPlan {
     List<String> preferences = const [],
     List<String> allergies = const [],
     String? cuisineStyle,
-    String baseUrl = 'http://192.168.0.101:8000',
+    String baseUrl = 'https://backend-openfood.onrender.com',
   }) async {
     try {
       final body = {
@@ -387,7 +392,7 @@ class MealPlan {
   static Future<List<MealPlanHistory>?> getMealPlanHistory({
     String userId = 'default',
     int limit = 10,
-    String baseUrl = 'http://192.168.0.101:8000',
+    String baseUrl = 'https://backend-openfood.onrender.com',
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/meal-plan-history').replace(
@@ -417,7 +422,7 @@ class MealPlan {
   }
   
   // Xóa kế hoạch bữa ăn
-  static Future<bool> deleteMealPlan(String filename, {String baseUrl = 'http://192.168.0.101:8000'}) async {
+  static Future<bool> deleteMealPlan(String filename, {String baseUrl = 'https://backend-openfood.onrender.com'}) async {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/meal-plan/$filename'),
@@ -638,16 +643,66 @@ class Meal {
             .toList();
         print('📝 Converted preparation list: $instructionsList');
       } 
-      // Trường hợp 2: preparation là String (có thể được phân tách bằng dấu xuống dòng)
+      // Trường hợp 2: preparation là String (giữ nguyên chuỗi đó)
       else if (json['preparation'] is String) {
         String instructions = json['preparation'].toString();
-        // Tách chuỗi thành các bước dựa trên dấu xuống dòng hoặc số
-        instructionsList = instructions
-            .split(RegExp(r'(?:\r?\n|\r|(?<=\.)(?=\s*\d+\.)|\. (?=\d+\.))'))
-            .where((step) => step.trim().isNotEmpty)
-            .map((step) => step.trim())
-            .toList();
-        print('📝 Converted preparation string: $instructionsList');
+        
+        // Thử tách thành nhiều bước nếu có dấu hiệu định dạng
+        if (instructions.contains("Bước") || instructions.contains("Step") || 
+            RegExp(r'\d+[:.]\s+').hasMatch(instructions) || instructions.contains("\n")) {
+          print('📝 Preparation có vẻ chứa nhiều bước, thử tách...');
+          
+          // 1. Thử tách theo regex các bước
+          RegExp stepRegex = RegExp(r'(Bước \d+[:.]|Step \d+[:.]|\d+[:.]\s+|Bước [a-zA-Zà-úÀ-Ú]+[:.]|Bước đầu tiên|Bước cuối cùng)');
+          Iterable<Match> matches = stepRegex.allMatches(instructions);
+          List<int> startPositions = matches.map((m) => m.start).toList();
+          
+          // 2. Nếu tìm thấy ít nhất hai bước, tách theo vị trí
+          if (startPositions.length > 1) {
+            List<String> steps = [];
+            for (int i = 0; i < startPositions.length; i++) {
+              int startPos = startPositions[i];
+              int endPos = (i < startPositions.length - 1) ? startPositions[i + 1] : instructions.length;
+              String step = instructions.substring(startPos, endPos).trim();
+              steps.add(step);
+            }
+            instructionsList = steps;
+            print('📝 Tách được ${steps.length} bước theo định dạng bước');
+          }
+          // 3. Nếu không, thử tách theo dấu xuống dòng
+          else if (instructions.contains("\n")) {
+            List<String> steps = instructions.split(RegExp(r'\n+'))
+                .where((step) => step.trim().isNotEmpty)
+                .map((step) => step.trim())
+                .toList();
+            
+            if (steps.length > 1) {
+              instructionsList = steps;
+              print('📝 Tách được ${steps.length} bước theo dấu xuống dòng');
+            } else {
+              instructionsList = [instructions]; // Nếu tách không thành công
+            }
+          }
+          // 4. Nếu không, thử tách theo dấu chấm
+          else {
+            List<String> steps = instructions.split(RegExp(r'\.\s+'))
+                .where((step) => step.trim().isNotEmpty)
+                .map((step) => step.trim().endsWith(".") ? step.trim() : step.trim() + ".")
+                .toList();
+                
+            if (steps.length > 1) {
+              instructionsList = steps;
+              print('📝 Tách được ${steps.length} bước theo dấu chấm');
+            } else {
+              instructionsList = [instructions]; // Nếu tách không thành công
+            }
+          }
+        } else {
+          // Nếu không có dấu hiệu có thể tách, giữ nguyên chuỗi
+          instructionsList = [instructions];
+        }
+        
+        print('📝 Final instructions list: ${instructionsList.length} steps');
       }
     } 
     // Trường hợp 3: cooking_instructions là List<String>
@@ -661,11 +716,7 @@ class Meal {
       // cooking_instructions là String
       else if (json['cooking_instructions'] is String) {
         String instructions = json['cooking_instructions'].toString();
-        instructionsList = instructions
-            .split(RegExp(r'(?:\r?\n|\r|(?<=\.)(?=\s*\d+\.)|\. (?=\d+\.))'))
-            .where((step) => step.trim().isNotEmpty)
-            .map((step) => step.trim())
-            .toList();
+        instructionsList = [instructions];
       }
     }
     // Trường hợp 4: instructions là List<String>
@@ -677,11 +728,7 @@ class Meal {
     // Trường hợp 5: instructions là String
     else if (json['instructions'] != null && json['instructions'] is String) {
       String instructions = json['instructions'].toString();
-      instructionsList = instructions
-          .split(RegExp(r'(?:\r?\n|\r|(?<=\.)(?=\s*\d+\.)|\. (?=\d+\.))'))
-          .where((step) => step.trim().isNotEmpty)
-          .map((step) => step.trim())
-          .toList();
+      instructionsList = [instructions];
     }
     // Trường hợp 6: steps là List<String>
     else if (json['steps'] != null && json['steps'] is List) {

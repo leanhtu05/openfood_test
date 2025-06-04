@@ -23,7 +23,6 @@ import 'screens/onboarding/diet_goal_page.dart';
 import 'screens/settings_screen.dart';
 import 'screens/auth/auth_screen.dart';
 
-
 Map<String, WidgetBuilder> routes = {
   '/home': (context) => HomeScreen(),
   '/exercise_log': (context) => ExerciseLogScreen(),

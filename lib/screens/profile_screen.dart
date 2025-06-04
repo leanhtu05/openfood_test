@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/constants.dart';
 import 'package:provider/provider.dart';
-import '../providers/user_data_provider.dart';
+import '../providers/user_data_provider.dart' as udp;
 import '../utils/tdee_calculator.dart';
 import '../services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 // Add imports for onboarding pages
 import '../screens/onboarding/activity_level_page.dart';
 import '../screens/onboarding/health_condition_page.dart';
@@ -21,11 +22,11 @@ import 'onboarding/diet_goal_page.dart';
 import '../services/auth_service.dart';
 
 // Add extension to add custom properties to UserDataProvider
-extension UserDataProviderExtension on UserDataProvider {
+extension UserDataProviderExtension on udp.UserDataProvider {
   String get name => "Lê Anh Tú"; // Default name if not available
   double get initialWeight => weightKg; // Use current weight if initial not set
   double get targetWeight => targetWeightKg; // Use the proper getter from UserDataProvider
-  
+
   void updateWeight(double weight) {
     // Call the setWeight method from UserDataProvider
     setWeight(weight);
@@ -56,28 +57,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserData();
   }
 
-  // Tải dữ liệu người dùng từ Provider
+  // Tải dữ liệu người dùng từ Firebase hoặc Provider
   Future<void> _loadUserData() async {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
-      final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
       final authService = Provider.of<AuthService>(context, listen: false);
-      
-      // Kiểm tra và đồng bộ dữ liệu từ Firebase nếu cần
+
+      // Kiểm tra xác thực người dùng
       if (authService.isAuthenticated) {
-        // Đồng bộ dữ liệu từ Firebase vào UserDataProvider
+        final userId = authService.currentUser?.uid;
+        print('🔍 Tải dữ liệu cho người dùng ID: $userId');
+        
+        // ƯU TIÊN: Lấy dữ liệu trực tiếp từ Firestore
         try {
-          await authService.syncUserDataToProvider(userDataProvider);
-          print('✅ Đã đồng bộ dữ liệu từ Firebase vào UserDataProvider trong ProfileScreen');
-        } catch (e) {
-          print('⚠️ Lỗi khi đồng bộ dữ liệu từ Firebase: $e');
-          // Tiếp tục sử dụng dữ liệu hiện có trong UserDataProvider
+          print('🔍 Đang tìm kiếm dữ liệu người dùng từ Firestore...');
+          final firestoreData = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+          
+          if (firestoreData.exists && firestoreData.data() != null) {
+            print('✅ Đã tìm thấy dữ liệu người dùng trong Firestore');
+            // Cập nhật UserDataProvider với dữ liệu từ Firestore
+            await userDataProvider.loadFromFirestoreData(firestoreData.data()!);
+            print('✅ Đã cập nhật UserDataProvider với dữ liệu từ Firestore');
+          } else {
+            print('⚠️ Không tìm thấy dữ liệu trong Firestore, sử dụng phương thức đồng bộ');
+            // Thử phương thức đồng bộ nếu không tìm thấy dữ liệu trực tiếp
+            await authService.syncUserDataToProvider(userDataProvider);
+          }
+        } catch (firestoreError) {
+          print('⚠️ Lỗi khi truy cập Firestore: $firestoreError');
+          // Thử phương thức đồng bộ của AuthService nếu truy cập Firestore thất bại
+          try {
+            await authService.syncUserDataToProvider(userDataProvider);
+            print('✅ Đã đồng bộ dữ liệu thông qua AuthService');
+          } catch (syncError) {
+            print('❌ Lỗi khi đồng bộ dữ liệu từ Firebase: $syncError');
+            // Tiếp tục sử dụng dữ liệu hiện có trong UserDataProvider
+          }
         }
       }
-      
+
       // Cập nhật thông tin cá nhân từ Provider
       final weight = userDataProvider.weightKg;
       final height = userDataProvider.heightCm;
@@ -87,7 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final goal = userDataProvider.goal;
       final pace = userDataProvider.pace;
       final userName = userDataProvider.name;
-      
+
       // Tính toán TDEE và các giá trị dinh dưỡng
       final calculator = TDEECalculator(
         gender: gender,
@@ -98,32 +123,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
         goal: goal,
         pace: pace,
       );
-      
+
       // Tính toán TDEE và nhu cầu calo hàng ngày
       final tdee = calculator.calculateBaseTDEE();
-      
+
       // Sử dụng giá trị từ getConsistentCalorieGoal() để đảm bảo tính nhất quán
       final dailyCalories = userDataProvider.getConsistentCalorieGoal();
-      
+
       // Tạo giả lịch sử cân nặng nếu không có dữ liệu thực
       final spotList = <FlSpot>[];
       // Lịch sử 7 ngày từ hiện tại (giả lập)
       final baseWeight = weight;
       double changeRate = pace;
-      
+
       if (goal == "Giảm cân") {
         changeRate = -changeRate;
       } else if (goal == "Duy trì cân nặng") {
         changeRate = 0;
       }
-      
+
       // Tạo lịch sử cân nặng trong 7 tuần gần đây (mô phỏng)
       final weeklyChange = changeRate / 7.0;
       for (int i = 0; i < 7; i++) {
         final weekWeight = baseWeight - (weeklyChange * (6 - i) * 7);
         spotList.add(FlSpot(i.toDouble(), weekWeight));
       }
-        
+
       // Cập nhật dữ liệu
       setState(() {
         _weight = weight;
@@ -135,7 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _weightHistory = spotList;
         _isLoading = false;
       });
-      
+
       print('✅ Đã tải dữ liệu người dùng thành công trong ProfileScreen');
       print('👤 Tên: $_name, Tuổi: $_age, Cân nặng: $_weight kg');
       print('🔥 TDEE: $_tdee kcal, Mục tiêu: $_targetCalories kcal');
@@ -156,7 +181,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     }
-    
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(16),
       child: Column(
@@ -177,26 +202,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Card thông tin người dùng
   Widget _buildUserInfoHeader() {
     // Tính toán phần trăm hoàn thành dựa trên mục tiêu
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     final targetWeight = userDataProvider.targetWeight;
-    
+
     double progressValue = 0.7; // Giá trị mặc định
-    
+
     if (targetWeight > 0) {
-      final startWeight = userDataProvider.initialWeight > 0 ? 
+      final startWeight = userDataProvider.initialWeight > 0 ?
           userDataProvider.initialWeight : userDataProvider.weightKg;
-      
+
       final totalChange = targetWeight - startWeight;
       final currentChange = _weight - startWeight;
-      
+
       if (totalChange != 0) {
         progressValue = currentChange / totalChange;
-        
+
         // Giới hạn giá trị từ 0 đến 1
         progressValue = progressValue.clamp(0.0, 1.0);
       }
     }
-    
+
     return Card(
       elevation: 4,
       shadowColor: Colors.black.withAlpha(51),
@@ -228,7 +253,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                   ),
                 ),
-                
+
                 // User info with avatar
                 Flexible(
                   flex: 2,
@@ -266,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                   ),
                 ),
-                
+
                 // Settings button
                 IconButton(
                   icon: Icon(Icons.settings, color: AppColors.textSecondary),
@@ -282,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             SizedBox(height: 16),
-            
+
             // Progress indicator
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
@@ -339,7 +364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         SizedBox(height: 12),
-        
+
         // Three cards in a row
         Row(
           children: [
@@ -372,7 +397,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         SizedBox(height: 24),
-        
+
         // Weight trend line chart
         Container(
           height: 220,
@@ -401,14 +426,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.blue.withAlpha(128), width: 1),
                   ),
-                  child: Text(
-                    'Thế a chiui',
-                    style: TextStyle(
-                      color: Colors.blue,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                 
                 ),
               ),
             ],
@@ -420,9 +438,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Helper to format weight change text
   String _getWeightChangeText() {
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     final goal = userDataProvider.goal;
-    
+
     if (goal == "Tăng cân") {
       return "Tăng cân";
     } else if (goal == "Giảm cân") {
@@ -478,14 +496,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Tính toán min và max cho biểu đồ
     double minY = 50.0;
     double maxY = 56.0;
-    
+
     if (_weightHistory.isNotEmpty) {
       // Tìm giá trị min và max từ dữ liệu
       final values = _weightHistory.map((spot) => spot.y).toList();
-      minY = values.reduce((min, val) => min < val ? min : val) - 2;
-      maxY = values.reduce((max, val) => max > val ? max : val) + 2;
+      minY = values.reduce((min, val) => min < val ? min : val);
+      maxY = values.reduce((max, val) => max > val ? max : val);
+      
+      // Thêm padding để tránh chart chạm vào đường biên (15% khoảng cách)
+      double range = maxY - minY;
+      if (range < 2) range = 2; // Đảm bảo range tối thiểu là 2kg để chart không quá nén
+      
+      minY = minY - range * 0.15;
+      maxY = maxY + range * 0.15;
+      
+      // Làm tròn để có giá trị đẹp hơn
+      minY = (minY / 0.5).floor() * 0.5;
+      maxY = (maxY / 0.5).ceil() * 0.5;
     }
-    
+
     return LineChart(
       LineChartData(
         gridData: FlGridData(
@@ -541,17 +570,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              interval: 1,
+              interval: (maxY - minY) / 4 > 1 ? 2 : 1,  // Điều chỉnh interval dựa vào phạm vi
               getTitlesWidget: (value, meta) {
                 return Text(
-                  '${value.toInt()} kg',
+                  '${value.toStringAsFixed(1)} kg',
                   style: TextStyle(
                     color: Colors.grey.shade600,
                     fontSize: 10,
                   ),
                 );
               },
-              reservedSize: 42,
+              reservedSize: 48, // Tăng khoảng trống cho nhãn dài hơn
             ),
           ),
         ),
@@ -609,10 +638,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Colors.orange.withAlpha(77),
                   Colors.green.withAlpha(77),
                 ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
           ),
         ],
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            tooltipRoundedRadius: 8,
+            getTooltipItems: (List<LineBarSpot> touchedSpots) {
+              return touchedSpots.map((LineBarSpot touchedSpot) {
+                return LineTooltipItem(
+                  '${touchedSpot.y.toStringAsFixed(1)} kg',
+                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                );
+              }).toList();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -753,11 +798,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ) ?? false;
-                
+
                 if (shouldRecalculate) {
                   // Lấy UserDataProvider
-                  final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-                  
+                  final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+
                   // Hiển thị loading indicator
                   showDialog(
                     context: context,
@@ -766,13 +811,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: CircularProgressIndicator(),
                     ),
                   );
-                  
+
                   // Tính toán lại TDEE
                   await _recalculateTDEEAfterWeightUpdate(userDataProvider, _weight);
-                  
+
                   // Đóng loading indicator
                   Navigator.of(context).pop();
-                  
+
                   // Hiển thị kết quả
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -793,7 +838,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Dialog cập nhật cân nặng
   void _showWeightUpdateDialog() {
     double newWeight = _weight;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -827,24 +872,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ElevatedButton(
             onPressed: () {
               // Cập nhật cân nặng mới
-              final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+              final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
               userDataProvider.updateWeight(newWeight);
-              
+
               // Lưu lên Firestore nếu có thể
               try {
                 FirestoreService().saveUserProfile({'weightKg': newWeight});
               } catch (e) {
                 print('Không thể lưu cân nặng lên Firestore: $e');
               }
-              
+
               // Recalculate TDEE after weight update
               _recalculateTDEEAfterWeightUpdate(userDataProvider, newWeight);
-              
+
               // Cập nhật lại dữ liệu trên giao diện
               _loadUserData();
-              
+
               Navigator.pop(context);
-              
+
               // Hiển thị thông báo thành công
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -864,16 +909,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // Recalculate TDEE after weight update
-  Future<void> _recalculateTDEEAfterWeightUpdate(UserDataProvider userDataProvider, double newWeight) async {
+  Future<void> _recalculateTDEEAfterWeightUpdate(udp.UserDataProvider userDataProvider, double newWeight) async {
     // Sử dụng phương thức forceRecalculateTDEE để tính toán lại TDEE từ đầu
     await userDataProvider.forceRecalculateTDEE();
-    
+
     // Đồng bộ dữ liệu đầy đủ với backend sau khi cập nhật TDEE
     await userDataProvider.sendToApi();
-    
+
     // Lấy giá trị calo mục tiêu nhất quán
     final consistentCalorieGoal = userDataProvider.getConsistentCalorieGoal();
-    
+
     // Hiển thị thông báo về mục tiêu calo mới
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -888,12 +933,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Area chart for weight history
   Widget _buildAreaChart() {
+    // Tính toán min và max cho biểu đồ dựa trên dữ liệu
+    double minY = 40.0;
+    double maxY = 60.0;
+
+    if (_weightHistory.isNotEmpty) {
+      // Lấy giá trị min và max từ dữ liệu
+      final values = _weightHistory.map((spot) => spot.y).toList();
+      minY = values.reduce((min, val) => min < val ? min : val);
+      maxY = values.reduce((max, val) => max > val ? max : val);
+      
+      // Thêm padding để tránh chart chạm vào đường biên (20% khoảng cách)
+      double range = maxY - minY;
+      if (range < 3) range = 3; // Đảm bảo range tối thiểu là 3kg
+      
+      minY = minY - range * 0.2;
+      maxY = maxY + range * 0.2;
+      
+      // Làm tròn để có giá trị đẹp hơn
+      minY = (minY / 1).floor() * 1;
+      maxY = (maxY / 1).ceil() * 1;
+    }
+
     return LineChart(
       LineChartData(
         gridData: FlGridData(
           show: true,
           drawVerticalLine: true,
-          horizontalInterval: 5,
+          horizontalInterval: (maxY - minY) > 10 ? 5 : 2,  // Điều chỉnh grid dựa vào phạm vi
           verticalInterval: 1,
           getDrawingHorizontalLine: (value) {
             return FlLine(
@@ -943,7 +1010,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              interval: 5,
+              interval: (maxY - minY) > 10 ? 5 : 2,  // Điều chỉnh interval dựa vào phạm vi
               getTitlesWidget: (value, meta) {
                 return Text(
                   '${value.toInt()} kg',
@@ -953,7 +1020,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 );
               },
-              reservedSize: 40,
+              reservedSize: 45,  // Tăng khoảng trống cho nhãn dài hơn
             ),
           ),
         ),
@@ -963,8 +1030,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         minX: 0,
         maxX: 6,
-        minY: 40,
-        maxY: 60,
+        minY: minY,
+        maxY: maxY,
         lineBarsData: [
           LineChartBarData(
             spots: _weightHistory.isEmpty ? [
@@ -978,11 +1045,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ] : _weightHistory,
             isCurved: true,
             gradient: LinearGradient(
-              colors: [Color(0xFF00BFA6), Color(0xFF00BFA6).withAlpha(128)],
+              colors: [Color(0xFF00BFA6), Color(0xFF00BFA6).withAlpha(180)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
             barWidth: 3,
             isStrokeCapRound: true,
-            dotData: FlDotData(show: false),
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                return FlDotCirclePainter(
+                  radius: 3.5,
+                  color: Colors.white,
+                  strokeWidth: 1.5,
+                  strokeColor: Color(0xFF00BFA6),
+                );
+              },
+            ),
             belowBarData: BarAreaData(
               show: true,
               gradient: LinearGradient(
@@ -996,6 +1075,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ],
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            tooltipRoundedRadius: 8,
+            getTooltipItems: (List<LineBarSpot> touchedSpots) {
+              return touchedSpots.map((LineBarSpot touchedSpot) {
+                return LineTooltipItem(
+                  '${touchedSpot.y.toStringAsFixed(1)} kg',
+                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                );
+              }).toList();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -1008,7 +1101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context) => ProfileUpdateFlow(initialStep: 'name'),
       ),
     );
-    
+
     // If we got a result back, refresh the profile data
     if (result == true) {
       _loadUserData();
@@ -1017,18 +1110,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Save goal settings
   Future<void> _saveGoalSettings() async {
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-    
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+
     // Lấy giá trị hiện tại từ userDataProvider thay vì sử dụng biến không tồn tại
     String goal = userDataProvider.goal;
     double pace = userDataProvider.pace;
-    
+
     // Cập nhật mục tiêu và tốc độ sử dụng phương thức mới
     await userDataProvider.updateUserGoal(
       goal: goal,
       pace: pace,
     );
-    
+
     // Hiển thị thông báo
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1036,7 +1129,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
     );
-    
+
     // Đóng dialog
     Navigator.of(context).pop();
   }
@@ -1048,10 +1141,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _isLoading = true;
       });
-      
+
       // Lấy AuthService từ Provider
       final authService = Provider.of<AuthService>(context, listen: false);
-      
+
       // Gọi phương thức updateFullUserProfile từ AuthService để cập nhật trực tiếp với Firestore
       final success = await authService.updateFullUserProfile(
         // Chuyển đổi các trường từ userData sang tham số riêng lẻ
@@ -1065,19 +1158,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         activityLevel: userData['activity_level'],
         goal: userData['goal'],
         pace: userData['pace'],
-        dietRestrictions: userData['diet_restrictions'] != null ? 
+        dietRestrictions: userData['diet_restrictions'] != null ?
           List<String>.from(userData['diet_restrictions']) : null,
-        healthConditions: userData['health_conditions'] != null ? 
+        healthConditions: userData['health_conditions'] != null ?
           List<String>.from(userData['health_conditions']) : null,
         measurementSystem: userData['measurement_system'],
         nutritionGoals: userData['nutrition_goals'],
       );
-      
+
       // Ẩn loading indicator
       setState(() {
         _isLoading = false;
       });
-      
+
       // Hiển thị thông báo kết quả
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1094,14 +1187,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       }
-      
+
       return success;
     } catch (e) {
       // Ẩn loading indicator
       setState(() {
         _isLoading = false;
       });
-      
+
       // Hiển thị thông báo lỗi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1109,7 +1202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: Colors.red,
         ),
       );
-      
+
       return false;
     }
   }
@@ -1136,10 +1229,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _isLoading = true;
       });
-      
+
       // Lấy AuthService từ Provider
       final authService = Provider.of<AuthService>(context, listen: false);
-      
+
       // Gọi phương thức updateFullUserProfile từ AuthService
       final success = await authService.updateFullUserProfile(
         displayName: displayName,
@@ -1157,12 +1250,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         measurementSystem: measurementSystem,
         nutritionGoals: nutritionGoals,
       );
-      
+
       // Ẩn loading indicator
       setState(() {
         _isLoading = false;
       });
-      
+
       // Hiển thị thông báo kết quả
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1179,14 +1272,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       }
-      
+
       return success;
     } catch (e) {
       // Ẩn loading indicator
       setState(() {
         _isLoading = false;
       });
-      
+
       // Hiển thị thông báo lỗi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1194,7 +1287,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: Colors.red,
         ),
       );
-      
+
       return false;
     }
   }
@@ -1203,21 +1296,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 // Widget to handle navigation to specific onboarding screens for updating user profile data
 class ProfileUpdateFlow extends StatelessWidget {
   final String initialStep;
-  
+
   const ProfileUpdateFlow({
-    Key? key, 
+    Key? key,
     required this.initialStep,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final userDataProvider = Provider.of<UserDataProvider>(context);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context);
     final _profileScreenState = context.findAncestorStateOfType<_ProfileScreenState>();
-    
+
     // Map initialStep to the appropriate page
     Widget pageContent;
     String pageTitle;
-    
+
     switch (initialStep) {
       case 'name':
         pageTitle = 'Cập nhật tên';
@@ -1251,7 +1344,7 @@ class ProfileUpdateFlow extends StatelessWidget {
         pageTitle = 'Cập nhật thông tin';
         pageContent = _buildDefaultUpdatePage(context);
     }
-    
+
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -1269,11 +1362,11 @@ class ProfileUpdateFlow extends StatelessWidget {
       ),
     );
   }
-  
+
   // Page to update user name
-  Widget _buildNameUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+  Widget _buildNameUpdatePage(BuildContext context, udp.UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
     final TextEditingController nameController = TextEditingController(text: userDataProvider.name);
-    
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1313,10 +1406,10 @@ class ProfileUpdateFlow extends StatelessWidget {
                 onPressed: () async {
                   if (nameController.text.trim().isNotEmpty) {
                     final newName = nameController.text.trim();
-                    
+
                     // Cập nhật tên trong UserDataProvider
                     userDataProvider.setName(newName);
-                    
+
                     // Cập nhật thông tin người dùng thông qua API
                     if (profileScreenState != null) {
                       // Sử dụng phương thức cập nhật toàn bộ thông tin
@@ -1324,7 +1417,7 @@ class ProfileUpdateFlow extends StatelessWidget {
                         displayName: newName,
                       );
                     }
-                    
+
                     Navigator.of(context).pop();
                   }
                 },
@@ -1350,11 +1443,11 @@ class ProfileUpdateFlow extends StatelessWidget {
       ),
     );
   }
-  
+
   // Page to update user age
-  Widget _buildAgeUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+  Widget _buildAgeUpdatePage(BuildContext context, udp.UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
     final TextEditingController ageController = TextEditingController(text: userDataProvider.age.toString());
-    
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1395,18 +1488,18 @@ class ProfileUpdateFlow extends StatelessWidget {
                   if (ageController.text.isNotEmpty) {
                     try {
                       final int newAge = int.parse(ageController.text);
-                      
+
                       if (newAge > 0 && newAge < 120) {
                         // Cập nhật tuổi trong UserDataProvider
                         userDataProvider.setAge(newAge);
-                        
+
                         // Cập nhật thông tin người dùng thông qua API
                         if (profileScreenState != null) {
                           await profileScreenState._updateFullUserProfile(
                             age: newAge,
                           );
                         }
-                        
+
                         Navigator.of(context).pop();
                       } else {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1448,11 +1541,11 @@ class ProfileUpdateFlow extends StatelessWidget {
                       ),
                     );
   }
-  
+
   // Page to update user gender
-  Widget _buildGenderUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+  Widget _buildGenderUpdatePage(BuildContext context, udp.UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
     String selectedGender = userDataProvider.gender;
-    
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1509,15 +1602,15 @@ class ProfileUpdateFlow extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () async {
                   // Cập nhật giới tính trong UserDataProvider
-                  userDataProvider.setGender(selectedGender);
-                  
+                  userDataProvider.gender = selectedGender;
+
                   // Cập nhật thông tin người dùng thông qua API
                   if (profileScreenState != null) {
                     await profileScreenState._updateFullUserProfile(
                       gender: selectedGender,
                     );
                   }
-                  
+
                   Navigator.of(context).pop();
                 },
                 style: ElevatedButton.styleFrom(
@@ -1542,11 +1635,11 @@ class ProfileUpdateFlow extends StatelessWidget {
       ),
     );
   }
-  
+
   // Page to update user height
-  Widget _buildHeightUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+  Widget _buildHeightUpdatePage(BuildContext context, udp.UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
     final TextEditingController heightController = TextEditingController(text: userDataProvider.heightCm.toString());
-    
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1587,18 +1680,18 @@ class ProfileUpdateFlow extends StatelessWidget {
                   if (heightController.text.isNotEmpty) {
                     try {
                       final double newHeight = double.parse(heightController.text);
-                      
+
                       if (newHeight > 50 && newHeight < 250) {
                         // Cập nhật chiều cao trong UserDataProvider
                         userDataProvider.setHeight(newHeight);
-                        
+
                         // Cập nhật thông tin người dùng thông qua API
                         if (profileScreenState != null) {
                           await profileScreenState._updateFullUserProfile(
                             heightCm: newHeight,
                           );
                         }
-                        
+
                         Navigator.of(context).pop();
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1640,11 +1733,11 @@ class ProfileUpdateFlow extends StatelessWidget {
       ),
     );
   }
-  
+
   // Page to update user weight
-  Widget _buildWeightUpdatePage(BuildContext context, UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+  Widget _buildWeightUpdatePage(BuildContext context, udp.UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
     final TextEditingController weightController = TextEditingController(text: userDataProvider.weightKg.toString());
-    
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1685,21 +1778,21 @@ class ProfileUpdateFlow extends StatelessWidget {
                   if (weightController.text.isNotEmpty) {
                     try {
                       final double newWeight = double.parse(weightController.text);
-                      
+
                       if (newWeight > 20 && newWeight < 300) {
                         // Cập nhật cân nặng trong UserDataProvider
                         userDataProvider.setWeight(newWeight);
-                        
+
                         // Cập nhật thông tin người dùng thông qua API
                         if (profileScreenState != null) {
                           await profileScreenState._updateFullUserProfile(
                             weightKg: newWeight,
                           );
-                          
+
                           // Tính toán lại TDEE sau khi cập nhật cân nặng
                           await profileScreenState._recalculateTDEEAfterWeightUpdate(userDataProvider, newWeight);
                         }
-                        
+
                         Navigator.of(context).pop();
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1741,7 +1834,7 @@ class ProfileUpdateFlow extends StatelessWidget {
       ),
     );
   }
-  
+
   // Default update page if no specific page is defined
   Widget _buildDefaultUpdatePage(BuildContext context) {
     return Center(

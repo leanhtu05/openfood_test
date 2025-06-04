@@ -217,51 +217,92 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     });
   }
 
-  Future<FoodEntry?> _analyzeImageAndShowEnhancedResults() async {
-    if (_foodImage == null) return null;
-    setState(() => _isProcessing = true);
-    
-    FoodEntry? resultEntry;
-    
-    try {
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      final targetDate = foodProvider.selectedDate;
-      
-      // Show dialog and start AI processing
-      _showAIProcessingDialog();
-      await _simulateAIProcessing();
-      
-      // Process image with AI
-      final description = _getDescription();
-      final mealType = _selectedMealType;
-      // Gọi addFoodEntryWithAI với tham số vị trí theo phiên bản mới
-      final entry = await foodProvider.addFoodEntryWithAI(
-        description,
-        mealType
-      );
-      
-      _closeProcessingDialog();
-      
-      // Handle results
-      if (entry != null) {
-        _handleSuccessfulAIAnalysis(entry);
-        resultEntry = entry;
-      } else {
-        _showNoFoodDetectedMessage();
-      }
-    } catch (e) {
-      _closeProcessingDialog();
-      _showAnalysisErrorMessage(e);
-    } finally {
-      if (mounted) {
-      setState(() {
-        _isProcessing = false;
-        _currentAIStep = 0;
-      });
-      }
+  Future<void> _analyzeImageAndShowEnhancedResults() async {
+    if (_foodImage == null) {
+      _showErrorMessage('Vui lòng chụp hoặc chọn ảnh thực phẩm trước');
+      return;
     }
     
-    return resultEntry;
+    setState(() {
+      _isRecognizing = true;
+      _recognitionStatus = RecognitionStatus.processing;
+      _currentAIStep = 0;
+    });
+    
+    try {
+      // Hiển thị dialog xử lý AI
+      _showAIProcessingDialog();
+      
+      // Mô phỏng các bước xử lý AI để hiển thị trên UI
+      _simulateAIProcessing();
+      
+      // Gọi API nhận diện thực phẩm
+      final result = await _foodAIService.recognizeFoodFromImage(
+        _foodImage!,
+        _selectedMealType,
+      );
+      
+      // Đóng dialog hiện tại
+      if (mounted) {
+        _closeProcessingDialog();
+      }
+      
+      if (!mounted) return;
+      
+      if (result['success']) {
+        // Chuyển đổi dữ liệu API thành FoodEntry
+        final entry = _foodAIService.convertRecognitionResponseToFoodEntry(
+          result['data'],
+          _selectedMealType,
+        );
+        
+        if (entry != null) {
+          // Thêm vào provider
+          final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+          foodProvider.addFoodEntry(entry);
+          
+          // Cập nhật UI với thông báo thành công
+          setState(() {
+            _recognitionStatus = RecognitionStatus.success;
+            _successMessage = _foodAIService.generateSuccessMessage(entry);
+            _isRecognizing = false;
+            
+            // Cập nhật mô tả nếu trống
+            if (_descriptionController.text.isEmpty) {
+              _descriptionController.text = entry.description;
+            }
+          });
+          
+          // Hiển thị kết quả phân tích chi tiết
+          if (mounted) {
+            _showEnhancedNutritionAnalysis(entry);
+          }
+        } else {
+          setState(() {
+            _recognitionStatus = RecognitionStatus.failed;
+            _isRecognizing = false;
+          });
+          _showNoFoodDetectedMessage();
+        }
+      } else {
+        // Xử lý lỗi từ API
+        setState(() {
+          _recognitionStatus = RecognitionStatus.failed;
+          _isRecognizing = false;
+        });
+        _showErrorMessage(result['message'] ?? 'Lỗi khi nhận diện thực phẩm');
+      }
+    } catch (error) {
+      debugPrint('Lỗi phân tích thực phẩm: $error');
+      if (mounted) {
+        _closeProcessingDialog();
+        setState(() {
+          _recognitionStatus = RecognitionStatus.failed;
+          _isRecognizing = false;
+        });
+        _showAnalysisErrorMessage(error);
+      }
+    }
   }
   
   String _getDescription() {
@@ -367,18 +408,20 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       );
       
       // Chỉ gọi updateHomeScreenWithNewEntry nếu entry không phải null
-      if (entry != null) {
+      if (entry != null && mounted) {
         foodProvider.updateHomeScreenWithNewEntry(context, entry);
       }
       
-      syncCaloriesAndGoalsAfterAdd(context);
-      
-      if (widget.onDataChanged != null) widget.onDataChanged!();
-      
-      Navigator.pop(context, {
-        'foodEntriesUpdated': true,
-        'selectedDate': _selectedDate,
-      });
+      if (mounted) {
+        syncCaloriesAndGoalsAfterAdd(context);
+        
+        if (widget.onDataChanged != null) widget.onDataChanged!();
+        
+        Navigator.pop(context, {
+          'foodEntriesUpdated': true,
+          'selectedDate': _selectedDate,
+        });
+      }
     } catch (e) {
       _showErrorMessage('Có lỗi xảy ra: $e');
     } finally {

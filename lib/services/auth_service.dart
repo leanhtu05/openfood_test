@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'user_service.dart';
 import 'api_service.dart';
@@ -8,6 +9,11 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import 'package:openfood/providers/user_data_provider.dart' as udp;
+import '../providers/food_provider.dart';
+import '../providers/exercise_provider.dart';
+import '../providers/water_provider.dart';
 
 class AuthService extends ChangeNotifier {
   // Firebase Authentication instance
@@ -102,6 +108,17 @@ class AuthService extends ChangeNotifier {
       return await _user!.getIdToken();
     } catch (e) {
       print('Error getting ID token: $e');
+      return null;
+    }
+  }
+  
+  // Lấy token hiện tại để gọi API
+  Future<String?> getCurrentToken() async {
+    try {
+      if (_user == null) return null;
+      return await _user!.getIdToken(true); // Force refresh token
+    } catch (e) {
+      print('Error getting current token: $e');
       return null;
     }
   }
@@ -337,18 +354,63 @@ class AuthService extends ChangeNotifier {
   }
 
   // Log out
-  Future<void> logout() async {
+  Future<void> logout({BuildContext? context}) async {
     try {
+      debugPrint('🔄 AuthService: Đang đăng xuất...');
+      
+      // 1. Xóa dữ liệu local trước khi đăng xuất khỏi Firebase
+      try {
+        if (context != null) {
+          debugPrint('🧹 AuthService: Đang xóa dữ liệu local thông qua context...');
+          
+          // Xóa dữ liệu từ UserDataProvider
+          final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+          await userDataProvider.clearLocalUserData();
+          
+          // Xóa dữ liệu từ các providers khác nếu có
+          try {
+            // Food Provider
+            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+            await foodProvider.clearDataOnLogout();
+            
+            // Exercise Provider
+            final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+            await exerciseProvider.clearDataOnLogout();
+            
+            // Water Provider
+            final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+            await waterProvider.clearDataOnLogout();
+            
+            debugPrint('✅ AuthService: Đã xóa dữ liệu từ tất cả các providers');
+          } catch (providerError) {
+            debugPrint('⚠️ AuthService: Không thể xóa dữ liệu từ một số providers: $providerError');
+            // Tiếp tục quá trình đăng xuất
+          }
+        } else {
+          // Nếu không có context, xóa dữ liệu từ SharedPreferences trực tiếp
+          debugPrint('🧹 AuthService: Không có context, xóa dữ liệu local từ SharedPreferences...');
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.clear();
+          debugPrint('✅ AuthService: Đã xóa dữ liệu từ SharedPreferences');
+        }
+      } catch (clearError) {
+        debugPrint('⚠️ AuthService: Lỗi khi xóa dữ liệu local: $clearError');
+        // Tiếp tục quá trình đăng xuất ngay cả khi không thể xóa dữ liệu local
+      }
+      
+      // 2. Đăng xuất khỏi Firebase
       await _auth.signOut();
       _isAuthenticated = false;
       _user = null;
       
-      // Save login state locally
+      // 3. Lưu trạng thái đăng nhập
       _saveLoginStatus(false);
       
       notifyListeners();
+      debugPrint('✅ AuthService: Đăng xuất thành công! Trạng thái đăng nhập đã được cập nhật.');
     } catch (e) {
       _errorMessage = 'Đăng xuất thất bại. Vui lòng thử lại.';
+      debugPrint('❌ AuthService: Lỗi khi đăng xuất: $e');
       notifyListeners();
     }
   }

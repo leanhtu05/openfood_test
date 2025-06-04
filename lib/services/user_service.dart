@@ -5,8 +5,12 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../utils/firebase_helpers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/user_data_provider.dart';
+import '../services/user_profile_api.dart';
 
 class UserService {
+  final UserProfileAPI _userProfileAPI;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final String _userCollection = 'users';
@@ -15,6 +19,15 @@ class UserService {
   final String _baseApiUrl = 'https://openfood-api.onrender.com'; // URL FastAPI chính
   final String _apiUserEndpoint = '/api/user-profile'; // Endpoint cho user profile
   final String _apiFirestoreEndpoint = '/firestore/users'; // Endpoint cho Firestore
+
+  // Optional UserDataProvider instance để thông báo khi có thay đổi
+  final UserDataProvider? _userDataProvider;
+
+  UserService({
+    UserProfileAPI? userProfileAPI,
+    UserDataProvider? userDataProvider,
+  }) : _userProfileAPI = userProfileAPI ?? UserProfileAPI(),
+       _userDataProvider = userDataProvider;
 
   // Get Firestore reference to user document
   DocumentReference _getUserDocRef(String uid) {
@@ -508,6 +521,188 @@ class UserService {
     } catch (e) {
       debugPrint('Error converting anonymous account: $e');
       rethrow;
+    }
+  }
+
+  /// Xóa tất cả dữ liệu người dùng ở local
+  Future<void> clearLocalUserData() async {
+    try {
+      debugPrint('🧹 UserService: Đang xóa dữ liệu người dùng local...');
+      
+      // 1. Xóa dữ liệu từ SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('user_data');
+      await prefs.remove('user_profile');
+      await prefs.remove('water_entries');
+      await prefs.remove('exercise_entries');
+      await prefs.remove('food_entries');
+      await prefs.remove('weight_entries');
+      
+      // 2. Thông báo cho UserDataProvider nếu có
+      if (_userDataProvider != null) {
+        _userDataProvider!.resetData();
+      }
+      
+      debugPrint('✅ UserService: Đã xóa tất cả dữ liệu người dùng local thành công');
+    } catch (e) {
+      debugPrint('❌ UserService: Lỗi khi xóa dữ liệu người dùng local: $e');
+      rethrow;
+    }
+  }
+
+  /// Đồng bộ dữ liệu người dùng từ Firebase sau khi đăng nhập
+  Future<void> syncUserDataFromFirebase() async {
+    if (!isUserAuthenticated()) {
+      debugPrint('⚠️ UserService: Không thể đồng bộ dữ liệu - người dùng chưa đăng nhập hoặc đang ở chế độ ẩn danh');
+      return;
+    }
+
+    try {
+      final userId = getCurrentUserId()!;
+      debugPrint('🔄 UserService: Đang đồng bộ dữ liệu người dùng từ Firebase cho $userId...');
+
+      // 1. Lấy thông tin người dùng từ Firestore
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      
+      Map<String, dynamic>? userData;
+      if (userDoc.exists) {
+        userData = userDoc.data();
+        debugPrint('✅ UserService: Đã tìm thấy dữ liệu người dùng trên Firestore');
+      } else {
+        debugPrint('ℹ️ UserService: Không tìm thấy hồ sơ người dùng trên Firestore, sử dụng thông tin từ Firebase Auth');
+        // Sử dụng thông tin cơ bản từ Firebase Auth
+        userData = {
+          'id': userId,
+          'email': _auth.currentUser?.email,
+          'display_name': _auth.currentUser?.displayName,
+          'photo_url': _auth.currentUser?.photoURL,
+        };
+      }
+
+      // 2. Lưu dữ liệu vào SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_data', jsonEncode(userData));
+      
+      // 3. Cập nhật UserDataProvider nếu có
+      if (_userDataProvider != null) {
+        _userDataProvider!.loadUserDataFromMap(userData!);
+        debugPrint('✅ UserService: Đã cập nhật UserDataProvider với dữ liệu từ Firebase');
+      }
+
+      // 4. Tiến hành tải các loại dữ liệu khác (tùy chỉnh theo ứng dụng)
+      await _syncAdditionalUserData(userId);
+
+      debugPrint('✅ UserService: Hoàn tất đồng bộ dữ liệu người dùng từ Firebase');
+    } catch (e) {
+      debugPrint('❌ UserService: Lỗi khi đồng bộ dữ liệu từ Firebase: $e');
+      rethrow;
+    }
+  }
+
+  /// Đồng bộ dữ liệu bổ sung của người dùng (thực phẩm, nước uống, bài tập,...)
+  Future<void> _syncAdditionalUserData(String userId) async {
+    try {
+      debugPrint('🔄 UserService: Đang đồng bộ dữ liệu bổ sung...');
+      
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Đồng bộ dữ liệu nước uống
+      try {
+        final waterData = await _userProfileAPI.getUserWaterEntries(userId);
+        if (waterData != null && waterData.isNotEmpty) {
+          await prefs.setString('water_entries', jsonEncode(waterData));
+          debugPrint('✅ UserService: Đã đồng bộ ${waterData.length} bản ghi nước uống');
+        }
+      } catch (e) {
+        debugPrint('⚠️ UserService: Lỗi khi đồng bộ dữ liệu nước uống: $e');
+      }
+      
+      // Đồng bộ dữ liệu bài tập
+      try {
+        final exerciseData = await _userProfileAPI.getUserExerciseEntries(userId);
+        if (exerciseData != null && exerciseData.isNotEmpty) {
+          await prefs.setString('exercise_entries', jsonEncode(exerciseData));
+          debugPrint('✅ UserService: Đã đồng bộ ${exerciseData.length} bản ghi bài tập');
+        }
+      } catch (e) {
+        debugPrint('⚠️ UserService: Lỗi khi đồng bộ dữ liệu bài tập: $e');
+      }
+      
+      // Đồng bộ dữ liệu thực phẩm
+      try {
+        final foodData = await _userProfileAPI.getUserFoodEntries(userId);
+        if (foodData != null && foodData.isNotEmpty) {
+          await prefs.setString('food_entries', jsonEncode(foodData));
+          debugPrint('✅ UserService: Đã đồng bộ ${foodData.length} bản ghi thực phẩm');
+        }
+      } catch (e) {
+        debugPrint('⚠️ UserService: Lỗi khi đồng bộ dữ liệu thực phẩm: $e');
+      }
+      
+      debugPrint('✅ UserService: Đã đồng bộ xong dữ liệu bổ sung');
+    } catch (e) {
+      debugPrint('❌ UserService: Lỗi khi đồng bộ dữ liệu bổ sung: $e');
+    }
+  }
+
+  /// Cập nhật thông tin người dùng lên Firebase
+  Future<bool> updateUserProfileToFirebase(Map<String, dynamic> userData) async {
+    if (!isUserAuthenticated()) {
+      debugPrint('⚠️ UserService: Không thể cập nhật thông tin - người dùng chưa đăng nhập');
+      return false;
+    }
+
+    try {
+      final userId = getCurrentUserId()!;
+      debugPrint('🔄 UserService: Đang cập nhật thông tin người dùng lên Firebase...');
+      
+      // Cập nhật thông tin người dùng trên Firestore
+      await _firestore.collection('users').doc(userId).set(
+        userData,
+        SetOptions(merge: true),
+      );
+      
+      // Cập nhật displayName và photoURL trên Firebase Auth nếu có
+      if (userData.containsKey('display_name') || userData.containsKey('photo_url')) {
+        await _auth.currentUser!.updateProfile(
+          displayName: userData['display_name'],
+          photoURL: userData['photo_url'],
+        );
+      }
+      
+      debugPrint('✅ UserService: Đã cập nhật thông tin người dùng lên Firebase thành công');
+      return true;
+    } catch (e) {
+      debugPrint('❌ UserService: Lỗi khi cập nhật thông tin người dùng: $e');
+      return false;
+    }
+  }
+
+  /// Kiểm tra và tạo hồ sơ người dùng mới nếu chưa tồn tại
+  Future<void> checkAndCreateUserProfile() async {
+    if (!isUserAuthenticated()) return;
+    
+    try {
+      final userId = getCurrentUserId()!;
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      
+      if (!userDoc.exists) {
+        debugPrint('🆕 UserService: Tạo hồ sơ người dùng mới cho $userId');
+        
+        // Tạo hồ sơ mới với thông tin cơ bản
+        await _firestore.collection('users').doc(userId).set({
+          'id': userId,
+          'email': _auth.currentUser!.email,
+          'display_name': _auth.currentUser!.displayName,
+          'photo_url': _auth.currentUser!.photoURL,
+          'created_at': FieldValue.serverTimestamp(),
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+        
+        debugPrint('✅ UserService: Đã tạo hồ sơ người dùng mới thành công');
+      }
+    } catch (e) {
+      debugPrint('❌ UserService: Lỗi khi kiểm tra/tạo hồ sơ người dùng: $e');
     }
   }
 } 

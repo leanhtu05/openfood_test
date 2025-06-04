@@ -19,6 +19,41 @@ import '../../providers/user_data_provider.dart';
 import '../../screens/home_screen.dart';
 import '../../utils/constants.dart';
 
+// Lớp wrapper cho các trang onboarding khi ở chế độ updateMode
+class MaterialOnboardingPage extends StatelessWidget {
+  final Widget child;
+  final String title;
+  final Color? backgroundColor;
+  final Color? appBarColor;
+  
+  const MaterialOnboardingPage({
+    Key? key,
+    required this.child,
+    required this.title,
+    this.backgroundColor,
+    this.appBarColor,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: appBarColor ?? OnboardingStyles.primaryColor,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Material(
+        color: backgroundColor ?? Colors.white,
+        child: child,
+      ),
+    );
+  }
+}
+
 // Định nghĩa các hằng số cho UI
 class OnboardingStyles {
   // Colors

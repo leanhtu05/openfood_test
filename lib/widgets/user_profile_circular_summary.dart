@@ -7,6 +7,56 @@ import '../screens/sync_settings_screen.dart';
 class UserProfileCircularSummary extends StatelessWidget {
   const UserProfileCircularSummary({Key? key}) : super(key: key);
 
+  // Get the user's calculated daily calorie goal
+  num getDailyCalorieGoal(UserDataProvider userData) {
+    // Use TDEE calories if available, otherwise calculate based on metrics
+    if (userData.tdeeCalories > 0) {
+      return userData.tdeeCalories;
+    }
+    
+    // Basic calculation if TDEE not available
+    double bmr = 0;
+    // Mifflin-St Jeor Equation
+    if (userData.gender == 'male') {
+      bmr = 10 * userData.weightKg + 6.25 * userData.heightCm - 5 * userData.age + 5;
+    } else {
+      bmr = 10 * userData.weightKg + 6.25 * userData.heightCm - 5 * userData.age - 161;
+    }
+    
+    // Apply activity factor
+    double activityFactor = 1.2; // Default: sedentary
+    switch (userData.activityLevel) {
+      case 'Ít vận động':
+        activityFactor = 1.2;
+        break;
+      case 'Nhẹ nhàng':
+        activityFactor = 1.375;
+        break;
+      case 'Trung bình':
+        activityFactor = 1.55;
+        break;
+      case 'Vận động nhiều':
+        activityFactor = 1.725;
+        break;
+      case 'Vận động rất nhiều':
+        activityFactor = 1.9;
+        break;
+    }
+    
+    // Apply goal modifier
+    double goalModifier = 0;
+    switch (userData.goal) {
+      case 'Giảm cân':
+        goalModifier = -500;
+        break;
+      case 'Tăng cân':
+        goalModifier = 500;
+        break;
+    }
+    
+    return (bmr * activityFactor + goalModifier).round();
+  }
+
   @override
   Widget build(BuildContext context) {
     final userData = Provider.of<UserDataProvider>(context);

@@ -26,16 +26,23 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
       final userData = Provider.of<UserDataProvider>(context, listen: false);
       if (userData.gender.isNotEmpty) {
         setState(() {
-          selectedGender = userData.gender;
+          // Chuyển đổi từ 'Nam'/'Nữ' sang 'male'/'female' cho UI
+          if (userData.gender == 'Nam') {
+            selectedGender = 'male';
+          } else if (userData.gender == 'Nữ') {
+            selectedGender = 'female';
+          } else {
+            selectedGender = userData.gender;
+          }
         });
       }
     });
   }
   
-  // Update gender
-  void _updateGender(String gender) {
-    // Cập nhật vào UserDataProvider
-    Provider.of<UserDataProvider>(context, listen: false).gender = gender;
+  // Lưu giới tính vào provider
+  void _saveGender(String gender) {
+    final userData = Provider.of<UserDataProvider>(context, listen: false);
+    userData.setGender(gender);
     
     // If in update mode, show success message
     if (widget.updateMode) {
@@ -50,6 +57,19 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Sử dụng MaterialOnboardingPage wrapper nếu ở chế độ updateMode
+    if (widget.updateMode) {
+      return MaterialOnboardingPage(
+        title: 'Cập nhật giới tính',
+        child: _buildContent(context),
+      );
+    }
+    
+    // Trong luồng onboarding thông thường, trả về nội dung
+    return _buildContent(context);
+  }
+  
+  Widget _buildContent(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -82,10 +102,22 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                             child: Image.asset(
                               'assets/images/gender_icon.png',
                               errorBuilder: (context, error, stackTrace) {
-                                return Icon(
-                                  Icons.wc,
-                                  size: 100,
-                                  color: OnboardingStyles.accentColor,
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.male,
+                                      size: 80,
+                                      color: Colors.blue,
+                                    ),
+                                    SizedBox(width: 20),
+                                    Icon(
+                                      Icons.female,
+                                      size: 80,
+                                      color: Colors.pink,
+                                    ),
+                                  ],
                                 );
                               },
                             ),
@@ -95,10 +127,21 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                     )
                   else
                     Center(
-                      child: Icon(
-                        Icons.wc,
-                        size: 80,
-                        color: OnboardingStyles.accentColor,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.male,
+                            size: 60,
+                            color: Colors.blue,
+                          ),
+                          SizedBox(width: 16),
+                          Icon(
+                            Icons.female,
+                            size: 60,
+                            color: Colors.pink,
+                          ),
+                        ],
                       ),
                     ),
                   const SizedBox(height: 40),
@@ -113,51 +156,53 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                   ),
                   const SizedBox(height: 40),
                   
-                  // Lựa chọn giới tính
+                  // Chọn giới tính
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.max,
                     children: [
-                      // Nam
+                      // Male option
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
                             setState(() {
-                              selectedGender = 'Nam';
+                              selectedGender = 'male';
+                              _saveGender('male');
                             });
-                            
-                            // Cập nhật vào UserDataProvider
-                            _updateGender('Nam');
                           },
                           child: Container(
+                            padding: const EdgeInsets.all(16),
+                            margin: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
+                              color: selectedGender == 'male'
+                                  ? Colors.blue.shade100
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: selectedGender == 'Nam' ? Colors.blue : Colors.grey.shade300,
+                                color: selectedGender == 'male'
+                                    ? Colors.blue
+                                    : Colors.grey.shade300,
                                 width: 2,
                               ),
-                              borderRadius: BorderRadius.circular(16),
                             ),
-                            padding: const EdgeInsets.all(16),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Image.asset(
-                                  'assets/images/male_avatar.png',
-                                  height: 120,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Icon(
-                                      Icons.man,
-                                      size: 100,
-                                      color: Colors.blue[700],
-                                    );
-                                  },
+                                Icon(
+                                  Icons.male,
+                                  size: 60,
+                                  color: selectedGender == 'male'
+                                      ? Colors.blue
+                                      : Colors.grey,
                                 ),
-                                const SizedBox(height: 16),
-                                const Text(
+                                const SizedBox(height: 8),
+                                Text(
                                   'Nam',
                                   style: TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.bold,
+                                    color: selectedGender == 'male'
+                                        ? Colors.blue
+                                        : Colors.grey,
                                   ),
                                 ),
                               ],
@@ -166,48 +211,49 @@ class _GenderSelectionPageState extends State<GenderSelectionPage> {
                         ),
                       ),
                       
-                      const SizedBox(width: 16),
-                      
-                      // Nữ
+                      // Female option
                       Expanded(
                         child: GestureDetector(
                           onTap: () {
                             setState(() {
-                              selectedGender = 'Nữ';
+                              selectedGender = 'female';
+                              _saveGender('female');
                             });
-                            
-                            // Cập nhật vào UserDataProvider
-                            _updateGender('Nữ');
                           },
                           child: Container(
+                            padding: const EdgeInsets.all(16),
+                            margin: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
+                              color: selectedGender == 'female'
+                                  ? Colors.pink.shade100
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: selectedGender == 'Nữ' ? Colors.pink : Colors.grey.shade300,
+                                color: selectedGender == 'female'
+                                    ? Colors.pink
+                                    : Colors.grey.shade300,
                                 width: 2,
                               ),
-                              borderRadius: BorderRadius.circular(16),
                             ),
-                            padding: const EdgeInsets.all(16),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Image.asset(
-                                  'assets/images/female_avatar.png',
-                                  height: 120,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Icon(
-                                      Icons.woman,
-                                      size: 100,
-                                      color: Colors.pink,
-                                    );
-                                  },
+                                Icon(
+                                  Icons.female,
+                                  size: 60,
+                                  color: selectedGender == 'female'
+                                      ? Colors.pink
+                                      : Colors.grey,
                                 ),
-                                const SizedBox(height: 16),
-                                const Text(
+                                const SizedBox(height: 8),
+                                Text(
                                   'Nữ',
                                   style: TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.bold,
+                                    color: selectedGender == 'female'
+                                        ? Colors.pink
+                                        : Colors.grey,
                                   ),
                                 ),
                               ],

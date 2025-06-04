@@ -1,12 +1,28 @@
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import 'package:provider/provider.dart';
-import '../providers/user_data_provider.dart';
+import '../providers/user_data_provider.dart' as udp;
 import '../screens/profile_screen.dart' as profile;
 import '../utils/tdee_calculator.dart';
 import '../services/auth_service.dart';
 import '../screens/auth/auth_screen.dart' as auth;
 import '../services/api_service.dart';
+import 'sync_settings_screen.dart';
+import 'sync_reset_screen.dart';
+
+// Import các màn hình onboarding
+import 'onboarding/age_selection_page.dart';
+import 'onboarding/weight_selection_page.dart';
+import 'onboarding/height_selection_page.dart';
+import 'onboarding/gender_selection_page.dart';
+import 'onboarding/activity_level_page.dart';
+import 'onboarding/diet_goal_page.dart';
+import 'onboarding/target_weight_page.dart';
+import 'onboarding/diet_restriction_page.dart';
+import 'onboarding/diet_preference_page.dart';
+import 'onboarding/health_condition_page.dart';
+import 'onboarding/weight_gain_pace_page.dart';
+import 'onboarding/integration_settings_page.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -21,9 +37,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isCheckingApi = false;
   Map<String, dynamic>? _apiStatus;
+  bool _isCleaningData = false;
+  String _cleanupStatus = '';
   
   // Auth service
   late AuthService authService;
+  
+  // Thêm biến để lưu thông tin đồng bộ
+  String? _lastSyncInfo;
   
   @override
   void initState() {
@@ -37,7 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Phương thức thiết lập ưu tiên dữ liệu dựa trên trạng thái đăng nhập
   void _setupDataPriority() {
     // Lấy UserDataProvider từ Provider
-    final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     
     // Kiểm tra xem người dùng đã đăng nhập chưa
     if (!authService.isAuthenticated) {
@@ -220,9 +241,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // Phương thức làm sạch dữ liệu trùng lặp trên Firebase
+  Future<void> _cleanupDuplicateData() async {
+    setState(() {
+      _isCleaningData = true;
+      _cleanupStatus = 'Đang làm sạch dữ liệu...';
+    });
+    
+    try {
+      final userProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+      final result = await userProvider.cleanupDuplicateFieldsOnFirebase();
+      
+      setState(() {
+        _isCleaningData = false;
+        if (result) {
+          _cleanupStatus = 'Làm sạch dữ liệu thành công!';
+        } else {
+          _cleanupStatus = 'Không thể làm sạch dữ liệu. Vui lòng kiểm tra lại kết nối và đăng nhập.';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isCleaningData = false;
+        _cleanupStatus = 'Lỗi khi làm sạch dữ liệu: $e';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final userDataProvider = Provider.of<UserDataProvider>(context);
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -285,12 +333,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: "${userDataProvider.age}",
                         icon: Icons.arrow_forward_ios,
                         onTap: () {
-                          // Navigate to profile update flow for age
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => profile.ProfileUpdateFlow(initialStep: 'age'),
-                            ),
-                          );
+                          // Navigate to age selection onboarding page
+                          _openOnboardingPage(context, AgeSelectionPage(updateMode: true));
                         },
                       ),
                       _buildSettingItem(
@@ -299,12 +343,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: userDataProvider.gender,
                         icon: Icons.arrow_forward_ios,
                         onTap: () {
-                          // Navigate to profile update flow for gender
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => profile.ProfileUpdateFlow(initialStep: 'gender'),
-                            ),
-                          );
+                          // Navigate to gender selection onboarding page
+                          _openOnboardingPage(context, GenderSelectionPage(updateMode: true));
                         },
                       ),
                       _buildSettingItem(
@@ -313,12 +353,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: "${userDataProvider.heightCm} cm",
                         icon: Icons.arrow_forward_ios,
                         onTap: () {
-                          // Navigate to profile update flow for height
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => profile.ProfileUpdateFlow(initialStep: 'height'),
-                            ),
-                          );
+                          // Navigate to height selection onboarding page
+                          _openOnboardingPage(context, HeightSelectionPage(updateMode: true));
                         },
                       ),
                       _buildSettingItem(
@@ -327,12 +363,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         value: "${userDataProvider.weightKg} kg",
                         icon: Icons.arrow_forward_ios,
                         onTap: () {
-                          // Navigate to profile update flow for weight
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => profile.ProfileUpdateFlow(initialStep: 'weight'),
-                            ),
-                          );
+                          // Navigate to weight selection onboarding page
+                          _openOnboardingPage(context, WeightSelectionPage(updateMode: true));
                         },
                       ),
                       _buildSettingItem(
@@ -414,14 +446,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         } else {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) => profile.ProfileUpdateFlow(initialStep: 'integration'),
+                              builder: (context) => IntegrationSettingsPage(updateMode: true),
                             ),
                           );
                         }
                       },
                       isLast: !authService.isAuthenticated && !authService.isPremiumUser(),
                     ),
-                    if (authService.isAuthenticated)
+                    // Thêm nút đồng bộ thủ công
+                    
                       _buildSettingItem(
                         leadingIcon: Icons.logout,
                         title: "Đăng xuất",
@@ -429,8 +462,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onTap: () async {
                           final confirm = await _showLogoutConfirmationDialog(context);
                           if (confirm == true) {
-                            await authService.logout();
-                            // Optionally navigate or update UI after logout
+                            // Lấy provider dữ liệu người dùng
+                            final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+                            
+                            // Xóa dữ liệu local của người dùng
+                            debugPrint('🔄 Đang xóa dữ liệu local trước khi đăng xuất...');
+                            await userDataProvider.clearLocalUserData();
+                            
+                            // Sau đó đăng xuất khỏi Firebase - truyền context để xử lý nhất quán
+                            await authService.logout(context: context);
+                            
+                            // Thông báo đã xóa dữ liệu thành công
+                            debugPrint('✅ Đã đăng xuất và xóa dữ liệu local thành công');
+                            
+                            // Chuyển đến màn hình đăng nhập
                             Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(builder: (context) => auth.AuthScreen(isLoginMode: true)),
                                   (Route<dynamic> route) => false,
@@ -442,6 +487,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+
+              // Phần Dữ liệu và đồng bộ
+
 
               // Diet Section
               _buildSectionTitle("Chế độ ăn"),
@@ -488,12 +536,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       onTap: () {
-                        // Navigate to profile update flow for updating goals
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => profile.ProfileUpdateFlow(initialStep: 'goal'),
-                          ),
-                        );
+                        // Navigate to diet goal onboarding page
+                        _openOnboardingPage(context, DietGoalPage(updateMode: true));
                       },
                     ),
                     _buildSettingItem(
@@ -504,12 +548,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : "Chưa đặt", // Provide a default or placeholder
                       icon: Icons.arrow_forward_ios,
                       onTap: () {
-                        // Navigate to profile update flow starting from activity level
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => profile.ProfileUpdateFlow(initialStep: 'activity'),
-                          ),
-                        );
+                        // Navigate to activity level onboarding page
+                        _openOnboardingPage(context, ActivityLevelPage(updateMode: true));
                       },
                     ),
                     _buildSettingItem(
@@ -525,25 +565,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           return;
                         }
 
-                        // Navigate to profile update flow
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => profile.ProfileUpdateFlow(initialStep: 'restrictions'),
-                          ),
-                        );
+                        // Navigate to diet restriction onboarding page
+                        _openOnboardingPage(context, DietRestrictionPage(updateMode: true));
                       },
                     ),
                     _buildSettingItem(
                       leadingIcon: Icons.restaurant_menu,
                       title: "Chế độ ăn",
-                      value: "Trí tuệ nhân tạo", // Placeholder, update as needed
+                      value: userDataProvider.dietPreference.isEmpty 
+                        ? "Chưa đặt" 
+                        : userDataProvider.dietPreference,
                       icon: Icons.arrow_forward_ios,
                       onTap: () {
                         if (!authService.isPremiumUser()) {
                           _showPremiumFeatureDialog(context);
-                        } else {
-                          // TODO: Navigate to AI diet settings if available
+                          return;
                         }
+                        // Navigate to diet preference onboarding page
+                        _openOnboardingPage(context, DietPreferencePage(updateMode: true));
                       },
                     ),
                     _buildSettingItem(
@@ -556,13 +595,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: () {
                         if (!authService.isPremiumUser()) {
                           _showPremiumFeatureDialog(context);
-                        } else {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => profile.ProfileUpdateFlow(initialStep: 'healthConditions'),
-                            ),
-                          );
+                          return;
                         }
+                        
+                        // Navigate to health condition onboarding page
+                        _openOnboardingPage(context, HealthConditionPage(updateMode: true));
                       },
                     ),
                     _buildSwitchItem(
@@ -711,92 +748,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
 
-              // System Section
-              _buildSectionTitle("Hệ thống"),
-              Card(
-                elevation: 0,
-                color: Colors.grey.shade50,
-                margin: EdgeInsets.only(bottom: 24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSettingItem(
-                      leadingIcon: Icons.cloud,
-                      title: "Kiểm tra kết nối API",
-                      trailingWidget: _isCheckingApi
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).primaryColor),
-                              ),
-                            )
-                          : Icon(
-                              Icons.refresh,
-                              size: 20,
-                              color: Colors.grey.shade600,
-                            ),
-                      onTap: _isCheckingApi ? () {} : _checkApiConnection,
-                    ),
-                    
-                    if (_apiStatus != null)
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _apiStatus!['success'] == true
-                                ? Colors.green.withOpacity(0.1)
-                                : Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _apiStatus!['success'] == true
-                                  ? Colors.green
-                                  : Colors.red,
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    _apiStatus!['success'] == true
-                                        ? Icons.check_circle
-                                        : Icons.error,
-                                    color: _apiStatus!['success'] == true
-                                        ? Colors.green
-                                        : Colors.red,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _apiStatus!['message'] ?? 'Không có thông báo',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_apiStatus!['status_code'] != null) ...[
-                                SizedBox(height: 8),
-                                Text('Mã trạng thái: ${_apiStatus!['status_code']}'),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+
+
             ],
           ),
         ),
@@ -1213,7 +1166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text('Đăng xuất'),
           ],
         ),
-        content: Text('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản này?'),
+        content: Text('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản này?\n\nDữ liệu cục bộ của bạn sẽ bị xóa, nhưng dữ liệu trên máy chủ vẫn được giữ lại.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -1250,6 +1203,124 @@ class _SettingsScreenState extends State<SettingsScreen> {
       default:
         return levelKey; // Or "Không xác định"
     }
+  }
+
+  // Thêm phương thức _showDebugInfo
+  void _showDebugInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Thông tin debug'),
+          content: const SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Phiên bản ứng dụng: 1.0.0'),
+                SizedBox(height: 8),
+                Text('Thông tin hệ thống: Flutter SDK'),
+                SizedBox(height: 8),
+                Text('Môi trường: Development'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Đóng'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Thêm phương thức đồng bộ dữ liệu toàn diện với Firebase
+  Future<void> _syncAllUserData(BuildContext context) async {
+    // Kiểm tra đăng nhập
+    if (!authService.isAuthenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bạn cần đăng nhập để đồng bộ dữ liệu'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Hiển thị dialog tiến trình
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text('Đồng bộ dữ liệu'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 20),
+            Text('Đang chuẩn hóa và đồng bộ dữ liệu...\nQuá trình này có thể mất vài giây.'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // Lấy provider dữ liệu người dùng
+      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+      
+      // Gọi phương thức đồng bộ toàn diện
+      final result = await userDataProvider.synchronizeAllData();
+      
+      // Đóng dialog tiến trình
+      Navigator.of(context).pop();
+
+      // Hiển thị kết quả
+      if (result) {
+        // Cập nhật thông tin đồng bộ
+        setState(() {
+          _lastSyncInfo = 'Đồng bộ thành công lúc: ${DateTime.now().toString().substring(0, 19)}';
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đồng bộ dữ liệu thành công'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể đồng bộ dữ liệu. Vui lòng thử lại sau.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      // Đóng dialog tiến trình nếu có lỗi
+      Navigator.of(context).pop();
+      
+      // Hiển thị thông báo lỗi
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $e'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  // Helper để mở các trang onboarding với MaterialOnboardingPage wrapper
+  void _openOnboardingPage(BuildContext context, Widget page) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => page,
+      ),
+    );
   }
 }
 

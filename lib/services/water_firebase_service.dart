@@ -29,8 +29,11 @@ class WaterFirebaseService {
         'amount': entry.amount,
         'timestamp': entry.timestamp,
         'user_id': userId, // Thêm user_id vào dữ liệu
+        'date': entry.timestamp.toIso8601String().split('T')[0], // Thêm trường date dạng 'YYYY-MM-DD' để dễ truy vấn
       });
 
+      debugPrint('✏️ Lưu water entry vào Firebase: id=${entry.id}, amount=${entry.amount}ml, date=${data['date']}');
+      
       // Lưu vào Firestore
       await _waterCollection.doc(entry.id).set(data);
       
@@ -70,15 +73,47 @@ class WaterFirebaseService {
 
       final userId = _auth.currentUser!.uid;
       
-      // Tính toán ngày dưới dạng chuỗi ISO để lọc
-      final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      // Tạo thời gian bắt đầu và kết thúc của ngày
+      final startOfDay = DateTime(date.year, date.month, date.day);
+      final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
       
-      // Truy vấn Firestore - chỉ lọc theo user_id
+      final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      debugPrint('🔍 Tìm các bản ghi nước cho ngày $dateString');
+      
+      // Phương pháp 1: Sử dụng trường date thay vì timestamp để tránh cần composite index
+      try {
+        final snapshot = await _waterCollection
+            .where('user_id', isEqualTo: userId)
+            .where('date', isEqualTo: dateString)
+            .get();
+            
+        debugPrint('📊 Thử phương pháp 1: Tìm thấy ${snapshot.docs.length} bản ghi');
+        
+        if (snapshot.docs.isNotEmpty) {
+          final entries = snapshot.docs.map((doc) {
+            final data = FirebaseHelpers.processFirestoreData(doc.data() as Map<String, dynamic>);
+            return WaterEntry(
+              id: data['id'] ?? doc.id,
+              amount: data['amount'] ?? 0,
+              timestamp: data['timestamp'] is DateTime 
+                  ? data['timestamp'] 
+                  : (data['timestamp'] is String ? DateTime.parse(data['timestamp']) : DateTime.now()),
+            );
+          }).toList();
+          
+          return entries;
+        }
+      } catch (e) {
+        debugPrint('⚠️ Phương pháp 1 thất bại: $e, thử phương pháp 2...');
+      }
+      
+      // Phương pháp 2: Chỉ lọc theo user_id và lọc thêm theo timestamp phía client
       final snapshot = await _waterCollection
-          .where('user_id', isEqualTo: userId) // Lọc theo user_id
+          .where('user_id', isEqualTo: userId)
           .get();
-
-      // Lọc kết quả theo ngày ở phía client
+      
+      debugPrint('📊 Thử phương pháp 2: Tìm thấy ${snapshot.docs.length} bản ghi tổng, đang lọc theo ngày');
+      
       final entries = snapshot.docs.map((doc) {
         final data = FirebaseHelpers.processFirestoreData(doc.data() as Map<String, dynamic>);
         return WaterEntry(
@@ -89,12 +124,12 @@ class WaterFirebaseService {
               : (data['timestamp'] is String ? DateTime.parse(data['timestamp']) : DateTime.now()),
         );
       }).where((entry) {
-        // Lọc theo ngày
-        final entryDate = '${entry.timestamp.year}-${entry.timestamp.month.toString().padLeft(2, '0')}-${entry.timestamp.day.toString().padLeft(2, '0')}';
-        return entryDate == dateString;
+        // Lọc bản ghi trong khoảng ngày chỉ định
+        return entry.timestamp.isAfter(startOfDay.subtract(Duration(seconds: 1))) && 
+               entry.timestamp.isBefore(endOfDay.add(Duration(seconds: 1)));
       }).toList();
-
-      debugPrint('ℹ️ Tìm thấy ${entries.length} mục nhập nước trên Firestore cho ngày $dateString');
+      
+      debugPrint('✅ Tìm thấy ${entries.length} bản ghi nước trên Firebase cho ngày ${startOfDay.day}/${startOfDay.month}/${startOfDay.year}');
       return entries;
     } catch (e) {
       debugPrint('❌ Lỗi khi lấy water entries từ Firebase: $e');

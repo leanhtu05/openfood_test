@@ -22,11 +22,14 @@ class ExerciseProvider with ChangeNotifier {
       : _authService = authService ?? FirebaseAuth.instance {
     _loadExercisesFromPrefs();
     
-    // Lắng nghe sự kiện đăng nhập để đồng bộ dữ liệu từ Firebase
+    // Listen for auth state changes
     _authService.authStateChanges().listen((User? user) {
       if (user != null) {
-        // Người dùng đã đăng nhập, đồng bộ dữ liệu từ Firebase
+        // User logged in, sync data from Firebase
         syncFromFirebase();
+      } else {
+        // User logged out, clear data
+        clearDataOnLogout();
       }
     });
   }
@@ -234,17 +237,39 @@ class ExerciseProvider with ChangeNotifier {
           return;
         }
         
-        // Nếu không có dữ liệu từ Firebase, thử lấy từ API
-        final allApiExercises = await ApiService.getAllExercises(user.uid);
-        if (allApiExercises != null) {
-          _exercisesByDate = allApiExercises;
-          debugPrint('✅ Đã tải tất cả bài tập từ API');
+        // Lấy tất cả bài tập trực tiếp từ Firestore
+        try {
+          final exercisesSnapshot = await FirebaseFirestore.instance
+              .collection('exercises')
+              .where('user_id', isEqualTo: user.uid)
+              .get();
           
-          // Lưu lại vào SharedPreferences
-          await _saveExercisesToPrefs();
-          notifyListeners();
-        } else {
-          debugPrint('ℹ️ Không tìm thấy dữ liệu bài tập trực tuyến, sử dụng dữ liệu cục bộ');
+          if (exercisesSnapshot.docs.isNotEmpty) {
+            Map<String, List<Exercise>> exercisesByDate = {};
+            
+            for (var doc in exercisesSnapshot.docs) {
+              final exerciseData = doc.data();
+              final exercise = Exercise.fromJson(exerciseData);
+              final date = exercise.date.split('T')[0];
+              
+              if (!exercisesByDate.containsKey(date)) {
+                exercisesByDate[date] = [];
+              }
+              
+              exercisesByDate[date]!.add(exercise);
+            }
+            
+            _exercisesByDate = exercisesByDate;
+            debugPrint('✅ Đã tải tất cả bài tập từ Firestore');
+            
+            // Lưu lại vào SharedPreferences
+            await _saveExercisesToPrefs();
+            notifyListeners();
+          } else {
+            debugPrint('ℹ️ Không tìm thấy dữ liệu bài tập trực tuyến, sử dụng dữ liệu cục bộ');
+          }
+        } catch (e) {
+          debugPrint('❌ Lỗi khi truy vấn dữ liệu bài tập từ Firestore: $e');
         }
       } catch (e) {
         debugPrint('❌ Lỗi khi tải tất cả bài tập từ Firebase/API: $e');
@@ -557,42 +582,91 @@ class ExerciseProvider with ChangeNotifier {
     try {
       debugPrint('🔄 Đang đồng bộ dữ liệu bài tập từ Firestore...');
       
-      // Sử dụng ApiService để lấy dữ liệu cho ngày hiện tại
+      // Lấy dữ liệu trực tiếp từ Firestore cho ngày hiện tại
       final today = DateTime.now();
       final todayString = today.toIso8601String().split('T')[0];
       
-      final exercises = await ApiService.getExercisesByDate(currentUser.uid, todayString);
-      
-      if (exercises != null && exercises.isNotEmpty) {
-        // Cập nhật dữ liệu local cho ngày hiện tại
-        _exercisesByDate[todayString] = exercises;
+      try {
+        debugPrint('🔄 Truy vấn trực tiếp vào Firestore cho ngày $todayString...');
         
-        // Cập nhật SharedPreferences
-        await _saveExercisesToPrefs();
+        // Lấy tất cả bài tập của người dùng trước
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('exercises')
+            .where('user_id', isEqualTo: currentUser.uid)
+            .get();
+            
+        debugPrint('✅ Tìm thấy ${querySnapshot.docs.length} bài tập trong Firestore, đang lọc theo ngày $todayString');
         
-        // Thông báo UI cập nhật
-        notifyListeners();
+        // Lọc bài tập theo ngày sau khi đã lấy từ Firestore
+        final filteredExercises = querySnapshot.docs
+            .map((doc) => Exercise.fromJson(doc.data()))
+            .where((exercise) {
+              // Kiểm tra xem bài tập có thuộc ngày đang chọn không
+              String exerciseDate = '';
+              if (exercise.date.contains('T')) {
+                exerciseDate = exercise.date.split('T')[0];
+              } else {
+                exerciseDate = exercise.date;
+              }
+              
+              debugPrint('  🔍 Kiểm tra bài tập: ${exercise.name}, ngày: $exerciseDate, cần tìm: $todayString');
+              return exerciseDate == todayString;
+            })
+            .toList();
         
-        debugPrint('✅ Đã đồng bộ ${exercises.length} bài tập từ Firestore');
-      } else {
-        debugPrint('ℹ️ Không có dữ liệu bài tập trên Firestore cho ngày hôm nay');
-        
-        // Đồng bộ dữ liệu local lên Firestore nếu có
-        final localExercises = _exercisesByDate[todayString] ?? [];
-        
-        if (localExercises.isNotEmpty) {
-          for (var exercise in localExercises) {
-            final success = await ApiService.sendExercise(exercise, currentUser.uid);
-            if (success) {
-              debugPrint('✅ Đã đồng bộ bài tập "${exercise.name}" lên Firestore');
-            } else {
-              debugPrint('❌ Không thể đồng bộ bài tập "${exercise.name}" lên Firestore');
+        if (filteredExercises.isNotEmpty) {
+          // Cập nhật dữ liệu local cho ngày hiện tại
+          _exercisesByDate[todayString] = filteredExercises;
+          
+          // Cập nhật SharedPreferences
+          await _saveExercisesToPrefs();
+          
+          // Thông báo UI cập nhật
+          notifyListeners();
+          
+          debugPrint('✅ Đã đồng bộ ${filteredExercises.length} bài tập từ Firestore cho ngày $todayString');
+        } else {
+          debugPrint('ℹ️ Không tìm thấy bài tập nào cho ngày $todayString');
+          
+          // Đồng bộ dữ liệu local lên Firestore nếu có
+          final localExercises = _exercisesByDate[todayString] ?? [];
+          
+          if (localExercises.isNotEmpty) {
+            for (var exercise in localExercises) {
+              final success = await ApiService.sendExercise(exercise, currentUser.uid);
+              if (success) {
+                debugPrint('✅ Đã đồng bộ bài tập "${exercise.name}" lên Firestore');
+              } else {
+                debugPrint('❌ Không thể đồng bộ bài tập "${exercise.name}" lên Firestore');
+              }
             }
           }
         }
+      } catch (e) {
+        debugPrint('❌ Lỗi khi truy vấn dữ liệu bài tập từ Firestore: $e');
       }
     } catch (e) {
       debugPrint('❌ Lỗi khi đồng bộ dữ liệu bài tập từ Firestore: $e');
+    }
+  }
+
+  // Method to clear data when user logs out
+  Future<void> clearDataOnLogout() async {
+    try {
+      debugPrint('🧹 ExerciseProvider: Clearing data on logout...');
+      
+      // Clear all exercise entries
+      _exercisesByDate = {};
+      
+      // Update SharedPreferences
+      await _saveExercisesToPrefs();
+      
+      // Notify UI to update
+      notifyListeners();
+      
+      debugPrint('✅ ExerciseProvider: Data cleared successfully on logout');
+    } catch (e) {
+      debugPrint('❌ ExerciseProvider: Error clearing data on logout: $e');
     }
   }
 }

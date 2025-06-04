@@ -221,7 +221,7 @@ class ApiEndpoints {
   // Thay thế bằng URL thực tế của API của bạn
   // QUAN TRỌNG: Thay địa chỉ IP này bằng địa chỉ IPv4 của máy tính bạn
   // Kiểm tra địa chỉ IP bằng lệnh 'ipconfig' (Windows) hoặc 'ifconfig' (Mac/Linux)
-  static const String baseUrl = 'http://192.168.0.101:8000';
+  static const String baseUrl = 'https://backend-openfood.onrender.com';
   
   // Meal plan endpoints
   static const String generateWeeklyMeal = '/generate-weekly-meal';
@@ -260,4 +260,17 @@ class FlexFix {
   static Widget spacer({double height = 18, double width = 18}) {
     return SizedBox(height: height, width: width);
   }
+}
+
+class ApiConstants {
+  // API endpoints
+  static const String baseUrl = 'https://backend-openfood.onrender.com'; // Đường dẫn API của bạn
+  
+  // API routes
+  static const String recognizeFoodEndpoint = '/api/food/recognize';
+  static const String foodLogsEndpoint = '/api/food/logs';
+  
+  // Timeout values
+  static const int connectionTimeout = 30000; // 30 seconds
+  static const int receiveTimeout = 60000; // 60 seconds
 }

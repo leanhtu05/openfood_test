@@ -222,16 +222,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       key: _scaffoldKey,
       
       // Nút thêm thực phẩm
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'btn_add_food',
-        onPressed: () {
-          // Thêm thực phẩm mới
-          // ... existing code ...
-        },
-        backgroundColor: Colors.green,
-        child: Icon(Icons.add),
-        tooltip: 'Thêm thực phẩm',
-      ),
+
       
       body: Consumer<FoodProvider>(
         builder: (context, foodProvider, child) {

@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firestore_service.dart';
-import '../providers/user_data_provider.dart';
+import '../providers/user_data_provider.dart' as udp;
 import 'api_service.dart';
 
 /// Service to integrate data between local storage, Firestore, and API
@@ -16,7 +17,7 @@ class DataIntegrationService {
   String? get userId => _auth.currentUser?.uid;
   
   // Sync user profile data to API only
-  Future<bool> syncUserProfileData(UserDataProvider userData) async {
+  Future<bool> syncUserProfileData(udp.UserDataProvider userData) async {
     if (userId == null) {
       debugPrint('❌ Cannot sync user profile: No authenticated user found');
       return false;
@@ -86,25 +87,37 @@ class DataIntegrationService {
     }
   }
   
-  // Get user profile from API only
+  // Lấy thông tin người dùng trực tiếp từ Firebase
   Future<Map<String, dynamic>?> getUserProfile() async {
     if (userId == null) {
-      debugPrint('❌ Cannot get user profile: No authenticated user found');
+      debugPrint('❌ Không thể lấy thông tin người dùng: Không tìm thấy người dùng đã xác thực');
       return null;
     }
     
     try {
-      // Get data from API
-      final apiData = await ApiService.getUserProfile(userId!);
-      if (apiData != null && apiData.isNotEmpty) {
-        debugPrint('✅ Got user profile from API');
-        return apiData;
+      // Lấy dữ liệu trực tiếp từ Firestore
+      final docSnapshot = await _firestore.collection('users').doc(userId).get();
+      
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        debugPrint('✅ Đã lấy thông tin người dùng từ Firestore');
+        return docSnapshot.data();
       }
       
-      debugPrint('⚠️ User profile not found in API');
+      // Nếu không có dữ liệu trong Firestore, lấy thông tin cơ bản từ Firebase Auth
+      final user = _auth.currentUser;
+      if (user != null) {
+        return {
+          'user_id': user.uid,
+          'email': user.email,
+          'display_name': user.displayName,
+          'photo_url': user.photoURL,
+        };
+      }
+      
+      debugPrint('⚠️ Không tìm thấy hồ sơ người dùng');
       return null;
     } catch (e) {
-      debugPrint('❌ Error getting user profile from API: $e');
+      debugPrint('❌ Lỗi khi lấy thông tin người dùng: $e');
       return null;
     }
   }
@@ -128,27 +141,28 @@ class DataIntegrationService {
     }
   }
   
-  // Get meal plan from API only
+  // Lấy kế hoạch ăn trực tiếp từ Firestore
   Future<Map<String, dynamic>> getMealPlan() async {
     try {
-      // Get user ID
+      // Lấy user ID
       final userId = _auth.currentUser?.uid;
       if (userId == null) {
-        debugPrint('⚠️ No authenticated user, returning empty meal plan');
+        debugPrint('⚠️ Không có người dùng đã xác thực, trả về kế hoạch ăn trống');
         return {};
       }
       
-      // Get from API
-      final apiData = await ApiService.getMealPlan(userId);
-      if (apiData != null && apiData.isNotEmpty) {
-        debugPrint('✅ Got meal plan from API');
-        return apiData;
+      // Lấy dữ liệu trực tiếp từ Firestore
+      final docSnapshot = await _firestore.collection('meal_plans').doc(userId).get();
+      
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        debugPrint('✅ Đã lấy kế hoạch ăn từ Firestore');
+        return docSnapshot.data()!;
       }
       
-      debugPrint('⚠️ No meal plan found in API');
+      debugPrint('⚠️ Không tìm thấy kế hoạch ăn trong Firestore');
       return {};
     } catch (e) {
-      debugPrint('❌ Error getting meal plan from API: $e');
+      debugPrint('❌ Lỗi khi lấy kế hoạch ăn: $e');
       return {};
     }
   }

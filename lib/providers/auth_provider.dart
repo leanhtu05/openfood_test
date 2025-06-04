@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import './user_data_provider.dart' as udp;
+import 'package:flutter/widgets.dart';
 
 class UserAuthProvider with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -52,11 +55,18 @@ class UserAuthProvider with ChangeNotifier {
     }
   }
 
-  // Đăng xuất
-  Future<void> signOut() async {
+  // Đăng xuất và xóa dữ liệu cục bộ
+  Future<void> signOut({BuildContext? context}) async {
     try {
       _isLoading = true;
       notifyListeners();
+      
+      // Xóa dữ liệu người dùng trong SharedPreferences
+      if (context != null) {
+        final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+        await userDataProvider.clearLocalUserData();
+        debugPrint("Đã xóa dữ liệu cục bộ thành công");
+      }
       
       await _auth.signOut();
       debugPrint("Đã đăng xuất thành công");

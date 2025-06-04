@@ -52,25 +52,45 @@ class _WaterHistoryScreenState extends State<WaterHistoryScreen> {
   }
 
   Future<void> _loadData() async {
+    // Chỉ cập nhật trạng thái khi widget đã mount
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
-      await waterProvider.loadData();
+      debugPrint('🔄 WaterHistoryScreen: Đang tải dữ liệu nước và bài tập...');
       
-      // Cũng tải dữ liệu tập thể dục
+      // Tạo một danh sách các Future để tải song song
+      final futures = <Future>[];
+      
+      // Tải dữ liệu nước
+      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+      futures.add(waterProvider.loadData());
+      
+      // Tải dữ liệu tập thể dục
       final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
-      await exerciseProvider.loadExercises();
+      futures.add(exerciseProvider.loadExercises());
+      
+      // Đợi tất cả các Future hoàn thành
+      await Future.wait(futures);
+      
+      debugPrint('✅ WaterHistoryScreen: Tải dữ liệu hoàn tất - ${waterProvider.entries.length} bản ghi nước');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi: Không thể tải dữ liệu')),
-      );
+      debugPrint('❌ WaterHistoryScreen: Lỗi khi tải dữ liệu: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: Không thể tải dữ liệu. $e')),
+        );
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      // Chỉ cập nhật trạng thái khi widget vẫn còn mounted
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -325,37 +345,69 @@ class _WaterHistoryScreenState extends State<WaterHistoryScreen> {
           });
         });
         
+        // Kiểm tra có dữ liệu nước hay không để hiển thị thông báo phù hợp
+        bool hasWaterData = waterEntries.isNotEmpty;
+        
         if (combinedEntries.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          return RefreshIndicator(
+            onRefresh: _loadData,
+            child: ListView(
+              physics: AlwaysScrollableScrollPhysics(),
               children: [
-                Icon(
-                  Icons.history,
-                  size: 64,
-                  color: Colors.blue.withOpacity(0.3),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Chưa có dữ liệu hoạt động',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  icon: Icon(Icons.add, size: 18),
-                  label: Text('Thêm hoạt động ngay'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _showWaterItems ? Icons.water_drop : Icons.history,
+                          size: 64,
+                          color: Colors.blue.withOpacity(0.3),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          _showWaterItems && !hasWaterData
+                            ? 'Chưa có dữ liệu nước uống'
+                            : 'Chưa có dữ liệu hoạt động',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        if (_showWaterItems && !hasWaterData)
+                          Text(
+                            'Hãy thêm bản ghi nước uống để theo dõi',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            if (_showWaterItems) {
+                              // Hiển thị hộp thoại thêm nước
+                              Provider.of<WaterProvider>(context, listen: false)
+                                  .showWaterInputDialog(context);
+                            } else {
+                              Navigator.pop(context);
+                            }
+                          },
+                          icon: Icon(_showWaterItems ? Icons.water_drop : Icons.add, size: 18),
+                          label: Text(_showWaterItems ? 'Thêm nước uống' : 'Thêm hoạt động ngay'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -364,139 +416,196 @@ class _WaterHistoryScreenState extends State<WaterHistoryScreen> {
           );
         }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(16),
-          itemCount: combinedEntries.length,
-          itemBuilder: (context, index) {
-            final dayKey = combinedEntries.keys.elementAt(index);
-            final entriesForDay = combinedEntries[dayKey]!;
-            
-            // Tính tổng lượng nước và bài tập trong ngày
-            int totalWaterForDay = 0;
-            int totalExerciseForDay = 0;
-            int waterCount = 0;
-            int exerciseCount = 0;
-            
-            for (var entry in entriesForDay) {
-              if (entry['type'] == 'water') {
-                totalWaterForDay += (entry['data'] as WaterEntry).amount;
-                waterCount++;
-              } else if (entry['type'] == 'exercise') {
-                totalExerciseForDay += (entry['data'] as Exercise).calories;
-                exerciseCount++;
+        return RefreshIndicator(
+          onRefresh: _loadData,
+          child: ListView.builder(
+            padding: EdgeInsets.all(16),
+            itemCount: combinedEntries.length,
+            itemBuilder: (context, index) {
+              final dayKey = combinedEntries.keys.elementAt(index);
+              final entriesForDay = combinedEntries[dayKey]!;
+              
+              // Tính tổng lượng nước và bài tập trong ngày
+              int totalWaterForDay = 0;
+              int totalExerciseForDay = 0;
+              int waterCount = 0;
+              int exerciseCount = 0;
+              
+              for (var entry in entriesForDay) {
+                if (entry['type'] == 'water') {
+                  totalWaterForDay += (entry['data'] as WaterEntry).amount;
+                  waterCount++;
+                } else if (entry['type'] == 'exercise') {
+                  totalExerciseForDay += (entry['data'] as Exercise).calories;
+                  exerciseCount++;
+                }
               }
-            }
-            
-            // Chỉ hiển thị nếu có dữ liệu hoặc người dùng chọn hiển thị ngày trống
-            bool hasData = totalWaterForDay > 0 || totalExerciseForDay > 0;
-            if (!hasData && !_showEmptyEntries) return SizedBox.shrink();
-            
-            return Card(
-              elevation: 2,
-              margin: EdgeInsets.only(bottom: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with date and summary
-                  Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
+              
+              // Chỉ hiển thị nếu có dữ liệu hoặc người dùng chọn hiển thị ngày trống
+              bool hasData = totalWaterForDay > 0 || totalExerciseForDay > 0;
+              if (!hasData && !_showEmptyEntries) return SizedBox.shrink();
+              
+              return Card(
+                elevation: 2,
+                margin: EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header with date and summary
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                        ),
                       ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dayKey,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          _getFullDateFormatted(dayKey),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Row(
-                          children: [
-                            if (totalWaterForDay > 0)
-                              Chip(
-                                label: Text(
-                                  '${totalWaterForDay} ml',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                backgroundColor: Colors.blue,
-                                visualDensity: VisualDensity.compact,
-                                padding: EdgeInsets.zero,
-                              ),
-                          ],
-                        ),
-                        if (waterCount > 0 || exerciseCount > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Row(
-                              children: [
-                                if (waterCount > 0)
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.water_drop,
-                                        size: 14,
-                                        color: Colors.blue,
-                                      ),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        '$waterCount lần uống nước',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                              ],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dayKey,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
                             ),
                           ),
-                      ],
+                          Text(
+                            _getFullDateFormatted(dayKey),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Row(
+                            children: [
+                              if (totalWaterForDay > 0)
+                                Chip(
+                                  label: Text(
+                                    '${totalWaterForDay} ml',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  backgroundColor: Colors.blue,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                ),
+                            ],
+                          ),
+                          if (waterCount > 0 || exerciseCount > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  if (waterCount > 0)
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.water_drop,
+                                          size: 14,
+                                          color: Colors.blue,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          '$waterCount lần uống nước',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  // Nút thêm nước cho mỗi ngày
+                                  if (_showWaterItems)
+                                    InkWell(
+                                      onTap: () {
+                                        // Đặt ngày được chọn về ngày trong card
+                                        final dateParts = dayKey.split(' ');
+                                        DateTime selectedDate;
+                                        if (dayKey == 'Hôm nay') {
+                                          selectedDate = DateTime.now();
+                                        } else if (dayKey == 'Hôm qua') {
+                                          selectedDate = DateTime.now().subtract(Duration(days: 1));
+                                        } else if (dateParts.length >= 4) {
+                                          // "Ngày X tháng Y"
+                                          int day = int.tryParse(dateParts[1]) ?? 1;
+                                          int month = int.tryParse(dateParts[3]) ?? 1;
+                                          int year = DateTime.now().year;
+                                          selectedDate = DateTime(year, month, day);
+                                        } else {
+                                          selectedDate = DateTime.now();
+                                        }
+                                        
+                                        // Cập nhật ngày và hiển thị dialog thêm nước
+                                        final waterProv = Provider.of<WaterProvider>(context, listen: false);
+                                        waterProv.setSelectedDate(DateFormat('yyyy-MM-dd').format(selectedDate));
+                                        waterProv.showWaterInputDialog(context);
+                                      },
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade100,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.add,
+                                              size: 12,
+                                              color: Colors.blue,
+                                            ),
+                                            SizedBox(width: 2),
+                                            Text(
+                                              'Thêm nước',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.blue,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  
-                  // Danh sách các bản ghi trong ngày
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: NeverScrollableScrollPhysics(),
-                    padding: EdgeInsets.all(0),
-                    itemCount: entriesForDay.length,
-                    separatorBuilder: (context, index) => Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final entry = entriesForDay[index];
-                      if (entry['type'] == 'water') {
-                        return _buildWaterEntryItem(entry['data'] as WaterEntry, dayKey);
-                      } else {
-                        return _buildExerciseEntryItem(entry['data'] as Exercise, dayKey);
-                      }
-                    },
-                  ),
-                ],
-              ),
-            );
-          },
+                    
+                    // Danh sách các bản ghi trong ngày
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      padding: EdgeInsets.all(0),
+                      itemCount: entriesForDay.length,
+                      separatorBuilder: (context, index) => Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final entry = entriesForDay[index];
+                        if (entry['type'] == 'water') {
+                          return _buildWaterEntryItem(entry['data'] as WaterEntry, dayKey);
+                        } else {
+                          return _buildExerciseEntryItem(entry['data'] as Exercise, dayKey);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         );
       },
     );

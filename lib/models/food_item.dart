@@ -13,6 +13,7 @@ class FoodItem {
   final double servingSize; // g or ml
   final String servingUnit; // "g", "ml", "piece", etc.
   final Map<String, dynamic>? additionalNutrients; // For other nutrients
+  final String? portionSize; // Thêm portionSize dưới dạng optional parameter
 
   FoodItem({
     required this.id,
@@ -29,6 +30,7 @@ class FoodItem {
     this.servingSize = 1.0,
     this.servingUnit = "g",
     this.additionalNutrients,
+    this.portionSize,
   });
 
   // Factory method to create a FoodItem from JSON
@@ -48,6 +50,7 @@ class FoodItem {
       servingSize: json['servingSize'] != null ? (json['servingSize'] as num).toDouble() : 1.0,
       servingUnit: json['servingUnit'] ?? 'g',
       additionalNutrients: json['additionalNutrients'],
+      portionSize: json['portionSize'],
     );
   }
   
@@ -73,6 +76,7 @@ class FoodItem {
       'servingSize': servingSize,
       'servingUnit': servingUnit,
       'additionalNutrients': additionalNutrients,
+      'portionSize': portionSize,
     };
   }
   
@@ -103,6 +107,7 @@ class FoodItem {
                  double.tryParse('${json['serving_quantity']}') ?? 1.0 : 1.0,
       servingUnit: json['serving_size'] != null ? 
           json['serving_size'].toString().replaceAll(RegExp(r'[0-9,.]+'), '').trim() : 'g',
+      portionSize: json['portionSize'],
     );
   }
 
@@ -122,6 +127,7 @@ class FoodItem {
     double? sugar,
     double? sodium,
     Map<String, dynamic>? additionalNutrients,
+    String? portionSize,
   }) {
     // Tạo bản sao hoàn toàn mới của additionalNutrients để tránh chia sẻ tham chiếu
     Map<String, dynamic>? newAdditionalNutrients;
@@ -146,6 +152,7 @@ class FoodItem {
       sugar: sugar ?? this.sugar,
       sodium: sodium ?? this.sodium,
       additionalNutrients: newAdditionalNutrients,
+      portionSize: portionSize ?? this.portionSize,
     );
   }
   

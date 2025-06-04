@@ -1,17 +1,194 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../providers/user_data_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../providers/user_data_provider.dart' as udp;
 import '../models/food_entry.dart';
 import '../models/meal_plan.dart';
 import '../models/exercise.dart';
 import '../models/water_entry.dart';
-import 'api_service.dart';
+import '../providers/user_data_provider.dart';
+import 'package:openfood/services/api_service.dart';
+
+/// API dịch vụ để tương tác với Firebase và API bên ngoài
+class UserProfileAPI {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  
+  // Base URL cho API nếu cần
+  final String _apiBaseUrl = 'https://api.openfood.com'; // Thay đổi theo API thật của bạn
+  
+  // Phương thức lấy thông tin profile người dùng từ Firebase
+  Future<Map<String, dynamic>?> getUserProfile(String userId) async {
+    try {
+      debugPrint('🔄 UserProfileAPI: Đang lấy thông tin người dùng từ Firebase...');
+      final DocumentSnapshot doc = await _firestore.collection('users').doc(userId).get();
+      
+      if (doc.exists) {
+        debugPrint('✅ UserProfileAPI: Đã lấy thông tin người dùng thành công');
+        return doc.data() as Map<String, dynamic>;
+      } else {
+        debugPrint('ℹ️ UserProfileAPI: Không tìm thấy hồ sơ người dùng');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ UserProfileAPI: Lỗi khi lấy thông tin người dùng: $e');
+      return null;
+    }
+  }
+  
+  // Phương thức cập nhật thông tin người dùng lên Firebase
+  Future<bool> updateUserProfile(String userId, Map<String, dynamic> data) async {
+    try {
+      debugPrint('🔄 UserProfileAPI: Đang cập nhật thông tin người dùng lên Firebase...');
+      
+      await _firestore.collection('users').doc(userId).set(
+        data,
+        SetOptions(merge: true), // Merge để chỉ cập nhật các trường được cung cấp
+      );
+      
+      debugPrint('✅ UserProfileAPI: Đã cập nhật thông tin người dùng thành công');
+      return true;
+    } catch (e) {
+      debugPrint('❌ UserProfileAPI: Lỗi khi cập nhật thông tin người dùng: $e');
+      return false;
+    }
+  }
+  
+  // Phương thức lấy dữ liệu nước uống
+  Future<List<Map<String, dynamic>>?> getUserWaterEntries(String userId) async {
+    try {
+      debugPrint('🔄 UserProfileAPI: Đang lấy dữ liệu nước uống từ Firebase...');
+      
+      final QuerySnapshot snapshot = await _firestore
+          .collection('water_entries')
+          .where('user_id', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .limit(100) // Giới hạn số lượng để tránh tải quá nhiều
+          .get();
+      
+      if (snapshot.docs.isEmpty) {
+        debugPrint('ℹ️ UserProfileAPI: Không tìm thấy dữ liệu nước uống');
+        return [];
+      }
+      
+      final entries = snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id; // Đảm bảo ID được bao gồm
+        return data;
+      }).toList();
+      
+      debugPrint('✅ UserProfileAPI: Đã lấy ${entries.length} bản ghi nước uống');
+      return entries;
+    } catch (e) {
+      debugPrint('❌ UserProfileAPI: Lỗi khi lấy dữ liệu nước uống: $e');
+      return null;
+    }
+  }
+  
+  // Phương thức lấy dữ liệu bài tập
+  Future<List<Map<String, dynamic>>?> getUserExerciseEntries(String userId) async {
+    try {
+      debugPrint('🔄 UserProfileAPI: Đang lấy dữ liệu bài tập từ Firebase...');
+      
+      final QuerySnapshot snapshot = await _firestore
+          .collection('exercises')
+          .where('user_id', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .limit(100) // Giới hạn số lượng
+          .get();
+      
+      if (snapshot.docs.isEmpty) {
+        debugPrint('ℹ️ UserProfileAPI: Không tìm thấy dữ liệu bài tập');
+        return [];
+      }
+      
+      final entries = snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id; // Đảm bảo ID được bao gồm
+        return data;
+      }).toList();
+      
+      debugPrint('✅ UserProfileAPI: Đã lấy ${entries.length} bản ghi bài tập');
+      return entries;
+    } catch (e) {
+      debugPrint('❌ UserProfileAPI: Lỗi khi lấy dữ liệu bài tập: $e');
+      return null;
+    }
+  }
+  
+  // Phương thức lấy dữ liệu thực phẩm
+  Future<List<Map<String, dynamic>>?> getUserFoodEntries(String userId) async {
+    try {
+      debugPrint('🔄 UserProfileAPI: Đang lấy dữ liệu thực phẩm từ Firebase...');
+      
+      final QuerySnapshot snapshot = await _firestore
+          .collection('food_records')
+          .where('user_id', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .limit(100) // Giới hạn số lượng
+          .get();
+      
+      if (snapshot.docs.isEmpty) {
+        debugPrint('ℹ️ UserProfileAPI: Không tìm thấy dữ liệu thực phẩm');
+        return [];
+      }
+      
+      final entries = snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id; // Đảm bảo ID được bao gồm
+        return data;
+      }).toList();
+      
+      debugPrint('✅ UserProfileAPI: Đã lấy ${entries.length} bản ghi thực phẩm');
+      return entries;
+    } catch (e) {
+      debugPrint('❌ UserProfileAPI: Lỗi khi lấy dữ liệu thực phẩm: $e');
+      return null;
+    }
+  }
+  
+  // Gọi API bên ngoài (nếu cần)
+  Future<Map<String, dynamic>?> callExternalAPI(String endpoint, Map<String, dynamic> data) async {
+    try {
+      // Lấy token xác thực từ Firebase
+      final idToken = await _auth.currentUser?.getIdToken();
+      
+      if (idToken == null) {
+        debugPrint('⚠️ UserProfileAPI: Không có token xác thực');
+        return null;
+      }
+      
+      debugPrint('🔄 UserProfileAPI: Đang gọi API ngoài: $_apiBaseUrl$endpoint');
+      
+      final response = await http.post(
+        Uri.parse('$_apiBaseUrl$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode(data),
+      );
+      
+      if (response.statusCode == 200) {
+        debugPrint('✅ UserProfileAPI: Gọi API thành công');
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('❌ UserProfileAPI: Lỗi khi gọi API: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ UserProfileAPI: Lỗi khi gọi API ngoài: $e');
+      return null;
+    }
+  }
+}
 
 class ApiService {
   // Base URL for FastAPI server
   // When running on Android emulator, use 10.0.2.2 to connect to host's localhost
-  static const String baseUrl = 'http://192.168.0.101:8000/api';
+  static const String baseUrl = 'https://backend-openfood.onrender.com/api';
   
   // API endpoints
   static String get userProfileUrl => '$baseUrl/user-profile';
@@ -83,20 +260,21 @@ class ApiService {
     }
   }
   
-  // Get user profile from FastAPI
+  // Lấy thông tin người dùng trực tiếp từ Firestore
   static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$userProfileUrl/$userId'),
-        headers: {'Content-Type': 'application/json'},
-      );
+      // Lấy dữ liệu trực tiếp từ Firestore
+      final docSnapshot = await FirebaseFirestore.instance.collection('users').doc(userId).get();
       
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        debugPrint('✅ Đã lấy thông tin người dùng từ Firestore');
+        return docSnapshot.data();
       }
+      
+      debugPrint('⚠️ Không tìm thấy hồ sơ người dùng trong Firestore');
       return null;
     } catch (e) {
-      debugPrint('Error getting user profile from API: $e');
+      debugPrint('Lỗi khi lấy thông tin người dùng từ Firestore: $e');
       return null;
     }
   }
@@ -119,20 +297,21 @@ class ApiService {
     }
   }
   
-  // Get meal plan from FastAPI
+  // Lấy kế hoạch ăn trực tiếp từ Firestore
   static Future<Map<String, dynamic>?> getMealPlan(String userId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$mealPlanUrl/$userId'),
-        headers: {'Content-Type': 'application/json'},
-      );
+      // Lấy dữ liệu trực tiếp từ Firestore
+      final docSnapshot = await FirebaseFirestore.instance.collection('meal_plans').doc(userId).get();
       
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        debugPrint('✅ Đã lấy kế hoạch ăn từ Firestore');
+        return docSnapshot.data();
       }
+      
+      debugPrint('⚠️ Không tìm thấy kế hoạch ăn trong Firestore');
       return null;
     } catch (e) {
-      debugPrint('Error getting meal plan from API: $e');
+      debugPrint('Lỗi khi lấy kế hoạch ăn từ Firestore: $e');
       return null;
     }
   }
@@ -158,21 +337,29 @@ class ApiService {
     }
   }
   
-  // Get food logs by date from FastAPI
+  // Lấy danh sách thực phẩm theo ngày trực tiếp từ Firestore
   static Future<List<FoodEntry>?> getFoodEntriesByDate(String userId, String date) async {
     try {
-      final response = await http.get(
-        Uri.parse('$foodLogUrl/$userId/$date'),
-        headers: {'Content-Type': 'application/json'},
-      );
+      // Truy vấn Firestore
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('food_entries')
+          .where('user_id', isEqualTo: userId)
+          .where('date', isEqualTo: date)
+          .get();
       
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => FoodEntry.fromJson(item)).toList();
+      if (querySnapshot.docs.isNotEmpty) {
+        final List<FoodEntry> entries = querySnapshot.docs
+            .map((doc) => FoodEntry.fromJson(doc.data()))
+            .toList();
+        
+        debugPrint('✅ Đã lấy ${entries.length} món ăn từ Firestore cho ngày $date');
+        return entries;
       }
-      return null;
+      
+      debugPrint('⚠️ Không tìm thấy món ăn nào cho ngày $date');
+      return [];
     } catch (e) {
-      debugPrint('Error getting food entries from API: $e');
+      debugPrint('❌ Lỗi khi lấy danh sách thực phẩm từ Firestore: $e');
       return null;
     }
   }
@@ -235,56 +422,138 @@ class ApiService {
     }
   }
 
-  // Gửi thông tin người dùng đầy đủ đến endpoint /firestore/users/{user_id}
+  // Lưu thông tin người dùng trực tiếp vào Firestore
   static Future<bool> sendUserProfileToFirestore(String userId, Map<String, dynamic> userData) async {
     try {
-      final response = await http.post(
-        Uri.parse('$firestoreUsersUrl/$userId'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(userData),
+      // Thêm trường timestamp
+      userData['created_at'] = DateTime.now().toIso8601String();
+      
+      // Lưu trực tiếp vào Firestore
+      await FirebaseFirestore.instance.collection('users').doc(userId).set(
+        userData,
+        SetOptions(merge: false), // Ghi đè hoàn toàn
       );
       
-      debugPrint('API Response (sendUserProfileToFirestore): ${response.statusCode} - ${response.body}');
+      debugPrint('✅ Đã lưu thông tin người dùng vào Firestore thành công');
       
-      return response.statusCode == 200 || response.statusCode == 201;
+      return true;
     } catch (e) {
-      debugPrint('Error sending user profile to Firestore API: $e');
+      debugPrint('❌ Lỗi khi lưu thông tin người dùng vào Firestore: $e');
       return false;
     }
   }
   
-  // Gửi thông tin người dùng đầy đủ đến endpoint /firestore/users/sync
+  // Đồng bộ thông tin người dùng trực tiếp vào Firestore
   static Future<bool> syncUserProfileToFirestore(String userId, Map<String, dynamic> userData) async {
     try {
-      final response = await http.post(
-        Uri.parse('$firestoreUsersUrl/sync?user_id=$userId'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(userData),
+      // Thêm trường timestamp
+      userData['last_updated'] = DateTime.now().toIso8601String();
+      
+      // Lưu trực tiếp vào Firestore
+      await FirebaseFirestore.instance.collection('users').doc(userId).set(
+        userData,
+        SetOptions(merge: true),
       );
       
-      debugPrint('API Response (syncUserProfileToFirestore): ${response.statusCode} - ${response.body}');
+      debugPrint('✅ Đã đồng bộ thông tin người dùng vào Firestore thành công');
       
-      return response.statusCode == 200 || response.statusCode == 201;
+      return true;
     } catch (e) {
-      debugPrint('Error syncing user profile to Firestore API: $e');
+      debugPrint('❌ Lỗi khi đồng bộ thông tin người dùng vào Firestore: $e');
       return false;
     }
   }
 }
 
 class UserProfileApi {
-  // Giữ lại các phương thức đơn giản để tương thích ngược
+  static const String baseUrl = 'https://backend-openfood.onrender.com/api';
+  
   static String getApiUrl() {
-    return ApiService.userProfileUrl;
+    return '$baseUrl/user-profile';
   }
   
-  static Future<bool> sendUserProfile(UserDataProvider userData) {
-    // Chuyển tiếp đến ApiService
-    return ApiService.sendUserProfile(userData);
+  static Future<bool> sendUserProfile(UserDataProvider userData) async {
+    try {
+      // Gửi dữ liệu người dùng lên API
+      final url = Uri.parse(getApiUrl());
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userData.userId ?? 'anonymous',
+          'gender': userData.gender,
+          'age': userData.age,
+          'height_cm': userData.heightCm,
+          'weight_kg': userData.weightKg,
+          'activity_level': userData.activityLevel,
+          'goal': userData.goal,
+          'pace': userData.pace,
+          'target_weight_kg': userData.targetWeightKg,
+          'tdee': {
+            'calories': userData.tdeeCalories,
+            'protein': userData.tdeeProtein,
+            'carbs': userData.tdeeCarbs,
+            'fat': userData.tdeeFat,
+          }
+        }),
+      ).timeout(Duration(seconds: 10), onTimeout: () {
+        debugPrint('⏱️ API timeout khi gửi dữ liệu người dùng');
+        return http.Response('Timeout', 408);
+      });
+      
+      debugPrint('API Response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi gửi dữ liệu người dùng lên API: $e');
+      return false;
+    }
   }
   
-  static Future<Map<String, dynamic>?> getUserProfile(String userId) {
-    // Chuyển tiếp đến ApiService
-    return ApiService.getUserProfile(userId);
+  static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
+    try {
+      // ƯU TIÊN: Lấy dữ liệu trực tiếp từ Firestore trước
+      debugPrint('🔍 Đang tìm kiếm dữ liệu người dùng từ Firestore...');
+      final docSnapshot = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        debugPrint('✅ Đã lấy thông tin người dùng từ Firestore');
+        return docSnapshot.data();
+      }
+      
+      // Nếu không có dữ liệu trong Firestore, thử lấy từ API
+      debugPrint('⚠️ Không tìm thấy dữ liệu trong Firestore, thử lấy từ API...');
+      final url = Uri.parse('${getApiUrl()}/$userId');
+      final response = await http.get(url).timeout(
+        Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('⏱️ API timeout khi lấy dữ liệu người dùng');
+          return http.Response('Timeout', 408);
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint('✅ Đã lấy thông tin người dùng từ API');
+        
+        // Lưu dữ liệu vào Firestore để sử dụng offline
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(userId).set(
+            data,
+            SetOptions(merge: true),
+          );
+          debugPrint('✅ Đã lưu dữ liệu người dùng từ API vào Firestore');
+        } catch (e) {
+          debugPrint('⚠️ Không thể lưu dữ liệu API vào Firestore: $e');
+        }
+        
+        return data;
+      } else {
+        debugPrint('⚠️ Không thể lấy dữ liệu từ API: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi khi lấy thông tin người dùng: $e');
+      return null;
+    }
   }
-} 
+}
