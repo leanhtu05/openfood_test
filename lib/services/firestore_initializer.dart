@@ -11,9 +11,7 @@ class FirestoreInitializer {
       await _createExerciseTypesCollection();
       await _createLatestMealPlansStructure();
       await _createNutritionCacheCollection();
-      debugPrint('🔥 Khởi tạo Firestore collections thành công');
     } catch (e) {
-      debugPrint('❌ Lỗi khi khởi tạo Firestore collections: $e');
       rethrow;
     }
   }
@@ -49,9 +47,7 @@ class FirestoreInitializer {
         'lastLoginAt': DateTime.now().toIso8601String(),
         'isAnonymous': false,
         'isStructureSample': true, // Để đánh dấu đây là mẫu
-      });
-      
-      // Tạo mẫu daily_logs
+      });
       await sampleUserRef.collection('daily_logs').doc('sample_date').set({
         'date': '2023-08-01',
         'meals': [
@@ -91,10 +87,7 @@ class FirestoreInitializer {
           'totalFat': 55
         }
       });
-      
-      debugPrint('✅ Đã tạo cấu trúc users và daily_logs mẫu');
     } else {
-      debugPrint('📝 Cấu trúc users đã tồn tại');
     }
   }
 
@@ -173,10 +166,7 @@ class FirestoreInitializer {
       for (var food in basicFoods) {
         await foodItemsRef.add(food);
       }
-      
-      debugPrint('✅ Đã tạo collection food_items với ${basicFoods.length} thực phẩm cơ bản');
     } else {
-      debugPrint('📝 Collection food_items đã tồn tại');
     }
   }
 
@@ -237,10 +227,7 @@ class FirestoreInitializer {
       for (var exercise in basicExercises) {
         await exerciseRef.add(exercise);
       }
-      
-      debugPrint('✅ Đã tạo collection exercise_types với ${basicExercises.length} bài tập cơ bản');
     } else {
-      debugPrint('📝 Collection exercise_types đã tồn tại');
     }
   }
 
@@ -341,10 +328,7 @@ class FirestoreInitializer {
         },
         'isStructureSample': true,
       });
-      
-      debugPrint('✅ Đã tạo cấu trúc meal_plans và latest_meal_plans mẫu');
     } else {
-      debugPrint('📝 Cấu trúc meal_plans đã tồn tại');
     }
   }
 
@@ -399,10 +383,7 @@ class FirestoreInitializer {
         'isImplemented': false,
         'isStructureSample': true,
       });
-      
-      debugPrint('✅ Đã tạo collection nutrition_cache và ai_suggestions mẫu');
     } else {
-      debugPrint('📝 Collection nutrition_cache đã tồn tại');
     }
   }
 } 

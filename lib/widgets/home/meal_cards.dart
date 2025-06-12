@@ -488,18 +488,18 @@ class MealFoodDetailCard extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                SizedBox(height: 2),
-                                Text(
-                                  entry.items.isNotEmpty 
-                                    ? '${entry.items.length} thành phần, ${(entry.nutritionInfo?["totalWeight"] ?? entry.totalWeight).toInt()}g' 
-                                    : 'Món đơn lẻ',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
+                                SizedBox(height: 4),
+                                // Hiển thị các món ăn dưới dạng chips
+                                if (entry.items.isNotEmpty)
+                                  _buildFoodItemChips(entry.items)
+                                else
+                                  Text(
+                                    'Món đơn lẻ',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
                               ],
                             ),
                           ),
@@ -564,6 +564,53 @@ class MealFoodDetailCard extends StatelessWidget {
     );
   }
   
+  // Widget hiển thị các món ăn dưới dạng chips
+  Widget _buildFoodItemChips(List<FoodItem> items) {
+    // Lấy tối đa 4 món đầu tiên để tránh quá dài
+    final displayItems = items.take(4).toList();
+    final hasMore = items.length > 4;
+
+    return Wrap(
+      spacing: 4,
+      runSpacing: 2,
+      children: [
+        ...displayItems.map((item) => Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300, width: 0.5),
+          ),
+          child: Text(
+            item.name,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        )),
+        if (hasMore)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200, width: 0.5),
+            ),
+            child: Text(
+              '+${items.length - 4}',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.blue.shade600,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildNutrientBadge(int value, String unit, String label, Color color) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),

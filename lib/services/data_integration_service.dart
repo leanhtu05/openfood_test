@@ -19,7 +19,7 @@ class DataIntegrationService {
   // Sync user profile data to API only
   Future<bool> syncUserProfileData(udp.UserDataProvider userData) async {
     if (userId == null) {
-      debugPrint('❌ Cannot sync user profile: No authenticated user found');
+
       return false;
     }
     
@@ -63,26 +63,25 @@ class DataIntegrationService {
       final result = await ApiService.syncFullUserData(userId!, fullUserData);
       
       if (result) {
-        debugPrint('✅ Đã đồng bộ đầy đủ dữ liệu người dùng thành công qua API');
+
         return true;
       } else {
-        debugPrint('❌ Đồng bộ đầy đủ dữ liệu người dùng thất bại');
-        
+
         // Thử lại với endpoint khác
         try {
           final fallbackResult = await ApiService.sendUserProfileData(fullUserData);
           if (fallbackResult) {
-            debugPrint('✅ Đã đồng bộ dữ liệu người dùng thành công qua API (fallback)');
+
             return true;
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi đồng bộ dữ liệu người dùng (fallback): $e');
+
         }
         
         return false;
       }
     } catch (e) {
-      debugPrint('❌ Error syncing user profile: $e');
+
       return false;
     }
   }
@@ -90,7 +89,7 @@ class DataIntegrationService {
   // Lấy thông tin người dùng trực tiếp từ Firebase
   Future<Map<String, dynamic>?> getUserProfile() async {
     if (userId == null) {
-      debugPrint('❌ Không thể lấy thông tin người dùng: Không tìm thấy người dùng đã xác thực');
+
       return null;
     }
     
@@ -99,7 +98,7 @@ class DataIntegrationService {
       final docSnapshot = await _firestore.collection('users').doc(userId).get();
       
       if (docSnapshot.exists && docSnapshot.data() != null) {
-        debugPrint('✅ Đã lấy thông tin người dùng từ Firestore');
+
         return docSnapshot.data();
       }
       
@@ -113,11 +112,10 @@ class DataIntegrationService {
           'photo_url': user.photoURL,
         };
       }
-      
-      debugPrint('⚠️ Không tìm thấy hồ sơ người dùng');
+
       return null;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy thông tin người dùng: $e');
+
       return null;
     }
   }
@@ -129,14 +127,14 @@ class DataIntegrationService {
       final apiResult = await ApiService.sendMealPlan(mealPlanData);
       
       if (apiResult) {
-        debugPrint('✅ Successfully sent meal plan to FastAPI');
+
       } else {
-        debugPrint('❌ Failed to send meal plan to FastAPI');
+
       }
       
       return apiResult;
     } catch (e) {
-      debugPrint('❌ Error syncing meal plan: $e');
+
       return false;
     }
   }
@@ -147,7 +145,7 @@ class DataIntegrationService {
       // Lấy user ID
       final userId = _auth.currentUser?.uid;
       if (userId == null) {
-        debugPrint('⚠️ Không có người dùng đã xác thực, trả về kế hoạch ăn trống');
+
         return {};
       }
       
@@ -155,14 +153,13 @@ class DataIntegrationService {
       final docSnapshot = await _firestore.collection('meal_plans').doc(userId).get();
       
       if (docSnapshot.exists && docSnapshot.data() != null) {
-        debugPrint('✅ Đã lấy kế hoạch ăn từ Firestore');
+
         return docSnapshot.data()!;
       }
-      
-      debugPrint('⚠️ Không tìm thấy kế hoạch ăn trong Firestore');
+
       return {};
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy kế hoạch ăn: $e');
+
       return {};
     }
   }
@@ -172,7 +169,7 @@ class DataIntegrationService {
     try {
       final userId = _auth.currentUser?.uid;
       if (userId == null) {
-        debugPrint('⚠️ No authenticated user, can\'t sync food entry');
+
         return false;
       }
       
@@ -180,14 +177,14 @@ class DataIntegrationService {
       final apiResult = await ApiService.sendFoodEntry(foodEntry, userId);
       
       if (apiResult) {
-        debugPrint('✅ Added food entry to API');
+
       } else {
-        debugPrint('❌ Failed to add food entry to API');
+
       }
       
       return apiResult;
     } catch (e) {
-      debugPrint('❌ Error syncing food entry: $e');
+
       return false;
     }
   }

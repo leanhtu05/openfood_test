@@ -48,7 +48,6 @@ class FoodDatabaseService {
         
         _isInitialized = true;
       } catch (e) {
-        debugPrint('Error initializing FoodDatabaseService: $e');
         rethrow;
       }
     }
@@ -141,8 +140,6 @@ class FoodDatabaseService {
         throw Exception('Failed to search foods. Status code: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error searching foods: $e');
-      
       // Return demo data in case of error
       return _getDemoSearchResults(query);
     }
@@ -181,8 +178,6 @@ class FoodDatabaseService {
         throw Exception('Failed to get food details. Status code: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Error getting food details: $e');
-      
       // Return demo data in case of error
       return _getDemoFoodDetails(fdcId);
     }
@@ -341,7 +336,6 @@ class FoodDatabaseService {
       
       return results;
     } catch (e) {
-      print('Lỗi khi tìm kiếm thực phẩm: $e');
       return [];
     }
   }
@@ -384,7 +378,6 @@ class FoodDatabaseService {
       // Convert to FoodItem objects
       return results.map((item) => _foodItemFromMap(item)).toList();
     } catch (e) {
-      print('Error searching in local database: $e');
       return [];
     }
   }
@@ -400,7 +393,6 @@ class FoodDatabaseService {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      print('Error caching food: $e');
     }
   }
   
@@ -412,7 +404,6 @@ class FoodDatabaseService {
       try {
         additionalNutrients = json.decode(map['additionalNutrients']);
       } catch (e) {
-        print('Error parsing additionalNutrients: $e');
       }
     }
     
@@ -474,7 +465,6 @@ class FoodDatabaseService {
       
       return null;
     } catch (e) {
-      print('Error searching by barcode: $e');
       return null;
     }
   }
@@ -498,7 +488,6 @@ class FoodDatabaseService {
       
       return [];
     } catch (e) {
-      print('Error searching by name: $e');
       return [];
     }
   }
@@ -516,7 +505,6 @@ class FoodDatabaseService {
       
       return results.map((item) => _foodItemFromMap(item)).toList();
     } catch (e) {
-      print('Error getting recent food items: $e');
       return [];
     }
   }
@@ -771,7 +759,6 @@ class FoodDatabaseService {
       final apiResults = await searchByName(query);
       return apiResults;
     } catch (e) {
-      print('Error searching API data: $e');
       // Return demo data as fallback
       return _getDemoFoodData(query);
     }
@@ -813,7 +800,6 @@ class FoodDatabaseService {
       // Nếu không tìm thấy, trả về danh sách trống
       return [];
     } catch (e) {
-      print('Lỗi khi tìm kiếm thực phẩm theo mã vạch: $e');
       return [];
     }
   }

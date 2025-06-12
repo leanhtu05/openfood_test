@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -26,6 +27,13 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
   bool _showSidebar = false;
   String _userId = '';
   
+  // Thêm biến để giữ các subscription
+  StreamSubscription? _chatStreamSubscription;
+  StreamSubscription? _currentChatStreamSubscription;
+  
+  // Thêm timer để tự động tắt loading nếu quá lâu không nhận được phản hồi
+  Timer? _loadingTimeoutTimer;
+  
   @override
   void initState() {
     super.initState();
@@ -36,14 +44,304 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
     _initUserId().then((_) {
       // Tải lịch sử chat
       _loadAllChatHistories();
+      
+      // Lắng nghe stream tin nhắn mới
+      _subscribeToMessagesStream();
     });
   }
   
   @override
   void dispose() {
+    // Hủy timer nếu còn hoạt động
+    _loadingTimeoutTimer?.cancel();
+    
+    // Hủy các subscription để tránh memory leak
+    _chatStreamSubscription?.cancel();
+    _currentChatStreamSubscription?.cancel();
+    
     // Hủy đăng ký observer
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+  
+  // Đăng ký stream lắng nghe tin nhắn mới
+  void _subscribeToMessagesStream() {
+    if (_userId.isEmpty) return;
+    
+    // Hủy subscription cũ nếu có
+    _chatStreamSubscription?.cancel();
+    
+    // Đăng ký stream mới
+    _chatStreamSubscription = ChatApi.streamChatMessages(_userId).listen(
+      (messages) {
+        if (messages.isEmpty) return;
+        
+        print('📥 Nhận được ${messages.length} tin nhắn mới từ stream');
+        
+        // Xử lý tin nhắn mới và cập nhật UI
+        _processChatUpdates(messages);
+      },
+      onError: (error) {
+        print('❌ Lỗi khi lắng nghe stream tin nhắn: $error');
+      }
+    );
+  }
+  
+  // Đăng ký stream lắng nghe cập nhật cho cuộc trò chuyện hiện tại
+  void _subscribeToCurrentChatStream() {
+    if (_currentChat == null) return;
+    
+    // Hủy subscription cũ nếu có
+    _currentChatStreamSubscription?.cancel();
+    
+    // Lấy ID cuộc trò chuyện hiện tại
+    final String chatId = _currentChat!.id;
+    print('🔄 Đăng ký stream cho cuộc trò chuyện: $chatId');
+    
+    // Đăng ký stream mới
+    _currentChatStreamSubscription = ChatApi.streamChatById(chatId).listen(
+      (chatData) {
+        if (chatData == null) return;
+        
+        print('📥 Nhận được cập nhật cho cuộc trò chuyện: ${chatData['id']}');
+        
+        // Đảm bảo trạng thái đang nhập kết thúc
+        if (_isTyping) {
+          setState(() {
+            _isTyping = false;
+          });
+        }
+        
+        // Cập nhật UI với tin nhắn mới nhất
+        _updateCurrentChatFromStream(chatData);
+      },
+      onError: (error) {
+        print('❌ Lỗi khi lắng nghe stream cuộc trò chuyện: $error');
+        // Kết thúc trạng thái đang nhập nếu có lỗi
+        if (_isTyping) {
+          setState(() {
+            _isTyping = false;
+          });
+        }
+      }
+    );
+  }
+  
+  // Xử lý cập nhật từ stream
+  void _processChatUpdates(List<Map<String, dynamic>> messages) async {
+    try {
+      // Lấy lại tất cả cuộc trò chuyện hiện có
+      final List<ChatConversation> conversations = await ChatApi.getAllConversations(_userId);
+      
+      // Tạo một map để theo dõi những cuộc trò chuyện đã được xử lý
+      final Map<String, bool> processedChats = {};
+      
+      // Xử lý từng tin nhắn từ stream
+      for (final messageData in messages) {
+        final String chatId = messageData['id'];
+        
+        // Bỏ qua nếu đã xử lý chat này rồi
+        if (processedChats[chatId] == true) continue;
+        processedChats[chatId] = true;
+        
+        final String userMessage = messageData['user_message'];
+        final String aiReply = messageData['ai_reply'];
+        final String timestamp = messageData['timestamp'];
+        
+        // Tìm cuộc trò chuyện hiện có với ID này
+        final existingChatIndex = conversations.indexWhere((chat) => chat.id == chatId);
+        
+        if (existingChatIndex >= 0) {
+          // Cuộc trò chuyện đã tồn tại, kiểm tra xem có tin nhắn mới không
+          final existingChat = conversations[existingChatIndex];
+          
+          // Kiểm tra xem tin nhắn này đã có trong danh sách chưa
+          bool messageExists = false;
+          for (final msg in existingChat.messages) {
+            if (msg.chatId == chatId && 
+                ((msg.isUser && msg.text == userMessage) || 
+                (!msg.isUser && msg.text == aiReply))) {
+              messageExists = true;
+              break;
+            }
+          }
+          
+          // Nếu chưa có, thêm tin nhắn mới
+          if (!messageExists) {
+            // Thêm tin nhắn người dùng nếu chưa có
+            existingChat.messages.add(ChatMessage(
+              id: const Uuid().v4(),
+              text: userMessage,
+              isUser: true,
+              timestamp: timestamp,
+              chatId: chatId,
+            ));
+            
+            // Thêm phản hồi AI
+            existingChat.messages.add(ChatMessage(
+              id: const Uuid().v4(),
+              text: aiReply,
+              isUser: false,
+              timestamp: timestamp,
+              chatId: chatId,
+            ));
+            
+            // Cập nhật cuộc trò chuyện
+            conversations[existingChatIndex] = existingChat;
+          }
+        } else {
+          // Tạo cuộc trò chuyện mới
+          final newConversation = ChatConversation(
+            id: chatId,
+            title: userMessage.length > 40 ? userMessage.substring(0, 37) + '...' : userMessage,
+            createdAt: timestamp,
+            userId: _userId,
+            messages: [
+              // Thêm tin nhắn người dùng
+              ChatMessage(
+                id: const Uuid().v4(),
+                text: userMessage,
+                isUser: true,
+                timestamp: timestamp,
+                chatId: chatId,
+              ),
+              // Thêm phản hồi AI
+              ChatMessage(
+                id: const Uuid().v4(),
+                text: aiReply,
+                isUser: false,
+                timestamp: timestamp,
+                chatId: chatId,
+              ),
+            ],
+          );
+          
+          // Thêm vào danh sách
+          conversations.add(newConversation);
+        }
+      }
+      
+      // Lưu lại cuộc trò chuyện đã cập nhật
+      await ChatApi.saveConversations(conversations);
+      
+      // Cập nhật danh sách cuộc trò chuyện
+      setState(() {
+        _chatHistories = conversations;
+        
+        // Nếu đang có cuộc trò chuyện hiện tại, cập nhật nó
+        if (_currentChat != null) {
+          final updatedCurrentChat = conversations.firstWhere(
+            (chat) => chat.id == _currentChat!.id,
+            orElse: () => _currentChat!,
+          );
+          
+          _currentChat = updatedCurrentChat;
+          _messages.clear();
+          _messages.addAll(_currentChat!.messages);
+          
+          // Cuộn xuống để hiển thị tin nhắn mới nhất
+          Future.delayed(const Duration(milliseconds: 100), () {
+            _scrollToBottom();
+          });
+          
+          // Kết thúc trạng thái đang nhập nếu đã nhận được phản hồi
+          if (_isTyping && _messages.isNotEmpty && !_messages.last.isUser) {
+            _isTyping = false;
+          }
+        }
+      });
+    } catch (e) {
+      print('❌ Lỗi khi xử lý cập nhật từ stream: $e');
+    }
+  }
+  
+  // Cập nhật cuộc trò chuyện hiện tại từ stream
+  void _updateCurrentChatFromStream(Map<String, dynamic> chatData) {
+    if (_currentChat == null || _currentChat!.id != chatData['id']) return;
+    
+    final String userMessage = chatData['user_message'];
+    final String aiReply = chatData['ai_reply'];
+    final String timestamp = chatData['timestamp'];
+    final String chatId = chatData['id'];
+    
+    // Nếu có phản hồi AI, đảm bảo tắt trạng thái loading
+    if (aiReply.isNotEmpty) {
+      if (_isTyping) {
+        setState(() {
+          _isTyping = false;
+        });
+      }
+    }
+    
+    // Kiểm tra xem đã có tin nhắn này chưa
+    bool hasUserMessage = false;
+    bool hasAiReply = false;
+    
+    for (final message in _messages) {
+      if (message.isUser && message.text == userMessage) {
+        hasUserMessage = true;
+      } else if (!message.isUser && message.text == aiReply) {
+        hasAiReply = true;
+      }
+    }
+    
+    // Nếu chưa có tin nhắn, thêm vào
+    if (!hasUserMessage || !hasAiReply) {
+      setState(() {
+        // Đảm bảo có tin nhắn người dùng
+        if (!hasUserMessage) {
+          _messages.add(ChatMessage(
+            id: const Uuid().v4(),
+            text: userMessage,
+            isUser: true,
+            timestamp: timestamp,
+            chatId: chatId,
+          ));
+        }
+        
+        // Đảm bảo có tin nhắn AI
+        if (!hasAiReply) {
+          _messages.add(ChatMessage(
+            id: const Uuid().v4(),
+            text: aiReply,
+            isUser: false,
+            timestamp: timestamp,
+            chatId: chatId,
+          ));
+        }
+        
+        // Kết thúc trạng thái đang nhập
+        _isTyping = false;
+        
+        // Lưu lại thay đổi vào cuộc trò chuyện hiện tại và toàn bộ danh sách
+        if (_currentChat != null) {
+          // Tạo một cuộc trò chuyện mới với các tin nhắn hiện tại
+          final updatedChat = ChatConversation(
+            id: _currentChat!.id,
+            title: _currentChat!.title,
+            createdAt: _currentChat!.createdAt,
+            userId: _currentChat!.userId,
+            messages: List.from(_messages),
+          );
+          
+          // Cập nhật cuộc trò chuyện hiện tại
+          _currentChat = updatedChat;
+          
+          // Cập nhật trong danh sách cuộc trò chuyện
+          final int index = _chatHistories.indexWhere((c) => c.id == updatedChat.id);
+          if (index >= 0) {
+            _chatHistories[index] = updatedChat;
+            // Lưu vào local storage
+            ChatApi.saveConversations(_chatHistories);
+          }
+        }
+      });
+      
+      // Cuộn xuống để hiển thị tin nhắn mới nhất
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _scrollToBottom();
+      });
+    }
   }
   
   @override
@@ -53,6 +351,9 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
       // Tải lại lịch sử chat nhưng giữ nguyên cuộc trò chuyện hiện tại
       if (_userId.isNotEmpty) {
         _refreshChatHistories();
+        
+        // Đăng ký lại stream
+        _subscribeToMessagesStream();
       }
     }
   }
@@ -111,60 +412,111 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
   Future<void> _refreshChatHistories() async {
     if (_userId.isEmpty) return;
     
+    setState(() {
+      _isLoadingHistory = true;
+    });
+    
     try {
-      // Lấy tất cả cuộc trò chuyện từ local storage
-      final conversations = await ChatApi.getAllConversations(_userId);
+      print('🔄 Đang làm mới lịch sử chat cho người dùng: $_userId');
       
-      setState(() {
-        _chatHistories = conversations;
+      // Truy vấn chat mới nhất từ Firebase để đồng bộ với local
+      try {
+        await ChatApi.getLatestChatHistory(_userId);
         
-        if (_currentChat != null) {
-          // Tìm cuộc trò chuyện hiện tại trong danh sách mới
-          final updatedCurrentChat = conversations.firstWhere(
-            (chat) => chat.id == _currentChat!.id,
-            orElse: () => conversations.isNotEmpty ? conversations.first : _currentChat!,
-          );
+        // Chờ một khoảng thời gian nhỏ để đảm bảo dữ liệu được xử lý
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        print('⚠️ Lỗi khi lấy lịch sử chat từ Firebase: $e');
+      }
+      
+      // Lấy tất cả cuộc trò chuyện từ local storage (đã được đồng bộ)
+      final conversations = await ChatApi.getAllConversations(_userId);
+      print('📊 Đã tải ${conversations.length} cuộc trò chuyện');
+      
+      if (mounted) {
+        setState(() {
+          _chatHistories = conversations;
           
-          // Cập nhật cuộc trò chuyện hiện tại và tin nhắn
-          _currentChat = updatedCurrentChat;
-          _messages.clear();
-          _messages.addAll(_currentChat!.messages);
-        } else if (conversations.isNotEmpty) {
-          // Nếu không có cuộc trò chuyện hiện tại, lấy cuộc trò chuyện đầu tiên
-          _loadCurrentChat();
-        }
-      });
+          if (_currentChat != null) {
+            // Tìm cuộc trò chuyện hiện tại trong danh sách mới
+            final updatedCurrentChat = conversations.firstWhere(
+              (chat) => chat.id == _currentChat!.id,
+              orElse: () => conversations.isNotEmpty ? conversations.first : _currentChat!,
+            );
+            
+            // Cập nhật cuộc trò chuyện hiện tại và tin nhắn
+            _currentChat = updatedCurrentChat;
+            _messages.clear();
+            _messages.addAll(_currentChat!.messages);
+            
+            print('✅ Đã cập nhật cuộc trò chuyện hiện tại: ${_currentChat!.id} với ${_currentChat!.messages.length} tin nhắn');
+            
+            // Cuộn xuống cuối danh sách tin nhắn
+            Future.delayed(const Duration(milliseconds: 100), () {
+              _scrollToBottom();
+            });
+          } else if (conversations.isNotEmpty) {
+            // Nếu không có cuộc trò chuyện hiện tại, lấy cuộc trò chuyện đầu tiên
+            _loadCurrentChat();
+          }
+        });
+      }
     } catch (e) {
-      print('Lỗi khi làm mới lịch sử chat: $e');
+      print('❌ Lỗi khi làm mới lịch sử chat: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingHistory = false;
+        });
+      }
     }
   }
   
   Future<void> _loadCurrentChat() async {
     try {
+      print('🔄 Đang tải cuộc trò chuyện hiện tại...');
       final currentId = await ChatApi.getCurrentConversationId();
+      print('🔄 ID cuộc trò chuyện hiện tại: $currentId');
       
-      if (currentId != null && _chatHistories.isNotEmpty) {
-        // Tìm cuộc trò chuyện hiện tại
-        final currentChat = _chatHistories.firstWhere(
+      // Lấy lại tất cả các cuộc trò chuyện từ local storage để đảm bảo dữ liệu mới nhất
+      final updatedChatHistories = await ChatApi.getAllConversations(_userId);
+      
+      if (currentId != null && updatedChatHistories.isNotEmpty) {
+        // Tìm cuộc trò chuyện hiện tại trong danh sách đã cập nhật
+        final currentChat = updatedChatHistories.firstWhere(
           (chat) => chat.id == currentId,
-          orElse: () => _chatHistories.first,
+          orElse: () => updatedChatHistories.first,
         );
         
+        print('🔄 Đã tìm thấy cuộc trò chuyện với ID: ${currentChat.id}, có ${currentChat.messages.length} tin nhắn');
+        
         setState(() {
+          // Cập nhật cả danh sách cuộc trò chuyện
+          _chatHistories = updatedChatHistories;
+          // Cập nhật cuộc trò chuyện hiện tại
           _currentChat = currentChat;
+          // Cập nhật danh sách tin nhắn
           _messages.clear();
           _messages.addAll(_currentChat!.messages);
         });
-      } else if (_chatHistories.isNotEmpty) {
+        
+        // Đăng ký stream cho cuộc trò chuyện này
+        _subscribeToCurrentChatStream();
+      } else if (updatedChatHistories.isNotEmpty) {
         // Nếu không có ID hiện tại, lấy cuộc trò chuyện đầu tiên
         setState(() {
-          _currentChat = _chatHistories.first;
+          // Cập nhật cả danh sách cuộc trò chuyện
+          _chatHistories = updatedChatHistories;
+          _currentChat = updatedChatHistories.first;
           _messages.clear();
           _messages.addAll(_currentChat!.messages);
         });
         
         // Lưu ID cuộc trò chuyện hiện tại
         await ChatApi.selectConversation(_currentChat!.id);
+        
+        // Đăng ký stream cho cuộc trò chuyện này
+        _subscribeToCurrentChatStream();
       }
       
       // Cuộn xuống cuối danh sách
@@ -172,7 +524,7 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
         _scrollToBottom();
       });
     } catch (e) {
-      print('Lỗi khi tải cuộc trò chuyện hiện tại: $e');
+      print('❌ Lỗi khi tải cuộc trò chuyện hiện tại: $e');
     }
   }
   
@@ -209,6 +561,9 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
         _messages.addAll(chat.messages);
         _showSidebar = false;
       });
+      
+      // Đăng ký stream cho cuộc trò chuyện này
+      _subscribeToCurrentChatStream();
       
       // Cuộn xuống cuối danh sách
       Future.delayed(const Duration(milliseconds: 100), () {
@@ -262,18 +617,210 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
     _sendMessage(text);
   }
 
+  // Bắt đầu timer cho trạng thái loading
+  void _startLoadingTimeout() {
+    // Hủy timer cũ nếu còn
+    _loadingTimeoutTimer?.cancel();
+    
+    // Đặt timer mới để tự động tắt trạng thái loading sau 30 giây
+    _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
+      if (mounted && _isTyping) {
+        print('⚠️ Đã quá thời gian chờ phản hồi, tự động tắt trạng thái loading');
+        setState(() {
+          _isTyping = false;
+        });
+        
+        // Hiển thị thông báo cho người dùng
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không nhận được phản hồi từ server sau 30 giây. Vui lòng thử lại sau.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    });
+  }
+  
   Future<void> _sendMessage(String text) async {
     try {
-      final response = await ChatApi.sendMessage(text, _userId);
+      print('🚀 Đang gửi tin nhắn: ${text.substring(0, text.length > 20 ? 20 : text.length)}...');
       
-      // Làm mới lịch sử chat và cuộc trò chuyện hiện tại
-      await _refreshChatHistories();
+      // Đảm bảo có cuộc trò chuyện hiện tại
+      if (_currentChat == null) {
+        await _startNewChat();
+      }
+      
+      // Lưu lại ID cuộc trò chuyện trước khi gửi
+      final String originalChatId = _currentChat!.id;
+      
+      // Thêm tin nhắn người dùng vào UI ngay lập tức để hiển thị
+      final userMessage = ChatMessage(
+        id: const Uuid().v4(),
+        text: text,
+        isUser: true,
+        timestamp: DateTime.now().toIso8601String(),
+        chatId: _currentChat!.id,
+      );
       
       setState(() {
-        _isTyping = false;
+        _messages.add(userMessage);
+        _isTyping = true;
+        
+        // Thêm tin nhắn vào cuộc trò chuyện hiện tại
+        final updatedChat = ChatConversation(
+          id: _currentChat!.id,
+          title: _currentChat!.title,
+          createdAt: _currentChat!.createdAt,
+          userId: _currentChat!.userId,
+          messages: List.from(_messages), // Tạo bản sao của danh sách tin nhắn
+        );
+        
+        // Cập nhật tiêu đề nếu là tin nhắn đầu tiên
+        if (updatedChat.messages.length == 1) {
+          updatedChat.title = text.length > 40 ? text.substring(0, 37) + '...' : text;
+        }
+        
+        // Cập nhật cuộc trò chuyện hiện tại
+        _currentChat = updatedChat;
+        
+        // Cập nhật trong danh sách cuộc trò chuyện
+        final int index = _chatHistories.indexWhere((c) => c.id == updatedChat.id);
+        if (index >= 0) {
+          _chatHistories[index] = updatedChat;
+        } else {
+          _chatHistories.add(updatedChat);
+        }
       });
+      
+      // Bắt đầu timer để tự động tắt trạng thái loading sau thời gian chờ
+      _startLoadingTimeout();
+      
+      // Lưu vào local storage
+      await ChatApi.saveConversations(_chatHistories);
+      
+      // Cuộn xuống để hiển thị tin nhắn mới
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _scrollToBottom();
+      });
+      
+      // Gọi API để gửi tin nhắn
+      final response = await ChatApi.sendMessage(text, _userId);
+      print('✅ Đã nhận phản hồi từ API: ${response.toString().substring(0, response.toString().length > 50 ? 50 : response.toString().length)}...');
+      
+      // Hủy timer vì đã nhận được phản hồi
+      _loadingTimeoutTimer?.cancel();
+      
+      // Kiểm tra lỗi
+      if (response['error'] == true) {
+        print('❌ Lỗi từ API: ${response['error_message']}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: ${response['error_message'] ?? "Không rõ lỗi"}')),
+        );
+        
+        // Kết thúc trạng thái đang nhập nếu có lỗi
+        setState(() {
+          _isTyping = false;
+        });
+      } else {
+        print('✅ Phản hồi thành công: ${response['reply']?.substring(0, response['reply'].length > 30 ? 30 : response['reply'].length)}...');
+        
+        // Lấy chatId từ phản hồi
+        final String serverChatId = response['chat_id'] ?? _currentChat!.id;
+        
+        // Kiểm tra xem ID có thay đổi không
+        if (serverChatId != originalChatId) {
+          print('🔄 ChatID đã thay đổi trên server: $originalChatId -> $serverChatId');
+          
+          // Đảm bảo cập nhật lại ID trong các danh sách
+          await _refreshChatHistories();
+          
+          // Tìm cuộc trò chuyện với ID mới
+          final currentChatIndex = _chatHistories.indexWhere((chat) => chat.id == serverChatId);
+          if (currentChatIndex >= 0) {
+            setState(() {
+              _currentChat = _chatHistories[currentChatIndex];
+              _messages.clear();
+              _messages.addAll(_currentChat!.messages);
+              
+              // Đảm bảo tắt trạng thái đang nhập
+              _isTyping = false;
+            });
+          }
+        }
+        
+        // Đăng ký lại stream với ID mới
+        _subscribeToCurrentChatStream();
+        
+        // Đảm bảo cập nhật UI với phản hồi
+        final botMessage = ChatMessage(
+          id: const Uuid().v4(),
+          text: response['reply'] ?? 'Không có phản hồi',
+          isUser: false,
+          timestamp: DateTime.now().toIso8601String(),
+          chatId: serverChatId,
+        );
+        
+        // Kiểm tra xem phản hồi đã có trong tin nhắn chưa
+        bool replyExists = false;
+        for (final msg in _messages) {
+          if (!msg.isUser && msg.text == botMessage.text) {
+            replyExists = true;
+            break;
+          }
+        }
+        
+        // Nếu chưa có, thêm vào UI
+        if (!replyExists) {
+          setState(() {
+            _messages.add(botMessage);
+            _isTyping = false;
+            
+            // Cập nhật cuộc trò chuyện hiện tại
+            if (_currentChat != null) {
+              // Tạo bản sao của tin nhắn hiện tại
+              final updatedMessages = List<ChatMessage>.from(_messages);
+              
+              // Tạo cuộc trò chuyện mới với các tin nhắn đã cập nhật
+              final updatedChat = ChatConversation(
+                id: serverChatId,
+                title: _currentChat!.title,
+                createdAt: _currentChat!.createdAt,
+                userId: _currentChat!.userId,
+                messages: updatedMessages,
+              );
+              
+              _currentChat = updatedChat;
+              
+              // Cập nhật trong danh sách cuộc trò chuyện
+              final int index = _chatHistories.indexWhere((c) => c.id == serverChatId);
+              if (index >= 0) {
+                _chatHistories[index] = updatedChat;
+              } else {
+                // Thêm mới nếu không tìm thấy
+                _chatHistories.add(updatedChat);
+              }
+              
+              // Lưu vào local storage
+              ChatApi.saveConversations(_chatHistories);
+            }
+          });
+          
+          // Cuộn xuống để hiển thị tin nhắn mới
+          Future.delayed(const Duration(milliseconds: 100), () {
+            _scrollToBottom();
+          });
+        } else {
+          // Đảm bảo tắt trạng thái đang nhập ngay cả khi tin nhắn đã tồn tại
+          setState(() {
+            _isTyping = false;
+          });
+        }
+      }
     } catch (e) {
-      print('Lỗi khi gửi tin nhắn: $e');
+      print('❌ Lỗi khi gửi tin nhắn: $e');
+      
+      // Hủy timer
+      _loadingTimeoutTimer?.cancel();
       
       setState(() {
         _isTyping = false;

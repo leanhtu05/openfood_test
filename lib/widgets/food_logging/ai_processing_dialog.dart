@@ -1,72 +1,74 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../models/food_item.dart';
 
 class AIProcessingDialog extends StatelessWidget {
-  final int currentStep;
+  final String currentStep;
+  final String? imagePath;
+  final bool isProcessing;
+  final String status;
+  final List<FoodItem>? recognizedFoods;
+  final Function(List<FoodItem>)? onComplete;
+  final VoidCallback? onCancel;
   
   const AIProcessingDialog({
     Key? key,
     required this.currentStep,
+    this.imagePath,
+    this.isProcessing = true,
+    this.status = 'Đang xử lý...',
+    this.recognizedFoods,
+    this.onComplete,
+    this.onCancel,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      contentPadding: EdgeInsets.all(20),
+    return Dialog(
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
       ),
-      content: Container(
-        width: double.maxFinite,
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Phân tích bữa ăn bằng AI',
+              'Đang phân tích thức ăn',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.green[800],
               ),
-              textAlign: TextAlign.center,
             ),
-            SizedBox(height: 24),
+            SizedBox(height: 20),
             
-            _buildAIProcessStep(
-              icon: Icons.image,
-              title: 'Tiền xử lý ảnh',
-              description: 'Chuẩn hóa ảnh, tăng độ tương phản, loại bỏ nhiễu...',
-              isActive: currentStep >= 1,
-              isProcessing: currentStep == 1,
-            ),
+            _buildProgressIndicator(),
+            SizedBox(height: 20),
             
-            _buildStepConnector(),
+            _buildStepText(),
+            SizedBox(height: 20),
             
-            _buildAIProcessStep(
-              icon: Icons.food_bank,
-              title: 'Nhận diện món ăn',
-              description: 'AI phân tích và nhận diện các loại thực phẩm trong ảnh',
-              isActive: currentStep >= 2,
-              isProcessing: currentStep == 2,
-            ),
-            
-            _buildStepConnector(),
-            
-            _buildAIProcessStep(
-              icon: Icons.scale,
-              title: 'Ước tính khẩu phần',
-              description: 'Phân tích kích thước và ước tính khối lượng từng món',
-              isActive: currentStep >= 3,
-              isProcessing: currentStep == 3,
-            ),
-            
-            _buildStepConnector(),
-            
-            _buildAIProcessStep(
-              icon: Icons.calculate,
-              title: 'Tính toán dinh dưỡng',
-              description: 'Tính toán calo, protein, carbs, chất béo từ dữ liệu nhận diện',
-              isActive: currentStep >= 4,
-              isProcessing: currentStep == 4,
+            if (imagePath != null && imagePath!.isNotEmpty)
+              Container(
+                height: 150,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  image: DecorationImage(
+                    image: FileImage(File(imagePath!)),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                margin: EdgeInsets.only(bottom: 20),
+              ),
+              
+            TextButton(
+              onPressed: onCancel,
+              child: Text('Hủy'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
             ),
           ],
         ),
@@ -74,68 +76,83 @@ class AIProcessingDialog extends StatelessWidget {
     );
   }
   
-  Widget _buildAIProcessStep({
-    required IconData icon,
-    required String title,
-    required String description,
-    required bool isActive,
-    required bool isProcessing,
-  }) {
+  Widget _buildProgressIndicator() {
+    int step = int.tryParse(currentStep) ?? 0;
+    
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: isActive ? Colors.green : Colors.grey.withOpacity(0.3),
-            shape: BoxShape.circle,
-          ),
-          child: isProcessing
-              ? CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 2,
-                )
-              : Icon(
-                  isActive ? (isProcessing ? Icons.hourglass_empty : Icons.check) : icon,
-                  color: isActive ? Colors.white : Colors.grey,
-                ),
-        ),
-        SizedBox(width: 16),
-        
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                  color: isActive ? Colors.black : Colors.grey,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                description,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isActive ? Colors.grey[700] : Colors.grey,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
+        _buildStepIndicator('1', step),
+        _buildStepConnector(step >= 2),
+        _buildStepIndicator('2', step),
+        _buildStepConnector(step >= 3),
+        _buildStepIndicator('3', step),
+        _buildStepConnector(step >= 4),
+        _buildStepIndicator('4', step),
       ],
     );
   }
   
-  Widget _buildStepConnector() {
+  Widget _buildStepIndicator(String step, int currentStep) {
+    final isActive = currentStep >= int.parse(step);
+    final isCurrentStep = currentStep.toString() == step;
+    
     return Container(
-      margin: EdgeInsets.only(left: 20),
-      height: 20,
-      width: 2,
-      color: Colors.grey.withOpacity(0.3),
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isActive ? Colors.green : Colors.grey.shade300,
+        border: isCurrentStep 
+            ? Border.all(color: Colors.green.shade700, width: 3)
+            : null,
+      ),
+      child: Center(
+        child: Text(
+          step,
+          style: TextStyle(
+            color: isActive ? Colors.white : Colors.grey.shade700,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildStepConnector(bool isActive) {
+    return Container(
+      width: 30,
+      height: 4,
+      color: isActive ? Colors.green : Colors.grey.shade300,
+    );
+  }
+  
+  Widget _buildStepText() {
+    String message;
+    
+    switch (currentStep) {
+      case '1':
+        message = 'Đang phân tích hình ảnh...';
+        break;
+      case '2':
+        message = 'Đang nhận diện các món ăn...';
+        break;
+      case '3':
+        message = 'Đang phân tích thông tin dinh dưỡng...';
+        break;
+      case '4':
+        message = 'Hoàn thành!';
+        break;
+      default:
+        message = 'Đang khởi tạo...';
+    }
+    
+    return Text(
+      message,
+      style: TextStyle(
+        fontSize: 16,
+        color: Colors.grey.shade800,
+      ),
     );
   }
 } 

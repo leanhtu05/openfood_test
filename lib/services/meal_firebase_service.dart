@@ -15,122 +15,147 @@ class MealFirebaseService {
   /// Lưu kế hoạch bữa ăn vào Firebase
   Future<bool> saveMealPlan(MealPlan mealPlan) async {
     try {
-      debugPrint('📥 Bắt đầu lưu kế hoạch bữa ăn vào Firebase...');
-      debugPrint('📄 Kế hoạch gốc: ID=${mealPlan.id}, UserID=${mealPlan.userId}');
-      debugPrint('📊 Số ngày trong kế hoạch: ${mealPlan.weeklyPlan.length}');
-      debugPrint('📅 Các ngày trong kế hoạch: ${mealPlan.weeklyPlan.keys.toList()}');
-      
+
       // Hiển thị cấu trúc JSON trước khi chuyển đổi
       final originalJson = mealPlan.toJson();
-      debugPrint('💾 Cấu trúc JSON gốc: ${originalJson.keys.toList()}');
-      
+
       // Chuẩn bị dữ liệu để lưu vào Firebase
       final data = FirebaseHelpers.prepareDataForFirestore(originalJson);
       
       // Kiểm tra dữ liệu sau khi chuyển đổi
-      debugPrint('🔄 Sau khi chuyển đổi: ${data.keys.toList()}');
-      
+
       // Đảm bảo có trường user_id trong dữ liệu
       if (!data.containsKey('user_id')) {
         data['user_id'] = mealPlan.userId;
-        debugPrint('ℹ️ Đã thêm user_id vào dữ liệu Firebase');
+
       }
       
       // Đảm bảo có cấu trúc days hoặc weekly_plan
       if (!data.containsKey('days') && !data.containsKey('weekly_plan')) {
-        debugPrint('⚠️ Dữ liệu thiếu cả days và weekly_plan!');
+
       }
       
       // Lưu vào collection chính
       final docRef = _firestore
           .collection(_mealPlansCollection)
           .doc(mealPlan.id);
-      
-      debugPrint('📣 Lưu vào đường dẫn Firebase: ${docRef.path}');
+
       await docRef.set(data);
-          
-      debugPrint('✅ Đã lưu kế hoạch bữa ăn vào Firebase: ${mealPlan.id}');
+
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lưu kế hoạch bữa ăn: $e');
+
       return false;
     }
   }
   
-  /// Lấy kế hoạch bữa ăn hiện tại của người dùng
+  /// Lấy kế hoạch bữa ăn hiện tại của người dùng (mới nhất)
   Future<MealPlan?> getCurrentMealPlan(String userId) async {
     try {
-      debugPrint('🔎 Đang tìm kế hoạch bữa ăn cho user: $userId');
-      
-      // Lấy tất cả kế hoạch bữa ăn của người dùng và sắp xếp ở phía client
-      final querySnapshot = await _firestore
-          .collection(_mealPlansCollection)
+
+      final today = DateTime.now();
+      final todayString = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+      // Lấy kế hoạch bữa ăn mới nhất từ collection meal_plans
+      QuerySnapshot querySnapshot = await _firestore
+          .collection('meal_plans')
           .where('user_id', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
           .get();
-      
-      debugPrint('💾 Tìm thấy ${querySnapshot.docs.length} kế hoạch trong Firebase');
-      
-      if (querySnapshot.docs.isNotEmpty) {
-        for (var doc in querySnapshot.docs) {
-          debugPrint('📑 Tìm thấy document: ${doc.id} với các trường: ${doc.data().keys.toList()}');
-        }
-        
-        // Sắp xếp theo thời gian tạo giảm dần ở phía client
-        final sortedDocs = querySnapshot.docs.toList()
-          ..sort((a, b) {
-            final aData = a.data();
-            final bData = b.data();
-            
-            // Lấy trường createdAt hoặc timestamp
-            final aTime = aData['createdAt'] ?? aData['timestamp'] ?? aData['created_at'] ?? 0;
-            final bTime = bData['createdAt'] ?? bData['timestamp'] ?? bData['created_at'] ?? 0;
-            
-            debugPrint('⏰ So sánh thời gian: ${a.id} ($aTime) vs ${b.id} ($bTime)');
-            
-            // Chuyển đổi sang DateTime nếu cần
-            final aDateTime = aTime is Timestamp ? aTime.toDate() : 
-                             (aTime is String ? DateTime.tryParse(aTime) ?? DateTime(1970) : DateTime(1970));
-            final bDateTime = bTime is Timestamp ? bTime.toDate() : 
-                             (bTime is String ? DateTime.tryParse(bTime) ?? DateTime(1970) : DateTime(1970));
-            
-            return bDateTime.compareTo(aDateTime); // Sắp xếp giảm dần
-          });
-        
-        if (sortedDocs.isNotEmpty) {
-          final rawData = sortedDocs.first.data();
-          debugPrint('📝 Lấy document mới nhất: ${sortedDocs.first.id}');
-          debugPrint('💾 Dữ liệu thô: ${rawData.keys.toList()}');
-          
-          // Kiểm tra cấu trúc dữ liệu
-          if (rawData.containsKey('days')) {
-            debugPrint('📅 Cấu trúc days có trong dữ liệu: ${rawData['days'] is List ? (rawData['days'] as List).length : 'không phải List'}');
-          }
-          if (rawData.containsKey('weekly_plan')) {
-            debugPrint('📅 Cấu trúc weekly_plan có trong dữ liệu: ${rawData['weekly_plan'] is Map ? (rawData['weekly_plan'] as Map).keys.toList() : 'không phải Map'}');
-          }
-          
-          final data = FirebaseHelpers.processFirestoreData(rawData);
-          debugPrint('✅ Đã xử lý dữ liệu Firebase thành công');
-          
-          // Thử tạo MealPlan từ dữ liệu đã xử lý
-          try {
-            final mealPlan = MealPlan.fromJson(data);
-            debugPrint('✅ Đã tạo MealPlan từ dữ liệu Firebase');
-            debugPrint('📄 Kế hoạch: ID=${mealPlan.id}, UserID=${mealPlan.userId}');
-            debugPrint('📊 Số ngày đã tải: ${mealPlan.weeklyPlan.length}');
-            return mealPlan;
-          } catch (parseError) {
-            debugPrint('❌ Lỗi khi tạo MealPlan từ dữ liệu Firebase: $parseError');
-            return null;
-          }
-        }
+
+      // Nếu không tìm thấy với user_id, thử với userId
+      if (querySnapshot.docs.isEmpty) {
+        querySnapshot = await _firestore
+            .collection('meal_plans')
+            .where('userId', isEqualTo: userId)
+            .orderBy('timestamp', descending: true)
+            .limit(1)
+            .get();
+
       }
       
-      debugPrint('ℹ️ Không tìm thấy kế hoạch bữa ăn trên Firebase');
+      if (querySnapshot.docs.isNotEmpty) {
+        final doc = querySnapshot.docs.first;
+        final rawData = doc.data() as Map<String, dynamic>;
+
+        // Kiểm tra timestamp
+        final timestamp = rawData['timestamp'];
+        if (timestamp != null) {
+          final timestampDate = timestamp is String ? DateTime.tryParse(timestamp) : null;
+
+          if (timestampDate != null) {
+
+          }
+        }
+
+        // Kiểm tra cấu trúc dữ liệu
+        if (rawData.containsKey('days')) {
+
+        }
+        if (rawData.containsKey('weekly_plan')) {
+
+        }
+
+        final data = FirebaseHelpers.processFirestoreData(rawData);
+
+        // Thử tạo MealPlan từ dữ liệu đã xử lý
+        try {
+          final mealPlan = MealPlan.fromJson(data);
+
+          return mealPlan;
+        } catch (parseError) {
+
+          return null;
+        }
+      }
+
       return null;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy kế hoạch bữa ăn: $e');
+
       return null;
+    }
+  }
+
+  /// Lấy kế hoạch bữa ăn cho ngày cụ thể
+  Future<Map<String, dynamic>?> getMealPlanForDate(String userId, DateTime date) async {
+    try {
+      final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      // Lấy kế hoạch mới nhất
+      final mealPlan = await getCurrentMealPlan(userId);
+      if (mealPlan == null) {
+
+        return null;
+      }
+
+      // Tìm ngày trong weekly plan
+      final dayOfWeek = _getDayOfWeekString(date.weekday);
+
+      if (mealPlan.weeklyPlan.containsKey(dayOfWeek)) {
+        final dayPlan = mealPlan.weeklyPlan[dayOfWeek];
+
+        return dayPlan?.toJson();
+      }
+
+      return null;
+    } catch (e) {
+
+      return null;
+    }
+  }
+
+  /// Chuyển đổi số ngày trong tuần thành chuỗi
+  String _getDayOfWeekString(int weekday) {
+    switch (weekday) {
+      case 1: return 'monday';
+      case 2: return 'tuesday';
+      case 3: return 'wednesday';
+      case 4: return 'thursday';
+      case 5: return 'friday';
+      case 6: return 'saturday';
+      case 7: return 'sunday';
+      default: return 'monday';
     }
   }
   
@@ -146,11 +171,12 @@ class MealFirebaseService {
       
       // Chuyển đổi dữ liệu
       for (var doc in querySnapshot.docs) {
-        final data = FirebaseHelpers.processFirestoreData(doc.data());
+        final rawData = doc.data() as Map<String, dynamic>;
+        final data = FirebaseHelpers.processFirestoreData(rawData);
         try {
           history.add(MealPlanHistory.fromJson(data));
         } catch (e) {
-          debugPrint('⚠️ Lỗi khi chuyển đổi dữ liệu lịch sử: $e');
+
         }
       }
       
@@ -160,11 +186,10 @@ class MealFirebaseService {
         final bTime = b.createdAt ?? DateTime(1970);
         return bTime.compareTo(aTime); // Sắp xếp giảm dần
       });
-      
-      debugPrint('✅ Đã lấy ${history.length} kế hoạch bữa ăn từ lịch sử');
+
       return history;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy lịch sử kế hoạch bữa ăn: $e');
+
       return [];
     }
   }
@@ -177,11 +202,10 @@ class MealFirebaseService {
           .collection(_mealPlansCollection)
           .doc(planId)
           .delete();
-          
-      debugPrint('✅ Đã xóa kế hoạch bữa ăn: $planId');
+
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi xóa kế hoạch bữa ăn: $e');
+
       return false;
     }
   }
@@ -215,11 +239,10 @@ class MealFirebaseService {
           .collection(_consumedMealsCollection)
           .doc(docId)
           .set(mealData);
-          
-      debugPrint('✅ Đã lưu bữa ăn đã tiêu thụ: $mealName');
+
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lưu bữa ăn đã tiêu thụ: $e');
+
       return false;
     }
   }
@@ -243,7 +266,8 @@ class MealFirebaseService {
       
       // Lọc kết quả theo ngày ở phía client
       for (var doc in querySnapshot.docs) {
-        final data = FirebaseHelpers.processFirestoreData(doc.data());
+        final rawData = doc.data() as Map<String, dynamic>;
+        final data = FirebaseHelpers.processFirestoreData(rawData);
         
         // Lấy trường consumedAt
         final consumedAt = data['consumedAt'];
@@ -264,11 +288,10 @@ class MealFirebaseService {
           meals.add(data);
         }
       }
-      
-      debugPrint('ℹ️ Tìm thấy ${meals.length} bữa ăn đã tiêu thụ cho ngày $dateString');
+
       return meals;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy bữa ăn đã tiêu thụ: $e');
+
       return [];
     }
   }

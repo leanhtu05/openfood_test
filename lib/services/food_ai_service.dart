@@ -95,7 +95,6 @@ class FoodAIService {
           'message': data['message'] ?? 'Nhận diện thành công',
         };
       } else {
-        debugPrint('Lỗi API: ${response.statusCode}, ${response.body}');
         return {
           'success': false,
           'message': 'Lỗi khi nhận diện: ${response.statusCode}',
@@ -103,7 +102,6 @@ class FoodAIService {
         };
       }
     } catch (e) {
-      debugPrint('Exception khi nhận diện thực phẩm: $e');
       return {
         'success': false,
         'message': 'Lỗi kết nối: $e',
@@ -159,7 +157,6 @@ class FoodAIService {
         dateTime: DateTime.now(),
       );
     } catch (e) {
-      debugPrint('Lỗi khi chuyển đổi dữ liệu: $e');
       return null;
     }
   }

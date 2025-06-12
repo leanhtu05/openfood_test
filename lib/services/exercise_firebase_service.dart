@@ -17,7 +17,7 @@ class ExerciseFirebaseService {
   Future<bool> saveExerciseEntry(ExerciseEntry entry) async {
     try {
       if (_auth.currentUser == null) {
-        debugPrint('❌ Không thể lưu exercise entry: Người dùng chưa đăng nhập');
+
         return false;
       }
 
@@ -38,11 +38,10 @@ class ExerciseFirebaseService {
 
       // Lưu vào Firestore
       await _exerciseCollection.doc(entry.id).set(data);
-      
-      debugPrint('✅ Đã lưu exercise entry vào Firebase thành công');
+
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lưu exercise entry vào Firebase: $e');
+
       return false;
     }
   }
@@ -51,16 +50,15 @@ class ExerciseFirebaseService {
   Future<bool> deleteExerciseEntry(String entryId) async {
     try {
       if (_auth.currentUser == null) {
-        debugPrint('❌ Không thể xóa exercise entry: Người dùng chưa đăng nhập');
+
         return false;
       }
 
       await _exerciseCollection.doc(entryId).delete();
-      
-      debugPrint('✅ Đã xóa exercise entry khỏi Firebase thành công');
+
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi xóa exercise entry khỏi Firebase: $e');
+
       return false;
     }
   }
@@ -69,7 +67,7 @@ class ExerciseFirebaseService {
   Future<List<ExerciseEntry>> getExerciseEntriesForDate(DateTime date) async {
     try {
       if (_auth.currentUser == null) {
-        debugPrint('❌ Không thể lấy exercise entries: Người dùng chưa đăng nhập');
+
         return [];
       }
 
@@ -93,10 +91,9 @@ class ExerciseFirebaseService {
         return entryDate == dateString;
       }).toList();
 
-      debugPrint('ℹ️ Tìm thấy ${entries.length} mục nhập bài tập trên Firestore cho ngày $dateString');
       return entries;
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy exercise entries từ Firebase: $e');
+
       return [];
     }
   }
@@ -105,7 +102,7 @@ class ExerciseFirebaseService {
   Future<bool> syncAllExerciseEntries(List<ExerciseEntry> entries) async {
     try {
       if (_auth.currentUser == null) {
-        debugPrint('❌ Không thể đồng bộ exercise entries: Người dùng chưa đăng nhập');
+
         return false;
       }
 
@@ -133,11 +130,10 @@ class ExerciseFirebaseService {
 
       // Commit batch
       await batch.commit();
-      
-      debugPrint('✅ Đã đồng bộ ${entries.length} exercise entries lên Firebase thành công');
+
       return true;
     } catch (e) {
-      debugPrint('❌ Lỗi khi đồng bộ exercise entries lên Firebase: $e');
+
       return false;
     }
   }

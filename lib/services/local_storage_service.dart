@@ -147,17 +147,14 @@ class LocalStorageService {
     } catch (e) {
       return null;
     }
-  }
-  
-  // Clear all local data (useful for logout)
+  }
   Future<void> clearLocalData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(USER_DATA_KEY);
       await prefs.remove(FOOD_ENTRIES_KEY);
       await prefs.remove(EXERCISE_ENTRIES_KEY);
-      await prefs.remove(WATER_ENTRIES_KEY);
-      // Don't clear sync status as it might be useful for debugging
+      await prefs.remove(WATER_ENTRIES_KEY);
     } catch (e) {
       throw e;
     }
@@ -184,7 +181,6 @@ class LocalStorageService {
       await saveFoodEntries(entries);
       return true;
     } catch (e) {
-      debugPrint('Error saving food entry: $e');
       return false;
     }
   }
@@ -210,7 +206,6 @@ class LocalStorageService {
       await saveExerciseEntries(entries);
       return true;
     } catch (e) {
-      debugPrint('Error saving exercise entry: $e');
       return false;
     }
   }
@@ -236,7 +231,6 @@ class LocalStorageService {
       await saveWaterEntries(entries);
       return true;
     } catch (e) {
-      debugPrint('Error saving water entry: $e');
       return false;
     }
   }

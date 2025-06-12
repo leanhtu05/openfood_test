@@ -21,7 +21,6 @@ class BarcodeScannerService {
       } 
       return null;
     } catch (e) {
-      print('Error scanning barcode: $e');
       return null;
     }
   }

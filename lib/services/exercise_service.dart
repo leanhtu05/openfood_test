@@ -172,11 +172,9 @@ class ExerciseService {
       
       // Lưu lại vào SharedPreferences
       await prefs.setString(_exercisesKey, jsonEncode(exercisesMap));
-      
-      debugPrint('✅ Đã lưu ${exercises.length} bài tập cho ngày $date vào cả Firestore và SharedPreferences');
+
     } catch (e) {
-      debugPrint('❌ Lỗi khi lưu bài tập vào Firestore: $e');
-      
+
       // Dùng cách lưu cũ nếu gặp lỗi
       final prefs = await SharedPreferences.getInstance();
       final exercisesMapJson = prefs.getString(_exercisesKey) ?? '{}';
@@ -213,13 +211,13 @@ class ExerciseService {
       final exercises = provider.selectedDateExercises;
       
       if (exercises.isNotEmpty) {
-        debugPrint('✅ Đã tải ${exercises.length} bài tập từ Firestore qua ExerciseProvider cho ngày $date');
+
         return exercises;
       } else {
-        debugPrint('ℹ️ Không có bài tập nào trên Firestore cho ngày $date, thử đọc từ SharedPreferences');
+
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi tải dữ liệu từ Firestore qua ExerciseProvider: $e');
+
     }
     
     // Nếu không có dữ liệu từ Firestore hoặc có lỗi, dùng cách cũ đọc từ SharedPreferences
@@ -238,11 +236,10 @@ class ExerciseService {
       final localExercises = exercisesJson
           .map((e) => Exercise.fromJson(e as Map<String, dynamic>))
           .toList();
-      
-      debugPrint('✅ Đã tải ${localExercises.length} bài tập từ SharedPreferences cho ngày $date');
+
       return localExercises;
     } catch (e) {
-      debugPrint('❌ Lỗi khi tải dữ liệu từ SharedPreferences: $e');
+
       return [];
     }
   }

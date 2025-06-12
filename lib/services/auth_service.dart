@@ -14,6 +14,8 @@ import 'package:openfood/providers/user_data_provider.dart' as udp;
 import '../providers/food_provider.dart';
 import '../providers/exercise_provider.dart';
 import '../providers/water_provider.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import '../utils/chat_api.dart';
 
 class AuthService extends ChangeNotifier {
   // Firebase Authentication instance
@@ -43,6 +45,226 @@ class AuthService extends ChangeNotifier {
   bool _isGooglePlayServicesAvailable = true;
   bool get isGooglePlayServicesAvailable => _isGooglePlayServicesAvailable;
 
+  // === Xác thực bằng số điện thoại ===
+  
+  // Lưu trữ thông tin xác thực số điện thoại
+  String _verificationId = '';
+  int? _resendToken;
+  String _phoneNumber = '';
+  
+  // Lấy số điện thoại hiện tại đang xác thực
+  String get phoneNumber => _phoneNumber;
+  
+  // Bắt đầu quá trình xác thực số điện thoại
+  Future<bool> verifyPhoneNumber(String phoneNumber, {
+    required Function(String) onCodeSent,
+    required Function(FirebaseAuthException) onVerificationFailed,
+    Function()? onVerificationCompleted,
+    Function(String)? onCodeAutoRetrievalTimeout,
+  }) async {
+    _isLoading = true;
+    _errorMessage = '';
+    _phoneNumber = phoneNumber;
+    notifyListeners();
+    
+    // Chuẩn hóa số điện thoại Việt Nam
+    if (phoneNumber.startsWith('0')) {
+      // Nếu số bắt đầu bằng 0, thay bằng +84
+      phoneNumber = "+84${phoneNumber.substring(1)}";
+    } else if (!phoneNumber.startsWith('+')) {
+      // Nếu không có mã quốc tế, thêm +84
+      phoneNumber = "+84$phoneNumber";
+    }
+
+    try {
+      // Thêm delay nhỏ để tránh gọi quá nhiều request liên tiếp
+      await Future.delayed(Duration(milliseconds: 1500));
+      
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // Android-only: Xác thực tự động hoàn tất
+
+          _isLoading = false;
+          notifyListeners();
+          
+          // Đăng nhập với credential đã nhận được
+          final result = await _signInWithCredential(credential);
+          
+          if (onVerificationCompleted != null && result) {
+            onVerificationCompleted();
+          }
+          
+          // Không trả về giá trị từ hàm này vì kiểu trả về là Future<void>
+        },
+        verificationFailed: (FirebaseAuthException e) {
+
+          _isLoading = false;
+          
+          switch (e.code) {
+            case 'invalid-phone-number':
+              _errorMessage = 'Số điện thoại không hợp lệ';
+              break;
+            case 'too-many-requests':
+              _errorMessage = 'Quá nhiều yêu cầu. Vui lòng thử lại sau 1-2 giờ hoặc sử dụng phương thức đăng nhập khác (Google, Email).';
+              break;
+            case 'quota-exceeded':
+              _errorMessage = 'Vượt quá giới hạn xác thực. Vui lòng thử lại sau 1-2 giờ hoặc sử dụng phương thức đăng nhập khác.';
+              break;
+            default:
+              if (e.message?.contains('blocked all requests') == true) {
+                _errorMessage = 'Firebase đã tạm khóa xác thực từ thiết bị này. Vui lòng:\n1. Thử lại sau 24 giờ\n2. Sử dụng phương thức đăng nhập khác (Google hoặc Email)\n3. Sử dụng thiết bị khác nếu cần gấp';
+              } else {
+                _errorMessage = 'Lỗi xác thực số điện thoại: ${e.message}';
+              }
+          }
+          
+          notifyListeners();
+          onVerificationFailed(e);
+        },
+        codeSent: (String verificationId, int? resendToken) {
+
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+          _isLoading = false;
+          notifyListeners();
+          
+          onCodeSent(verificationId);
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+
+          _verificationId = verificationId;
+          
+          // Gọi callback nếu được cung cấp
+          if (onCodeAutoRetrievalTimeout != null) {
+            onCodeAutoRetrievalTimeout(verificationId);
+          }
+          
+          notifyListeners();
+        },
+        timeout: Duration(seconds: 120), // Sửa thành 2 phút để tuân thủ giới hạn của Firebase
+        forceResendingToken: _resendToken,
+      );
+      
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi khi gửi mã xác thực: ${e.toString()}';
+      notifyListeners();
+
+      return false;
+    }
+  }
+  
+  // Xác nhận mã OTP
+  Future<bool> confirmOTP(String otp) async {
+    if (_verificationId.isEmpty) {
+      _errorMessage = 'Phiên xác thực đã hết hạn. Vui lòng thử lại.';
+      notifyListeners();
+      return false;
+    }
+    
+    _isLoading = true;
+    _errorMessage = '';
+    notifyListeners();
+    
+    try {
+      // Tạo credential từ mã xác thực
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId,
+        smsCode: otp,
+      );
+      
+      // Đăng nhập với credential
+      return await _signInWithCredential(credential);
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      
+      switch (e.code) {
+        case 'invalid-verification-code':
+          _errorMessage = 'Mã xác thực không chính xác. Vui lòng kiểm tra lại và thử lại.';
+          break;
+        case 'invalid-verification-id':
+          _errorMessage = 'Phiên xác thực đã hết hạn. Vui lòng thử lại với mã mới.';
+          // Reset _verificationId để ngăn việc sử dụng lại mã đã hết hạn
+          _verificationId = '';
+          break;
+        case 'session-expired':
+          _errorMessage = 'firebase_auth/session-expired';
+          // Reset _verificationId để ngăn việc sử dụng lại mã đã hết hạn
+          _verificationId = '';
+
+          break;
+        default:
+          if (e.message?.contains('expired') == true) {
+            _errorMessage = 'firebase_auth/session-expired';
+            // Reset _verificationId để ngăn việc sử dụng lại mã đã hết hạn
+            _verificationId = '';
+
+          } else {
+            _errorMessage = 'Lỗi xác thực: ${e.message}';
+
+          }
+      }
+      
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Có lỗi xảy ra: ${e.toString()}';
+
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // Đăng nhập với PhoneAuthCredential
+  Future<bool> _signInWithCredential(PhoneAuthCredential credential) async {
+    try {
+      final userCredential = await _auth.signInWithCredential(credential);
+      _user = userCredential.user;
+      _isAuthenticated = true;
+      
+      // Lưu trạng thái đăng nhập
+      _saveLoginStatus(true);
+      
+      // Lấy token xác thực và lưu vào SharedPreferences
+      if (_user != null) {
+        final idToken = await _user!.getIdToken();
+        // Lưu token bằng ChatApi
+        await _saveAuthToken(idToken);
+        
+        // Cập nhật thông tin người dùng trong Firestore
+        await _userService.createOrUpdateUser(_user!);
+        
+        // Đồng bộ với API nếu cần
+        _syncWithApi(_user!);
+      }
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi khi đăng nhập: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // Lưu token xác thực
+  Future<void> _saveAuthToken(String? token) async {
+    if (token != null && token.isNotEmpty) {
+      try {
+        // Lưu token bằng phương thức trong ChatApi
+        await ChatApi.saveAuthToken(token);
+
+      } catch (e) {
+
+      }
+    }
+  }
+  
   // Constructor to initialize the service
   AuthService() {
     // Set initial authenticated state based on current user
@@ -54,8 +276,7 @@ class AuthService extends ChangeNotifier {
     
     // Listen for auth state changes
     _auth.authStateChanges().listen((User? user) async {
-      print('👤 Trạng thái đăng nhập thay đổi: ${user?.uid ?? 'null'}');
-      
+
       // Lưu trạng thái đăng nhập trước đó
       bool wasAuthenticated = _isAuthenticated;
       
@@ -73,18 +294,18 @@ class AuthService extends ChangeNotifier {
           
           // Nếu trước đó chưa đăng nhập và giờ đã đăng nhập
           if (!wasAuthenticated) {
-            print('🔄 Người dùng vừa đăng nhập: Sẽ tải dữ liệu từ Firestore');
+
           }
         } catch (e) {
-          print('Error updating user in Firestore: $e');
+
         }
       } else if (wasAuthenticated) {
         // Nếu trước đó đã đăng nhập và giờ đã đăng xuất
-        print('🔄 Người dùng vừa đăng xuất: Sẽ ưu tiên dữ liệu từ local');
+
       }
       
       notifyListeners();
-      print('👤 Đã gọi notifyListeners() sau khi trạng thái đăng nhập thay đổi');
+
     });
   }
   
@@ -93,10 +314,10 @@ class AuthService extends ChangeNotifier {
     try {
       _isGooglePlayServicesAvailable = await FirebaseHelpers.isGooglePlayServicesAvailable();
       if (!_isGooglePlayServicesAvailable) {
-        debugPrint('⚠️ Google Play Services không khả dụng, sẽ sử dụng phương thức đăng nhập thay thế');
+
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi kiểm tra Google Play Services: $e');
+
       _isGooglePlayServicesAvailable = false;
     }
   }
@@ -107,7 +328,7 @@ class AuthService extends ChangeNotifier {
       if (_user == null) return null;
       return await _user!.getIdToken();
     } catch (e) {
-      print('Error getting ID token: $e');
+
       return null;
     }
   }
@@ -118,7 +339,7 @@ class AuthService extends ChangeNotifier {
       if (_user == null) return null;
       return await _user!.getIdToken(true); // Force refresh token
     } catch (e) {
-      print('Error getting current token: $e');
+
       return null;
     }
   }
@@ -129,31 +350,26 @@ class AuthService extends ChangeNotifier {
     // Sử dụng unawaited để đảm bảo không chặn luồng chính
     Future(() async {
       try {
-        print('🔄 Bắt đầu xác thực token với API trong background');
-        
+
         // Lấy token
         String? idToken;
         try {
           idToken = await user.getIdToken(true); // Force refresh token
         } catch (tokenError) {
-          print('⚠️ Không thể lấy Firebase ID token: $tokenError');
-          print('ℹ️ Tiếp tục sử dụng Firebase mà không có xác thực từ API');
+
           return;
         }
         
         // Nếu không lấy được token, bỏ qua xác thực API
         if (idToken == null) {
-          print('⚠️ ID token là null, không thể xác thực với API');
-          print('ℹ️ Tiếp tục sử dụng Firebase mà không có xác thực từ API');
+
           return;
             }
         
         // Bỏ qua hoàn toàn phần xác thực API vì API không còn hỗ trợ hoặc không cần thiết
-        print('ℹ️ Bỏ qua xác thực token với API, sử dụng Firebase trực tiếp');
-        
+
       } catch (e) {
-        print('❌ Lỗi khi xác thực token với API: $e');
-        print('ℹ️ Tiếp tục sử dụng Firebase mà không có xác thực từ API');
+
       }
     });
     
@@ -161,18 +377,18 @@ class AuthService extends ChangeNotifier {
     return;
   }
   
-  // Phương thức đơn giản hóa - chỉ tạo dữ liệu cơ bản từ thông tin người dùng Firebase
+  // === Phương thức lấy thông tin cơ bản của người dùng từ Firebase Auth ===
   Future<Map<String, dynamic>> _getBasicUserData(User user) async {
     return {
-        'user_id': user.uid,
+      'uid': user.uid,
+      'display_name': user.displayName,
       'email': user.email,
-        'display_name': user.displayName,
-        'photo_url': user.photoURL,
-      'is_authenticated': true,
-      'name': user.displayName ?? user.email ?? 'Người dùng',
-      'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      };
+      'photo_url': user.photoURL,
+      'is_anonymous': user.isAnonymous,
+      'created_at': FieldValue.serverTimestamp(),
+      'updated_at': FieldValue.serverTimestamp(),
+      'last_login_at': FieldValue.serverTimestamp(),
+    };
   }
 
   // Register with email and password
@@ -180,6 +396,15 @@ class AuthService extends ChangeNotifier {
     _isLoading = true;
     _errorMessage = '';
     notifyListeners();
+    
+    // Kiểm tra mật khẩu theo chính sách Firebase trước khi gửi lên server
+    if (!isPasswordValid(password)) {
+      List<String> missingRequirements = getMissingPasswordRequirements(password);
+      _errorMessage = missingRequirements.join('\n');
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
     
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(
@@ -197,8 +422,7 @@ class AuthService extends ChangeNotifier {
         // Đồng bộ với API - không chờ đợi để không chặn UI
         _syncWithApi(_user!); // Removed await
       }
-      
-      // Save login state locally
+
       _saveLoginStatus(true);
       
       _isLoading = false;
@@ -215,7 +439,6 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // Login with email and password
   Future<bool> loginWithEmailAndPassword(String email, String password) async {
     _isLoading = true;
     _errorMessage = '';
@@ -232,16 +455,19 @@ class AuthService extends ChangeNotifier {
       );
       _user = userCredential.user;
       _isAuthenticated = true;
-      
-      // Save login state locally ngay lập tức sau khi đăng nhập thành công
+
       _saveLoginStatus(true);
       
-      // Bỏ qua xác thực token với FastAPI
+      // Lấy và lưu token xác thực
       if (_user != null) {
         try {
+          // Lấy token và lưu vào SharedPreferences
+          final idToken = await _user!.getIdToken();
+          await _saveAuthToken(idToken);
+          
           // Update user document in Firestore - bỏ qua lỗi nếu có
           await _userService.createOrUpdateUser(_user!).catchError((error) {
-            print('⚠️ Lỗi khi cập nhật thông tin người dùng: $error');
+
             // Không throw lỗi, tiếp tục đăng nhập
           });
           
@@ -250,13 +476,12 @@ class AuthService extends ChangeNotifier {
             try {
               _syncWithApi(_user!);
             } catch (syncError) {
-              print('⚠️ Lỗi khi đồng bộ dữ liệu với API: $syncError');
+
               // Không ảnh hưởng đến luồng đăng nhập
             }
           });
         } catch (userError) {
-          // Chỉ ghi log lỗi, không ảnh hưởng đến việc đăng nhập
-          print('⚠️ Lỗi khi xử lý dữ liệu người dùng: $userError');
+
         }
       }
       
@@ -264,7 +489,7 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       
       // Luôn trả về true nếu đăng nhập Firebase thành công, bất kể có lỗi đồng bộ dữ liệu hay không
-      print('✅ Đăng nhập thành công, sẽ điều hướng đến màn hình chính');
+
       return true;
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e);
@@ -272,17 +497,24 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       // Xử lý đặc biệt cho lỗi PigeonUserDetails
       if (e.toString().contains('PigeonUserDetails')) {
-        print('⚠️ Phát hiện lỗi PigeonUserDetails trong quá trình đăng nhập');
-        
+
         // Kiểm tra xem người dùng đã đăng nhập hay chưa
         if (_auth.currentUser != null) {
           _user = _auth.currentUser;
           _isAuthenticated = true;
           _saveLoginStatus(true);
+          
+          // Lấy token và lưu vào SharedPreferences
+          try {
+            final idToken = await _user!.getIdToken();
+            await _saveAuthToken(idToken);
+          } catch (tokenError) {
+
+          }
+          
           _isLoading = false;
           notifyListeners();
-          
-          print('✅ Đăng nhập vẫn thành công mặc dù có lỗi PigeonUserDetails');
+
           return true;
         }
       }
@@ -297,15 +529,14 @@ class AuthService extends ChangeNotifier {
   // Phương thức để xác thực token với FastAPI
   Future<bool> validateTokenWithFastApi() async {
     // Không cần xác thực với FastAPI nữa, luôn trả về true
-    print('ℹ️ Bỏ qua xác thực token với FastAPI, sử dụng Firebase trực tiếp');
+
     return true;
   }
   
   // Phương thức đăng nhập thay thế qua API trực tiếp (không qua Firebase)
   Future<bool> _loginViaApi(String email, String password) async {
     try {
-      debugPrint('🔄 Bỏ qua đăng nhập qua API, sử dụng Firebase trực tiếp...');
-      
+
       // Sử dụng Firebase trực tiếp thay vì gọi API
       try {
         // Đăng nhập bằng Firebase Authentication
@@ -316,8 +547,7 @@ class AuthService extends ChangeNotifier {
         
         // Kiểm tra kết quả đăng nhập
         if (userCredential.user != null) {
-          debugPrint('✅ Đăng nhập Firebase trực tiếp thành công');
-          
+
           // Cập nhật trạng thái đăng nhập
           _user = userCredential.user;
           _isAuthenticated = true;
@@ -330,13 +560,12 @@ class AuthService extends ChangeNotifier {
           
           return true;
         } else {
-          debugPrint('❌ Đăng nhập Firebase trực tiếp thất bại: Không có người dùng');
+
           _errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.';
           return false;
         }
       } catch (firebaseError) {
-        debugPrint('❌ Lỗi khi đăng nhập qua Firebase trực tiếp: $firebaseError');
-        
+
         // Xử lý lỗi đăng nhập Firebase
         if (firebaseError is FirebaseAuthException) {
           _handleAuthError(firebaseError);
@@ -347,22 +576,19 @@ class AuthService extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi tổng thể khi đăng nhập: $e');
+
       _errorMessage = 'Có lỗi xảy ra khi đăng nhập: ${e.toString()}';
       return false;
     }
   }
 
-  // Log out
   Future<void> logout({BuildContext? context}) async {
     try {
-      debugPrint('🔄 AuthService: Đang đăng xuất...');
-      
+
       // 1. Xóa dữ liệu local trước khi đăng xuất khỏi Firebase
       try {
         if (context != null) {
-          debugPrint('🧹 AuthService: Đang xóa dữ liệu local thông qua context...');
-          
+
           // Xóa dữ liệu từ UserDataProvider
           final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
           await userDataProvider.clearLocalUserData();
@@ -380,21 +606,20 @@ class AuthService extends ChangeNotifier {
             // Water Provider
             final waterProvider = Provider.of<WaterProvider>(context, listen: false);
             await waterProvider.clearDataOnLogout();
-            
-            debugPrint('✅ AuthService: Đã xóa dữ liệu từ tất cả các providers');
+
           } catch (providerError) {
-            debugPrint('⚠️ AuthService: Không thể xóa dữ liệu từ một số providers: $providerError');
+
             // Tiếp tục quá trình đăng xuất
           }
         } else {
           // Nếu không có context, xóa dữ liệu từ SharedPreferences trực tiếp
-          debugPrint('🧹 AuthService: Không có context, xóa dữ liệu local từ SharedPreferences...');
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.clear();
-          debugPrint('✅ AuthService: Đã xóa dữ liệu từ SharedPreferences');
+
         }
       } catch (clearError) {
-        debugPrint('⚠️ AuthService: Lỗi khi xóa dữ liệu local: $clearError');
+
         // Tiếp tục quá trình đăng xuất ngay cả khi không thể xóa dữ liệu local
       }
       
@@ -407,10 +632,10 @@ class AuthService extends ChangeNotifier {
       _saveLoginStatus(false);
       
       notifyListeners();
-      debugPrint('✅ AuthService: Đăng xuất thành công! Trạng thái đăng nhập đã được cập nhật.');
+
     } catch (e) {
       _errorMessage = 'Đăng xuất thất bại. Vui lòng thử lại.';
-      debugPrint('❌ AuthService: Lỗi khi đăng xuất: $e');
+
       notifyListeners();
     }
   }
@@ -491,8 +716,7 @@ class AuthService extends ChangeNotifier {
       
       // Bỏ qua xác thực token với FastAPI sau khi chuyển đổi
       // Đã chuyển đổi tài khoản thành công trong Firebase
-      debugPrint('✅ Đã chuyển đổi tài khoản ẩn danh thành tài khoản email thành công');
-      
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -517,7 +741,10 @@ class AuthService extends ChangeNotifier {
         _errorMessage = 'Mật khẩu không chính xác.';
         break;
       case 'email-already-in-use':
-        _errorMessage = 'Email này đã được sử dụng.';
+        _errorMessage = 'Email này đã được sử dụng. Bạn đã đăng ký bằng Google hoặc phương thức khác? Vui lòng thử đăng nhập.';
+        break;
+      case 'account-exists-with-different-credential':
+        _errorMessage = 'Email này đã được sử dụng với phương thức đăng nhập khác. Vui lòng đăng nhập bằng email và mật khẩu.';
         break;
       case 'weak-password':
         _errorMessage = 'Mật khẩu quá yếu.';
@@ -534,151 +761,471 @@ class AuthService extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
   }
-  
-  // Save login status to SharedPreferences for persistence
+
   Future<void> _saveLoginStatus(bool isLoggedIn) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isLoggedIn', isLoggedIn);
     } catch (e) {
-      debugPrint('Error saving login status: $e');
+
     }
   }
   
-  // Check if user is premium (has account and is not anonymous)
+  // Kiểm tra xem người dùng có phải là người dùng premium không
   bool isPremiumUser() {
-    return _isAuthenticated && !(_user?.isAnonymous ?? true);
+    return _user != null && !_user!.isAnonymous;
   }
   
-  // Update profile data
-  Future<bool> updateProfile({String? displayName, String? photoURL}) async {
+  // Kiểm tra xem người dùng đã liên kết với email chưa
+  bool isLinkedWithEmail() {
+    if (_user == null) return false;
+    
+    // Kiểm tra xem email có tồn tại không
+    final hasEmail = _user!.email != null && _user!.email!.isNotEmpty;
+    
+    // Kiểm tra xem có phương thức đăng nhập bằng email/password không
+    final hasEmailProvider = _user!.providerData
+        .any((userInfo) => userInfo.providerId == 'password');
+    
+    return hasEmail && hasEmailProvider;
+  }
+  
+  // Kiểm tra xem người dùng đã liên kết với số điện thoại chưa
+  bool isLinkedWithPhone() {
+    if (_user == null) return false;
+    
+    // Kiểm tra xem số điện thoại có tồn tại không
+    final hasPhone = _user!.phoneNumber != null && _user!.phoneNumber!.isNotEmpty;
+    
+    // Kiểm tra xem có phương thức đăng nhập bằng số điện thoại không
+    final hasPhoneProvider = _user!.providerData
+        .any((userInfo) => userInfo.providerId == 'phone');
+    
+    return hasPhone || hasPhoneProvider;
+  }
+  
+  // Kiểm tra xem người dùng đã liên kết với Google chưa
+  bool isLinkedWithGoogle() {
+    if (_user == null) return false;
+    
+    return _user!.providerData
+        .any((userInfo) => userInfo.providerId == 'google.com');
+  }
+  
+  // Kiểm tra xem người dùng đã liên kết với Facebook chưa
+  bool isLinkedWithFacebook() {
+    if (_user == null) return false;
+    
+    return _user!.providerData
+        .any((userInfo) => userInfo.providerId == 'facebook.com');
+  }
+  
+  // Thêm email và mật khẩu cho tài khoản hiện tại
+  Future<bool> addEmail(String email, String password) async {
     if (_user == null) {
-      _errorMessage = 'Không có người dùng đăng nhập.';
+      _errorMessage = 'Người dùng chưa đăng nhập';
       return false;
     }
     
-    _isLoading = true;
-    _errorMessage = '';
-    notifyListeners();
-    
     try {
-      await _userService.updateUserProfile(
-        displayName: displayName,
-        photoURL: photoURL,
+      _isLoading = true;
+      notifyListeners();
+      
+      // Tạo credential cho email/password
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password,
       );
       
-      // Refresh user
-      _user = _auth.currentUser;
+      // Liên kết tài khoản
+      await _user!.linkWithCredential(credential);
+      
+      // Cập nhật user trong Firestore
+      await _userService.createOrUpdateUser(_user!);
       
       _isLoading = false;
       notifyListeners();
-      return true;
-    } catch (e) {
-      _errorMessage = 'Không thể cập nhật hồ sơ: $e';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-  
-  // Delete user account
-  Future<bool> deleteAccount() async {
-    if (_user == null) {
-      _errorMessage = 'Không có người dùng đăng nhập.';
-      return false;
-    }
-    
-    _isLoading = true;
-    _errorMessage = '';
-    notifyListeners();
-    
-    try {
-      await _userService.deleteUserAccount();
       
-      _isLoading = false;
-      _isAuthenticated = false;
-      _user = null;
-      
-      // Save login state locally
-      _saveLoginStatus(false);
-      
-      notifyListeners();
       return true;
     } on FirebaseAuthException catch (e) {
-      _handleAuthError(e);
+      _isLoading = false;
+      
+      switch (e.code) {
+        case 'email-already-in-use':
+          _errorMessage = 'Email này đã được sử dụng bởi tài khoản khác';
+          break;
+        case 'invalid-email':
+          _errorMessage = 'Email không hợp lệ';
+          break;
+        case 'weak-password':
+          _errorMessage = 'Mật khẩu không đủ mạnh';
+          break;
+        default:
+          _errorMessage = 'Lỗi: ${e.message}';
+      }
+      
+      notifyListeners();
       return false;
     } catch (e) {
-      _errorMessage = 'Có lỗi xảy ra. Vui lòng thử lại sau.';
       _isLoading = false;
+      _errorMessage = 'Lỗi: ${e.toString()}';
       notifyListeners();
       return false;
     }
   }
   
-  // Cập nhật thông tin người dùng thông qua API
-  Future<bool> updateUserProfileViaApi(Map<String, dynamic> userData) async {
-    // Bước 1: Xác thực người dùng
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      _errorMessage = 'Không có người dùng đăng nhập.';
+  // Tạo mật khẩu cho tài khoản đã có email
+  Future<bool> createPassword(String password) async {
+    if (_user == null) {
+      _errorMessage = 'Người dùng chưa đăng nhập';
       return false;
     }
     
-    _isLoading = true;
-    _errorMessage = '';
-    notifyListeners();
+    if (_user!.email == null || _user!.email!.isEmpty) {
+      _errorMessage = 'Tài khoản không có email';
+      return false;
+    }
     
     try {
-      debugPrint('🔄 Bỏ qua API, đang cập nhật thông tin người dùng trực tiếp vào Firebase...');
+      _isLoading = true;
+      notifyListeners();
       
-      // Bước 2: Chuẩn bị dữ liệu (đã được truyền vào qua tham số userData)
-      // Thêm trường name nếu chưa có
-      if (!userData.containsKey('name')) {
-        userData['name'] = userData['display_name'] ?? currentUser.displayName ?? currentUser.email ?? 'Người dùng';
-      }
+      // Tạo credential cho email/password
+      final credential = EmailAuthProvider.credential(
+        email: _user!.email!,
+        password: password,
+      );
       
-      // Thêm thời gian cập nhật
-      userData['updated_at'] = DateTime.now().toIso8601String();
+      // Liên kết tài khoản
+      await _user!.linkWithCredential(credential);
       
-      // Bước 3: Lưu trực tiếp vào Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .set(userData, SetOptions(merge: true));
-      
-      debugPrint('✅ Đã đồng bộ dữ liệu người dùng trực tiếp lên Firebase thành công');
-      
-      // Cập nhật thông tin người dùng trong Firebase Auth nếu cần
-      if (userData.containsKey('displayName') && userData['displayName'] != null) {
-        await currentUser.updateDisplayName(userData['displayName']);
-      }
-      
-      if (userData.containsKey('photoURL') && userData['photoURL'] != null) {
-        await currentUser.updatePhotoURL(userData['photoURL']);
-      }
+      // Cập nhật user trong Firestore
+      await _userService.createOrUpdateUser(_user!);
       
       _isLoading = false;
       notifyListeners();
+      
       return true;
-    } catch (e) {
-      debugPrint('❌ Lỗi khi cập nhật thông tin người dùng vào Firebase: $e');
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
       
-      // Xử lý lỗi cụ thể
-      if (e.toString().contains('permission-denied')) {
-        _errorMessage = 'Không có quyền cập nhật dữ liệu. Vui lòng đăng nhập lại.';
-      } else {
-        _errorMessage = 'Có lỗi xảy ra khi cập nhật dữ liệu: $e';
+      switch (e.code) {
+        case 'provider-already-linked':
+          _errorMessage = 'Tài khoản đã được liên kết với email/password';
+          break;
+        case 'weak-password':
+          _errorMessage = 'Mật khẩu không đủ mạnh';
+          break;
+        default:
+          _errorMessage = 'Lỗi: ${e.message}';
       }
       
-      _isLoading = false;
       notifyListeners();
-      
-      // Vẫn trả về true để ứng dụng tiếp tục hoạt động trong trường hợp lỗi không nghiêm trọng
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi: ${e.toString()}';
+      notifyListeners();
       return false;
     }
   }
   
-  // Cập nhật toàn bộ thông tin người dùng
+  // Kiểm tra yêu cầu mật khẩu
+  List<String> getMissingPasswordRequirements(String password) {
+    List<String> requirements = [];
+    
+    if (password.length < 8) {
+      requirements.add('Mật khẩu phải có ít nhất 8 ký tự');
+    }
+    
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      requirements.add('Mật khẩu phải chứa ít nhất một chữ hoa');
+    }
+    
+    if (!password.contains(RegExp(r'[a-z]'))) {
+      requirements.add('Mật khẩu phải chứa ít nhất một chữ thường');
+    }
+    
+    if (!password.contains(RegExp(r'[0-9]'))) {
+      requirements.add('Mật khẩu phải chứa ít nhất một chữ số');
+    }
+    
+    if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+      requirements.add('Mật khẩu phải chứa ít nhất một ký tự đặc biệt');
+    }
+    
+    return requirements;
+  }
+  
+  // Kiểm tra độ mạnh của mật khẩu theo chính sách Firebase
+  Map<String, bool> checkPasswordStrength(String password) {
+    Map<String, bool> requirements = {
+      'length': password.length >= 8,
+      'uppercase': password.contains(RegExp(r'[A-Z]')),
+      'lowercase': password.contains(RegExp(r'[a-z]')),
+      'numeric': password.contains(RegExp(r'[0-9]')),
+      'special': password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]')),
+    };
+    
+    return requirements;
+  }
+  
+  // Kiểm tra mật khẩu có đáp ứng yêu cầu Firebase không (theo thiết lập của bạn)
+  bool isPasswordValid(String password) {
+    final requirements = checkPasswordStrength(password);
+    
+    // Theo thiết lập Firebase của bạn: yêu cầu chữ hoa, chữ thường, và số
+    return requirements['length']! && 
+           requirements['uppercase']! && 
+           requirements['lowercase']! && 
+           requirements['numeric']!;
+  }
+  
+  // === Phương thức liên kết tài khoản ===
+  
+  // Liên kết tài khoản hiện tại với credential mới
+  Future<bool> linkWithCredential(AuthCredential credential) async {
+    if (_user == null) {
+      _errorMessage = 'Người dùng chưa đăng nhập';
+      return false;
+    }
+    
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      // Liên kết tài khoản
+      await _user!.linkWithCredential(credential);
+      
+      // Cập nhật user trong Firestore
+      await _userService.createOrUpdateUser(_user!);
+      
+      _isLoading = false;
+      notifyListeners();
+      
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      
+      switch (e.code) {
+        case 'provider-already-linked':
+          _errorMessage = 'Tài khoản đã được liên kết với phương thức này';
+          break;
+        case 'credential-already-in-use':
+          _errorMessage = 'Phương thức đăng nhập này đã được liên kết với tài khoản khác';
+          break;
+        default:
+          _errorMessage = 'Lỗi: ${e.message}';
+      }
+      
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // Liên kết với số điện thoại (bước 1: gửi OTP)
+  Future<bool> linkWithPhoneNumber(String phoneNumber, {
+    required Function(String) onCodeSent,
+    required Function(String) onVerificationFailed,
+  }) async {
+    if (_user == null) {
+      _errorMessage = 'Người dùng chưa đăng nhập';
+      return false;
+    }
+    
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // Tự động xác thực trên Android
+          try {
+            await _user!.linkWithCredential(credential);
+            _isLoading = false;
+            notifyListeners();
+          } catch (e) {
+            _isLoading = false;
+            _errorMessage = 'Lỗi khi liên kết: ${e.toString()}';
+            notifyListeners();
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          _isLoading = false;
+          String errorMessage = 'Lỗi xác thực: ${e.message ?? e.code}';
+          _errorMessage = errorMessage;
+          notifyListeners();
+          onVerificationFailed(errorMessage);
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+          _isLoading = false;
+          notifyListeners();
+          onCodeSent(verificationId);
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _verificationId = verificationId;
+          _isLoading = false;
+          notifyListeners();
+        },
+        timeout: Duration(seconds: 120),
+      );
+      
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // Xác nhận OTP để liên kết số điện thoại
+  Future<bool> confirmPhoneNumberLinking(String smsCode) async {
+    if (_user == null) {
+      _errorMessage = 'Người dùng chưa đăng nhập';
+      return false;
+    }
+    
+    if (_verificationId.isEmpty) {
+      _errorMessage = 'Không có mã xác thực';
+      return false;
+    }
+    
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      // Tạo credential từ mã OTP
+      final credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId,
+        smsCode: smsCode,
+      );
+      
+      // Liên kết với số điện thoại
+      await _user!.linkWithCredential(credential);
+      
+      // Cập nhật user trong Firestore
+      await _userService.createOrUpdateUser(_user!);
+      
+      _isLoading = false;
+      notifyListeners();
+      
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      
+      if (e.code == 'invalid-verification-code') {
+        _errorMessage = 'Mã OTP không hợp lệ';
+      } else if (e.code == 'credential-already-in-use') {
+        _errorMessage = 'Số điện thoại này đã được liên kết với tài khoản khác';
+      } else {
+        _errorMessage = 'Lỗi: ${e.message}';
+      }
+      
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // Xử lý lỗi khi liên kết tài khoản
+  void _handleLinkError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'provider-already-linked':
+        _errorMessage = 'Tài khoản đã được liên kết với phương thức này.';
+        break;
+      case 'email-already-in-use':
+        _errorMessage = 'Email này đã được sử dụng bởi một tài khoản khác.';
+        break;
+      case 'credential-already-in-use':
+        _errorMessage = 'Thông tin này đã được sử dụng bởi một tài khoản khác.';
+        break;
+      case 'requires-recent-login':
+        _errorMessage = 'Vui lòng đăng nhập lại để thực hiện thao tác này.';
+        break;
+      default:
+        _errorMessage = 'Có lỗi xảy ra: ${e.message}';
+    }
+    _isLoading = false;
+    notifyListeners();
+  }
+  
+  // Lấy danh sách các phương thức liên kết
+  List<String> getLinkedProviders() {
+    if (_user == null) return [];
+    
+    List<String> providers = [];
+    
+    for (final providerData in _user!.providerData) {
+      switch (providerData.providerId) {
+        case 'password':
+          providers.add('email');
+          break;
+        case 'phone':
+          providers.add('phone');
+          break;
+        case 'google.com':
+          providers.add('google');
+          break;
+        default:
+          providers.add(providerData.providerId);
+      }
+    }
+    
+    return providers;
+  }
+
+  // === Phương thức đồng bộ dữ liệu từ Firebase đến UserDataProvider ===
+  Future<void> syncUserDataToProvider(udp.UserDataProvider userDataProvider) async {
+    if (_user == null) {
+
+      throw Exception('Người dùng chưa đăng nhập');
+    }
+    
+    try {
+
+      final firestoreData = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_user!.uid)
+          .get();
+      
+      if (firestoreData.exists && firestoreData.data() != null) {
+
+        await userDataProvider.loadFromFirestoreData(firestoreData.data()!);
+
+      } else {
+
+        // Tạo dữ liệu cơ bản từ thông tin Firebase nếu không có trong Firestore
+        final basicData = await _getBasicUserData(_user!);
+        
+        // Sử dụng named parameters thay vì positional parameters
+        await userDataProvider.updateUserData(
+          name: basicData['display_name'] as String?,
+        );
+        
+        // Lưu dữ liệu cơ bản vào Firestore
+        await _userService.updateUserProfileToFirebase(basicData);
+      }
+    } catch (e) {
+
+      // Có thể throw lỗi lại để UI biết và xử lý
+      throw Exception('Không thể đồng bộ dữ liệu người dùng: ${e.toString()}');
+    }
+  }
+
+  // === Phương thức cập nhật đầy đủ thông tin profile người dùng ===
   Future<bool> updateFullUserProfile({
     String? displayName,
     String? photoURL,
@@ -695,25 +1242,22 @@ class AuthService extends ChangeNotifier {
     String? measurementSystem,
     Map<String, dynamic>? nutritionGoals,
   }) async {
-    // Bước 1: Xác thực người dùng
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      _errorMessage = 'Không có người dùng đăng nhập.';
-      return false;
-    }
-    
     _isLoading = true;
     _errorMessage = '';
     notifyListeners();
     
     try {
-      // Bước 2: Chuẩn bị dữ liệu
-      final Map<String, dynamic> userData = {
-        'updated_at': DateTime.now().toIso8601String(),
-        'name': displayName ?? currentUser.displayName ?? currentUser.email ?? 'Người dùng',
-      };
+      if (_user == null) {
+        _errorMessage = 'Người dùng chưa đăng nhập';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
       
-      // Thêm các thông tin cần cập nhật nếu có
+      // Chuẩn bị dữ liệu cập nhật
+      Map<String, dynamic> userData = {};
+      
+      // Chỉ thêm các trường không null vào userData
       if (displayName != null) userData['display_name'] = displayName;
       if (photoURL != null) userData['photo_url'] = photoURL;
       if (age != null) userData['age'] = age;
@@ -729,167 +1273,230 @@ class AuthService extends ChangeNotifier {
       if (measurementSystem != null) userData['measurement_system'] = measurementSystem;
       if (nutritionGoals != null) userData['nutrition_goals'] = nutritionGoals;
       
-      // Bước 3: Lưu dữ liệu trực tiếp vào Firestore
+      // Thêm thời gian cập nhật
+      userData['updated_at'] = FieldValue.serverTimestamp();
+      
+      // Cập nhật thông tin người dùng trong Firestore
+      bool success = await _userService.updateUserProfileToFirebase(userData);
+      
+      _isLoading = false;
+      notifyListeners();
+
+      return success;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi khi cập nhật thông tin: ${e.toString()}';
+      notifyListeners();
+
+      return false;
+    }
+  }
+  
+  // === Phương thức gửi email đặt lại mật khẩu ===
+  Future<bool> sendPasswordResetEmail(String email) async {
+    _isLoading = true;
+    _errorMessage = '';
+    notifyListeners();
+    
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      
+      switch (e.code) {
+        case 'invalid-email':
+          _errorMessage = 'Email không hợp lệ';
+          break;
+        case 'user-not-found':
+          _errorMessage = 'Không tìm thấy tài khoản với email này';
+          break;
+        default:
+          _errorMessage = 'Lỗi khi gửi email đặt lại mật khẩu: ${e.message}';
+      }
+      
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Lỗi không xác định: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+  
+  // === Phương thức đăng nhập bằng Google ===
+  Future<bool> signInWithGoogle() async {
+    _isLoading = true;
+    _errorMessage = '';
+    notifyListeners();
+    
+    try {
+      // Khởi tạo GoogleSignIn
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+
       try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .set(userData, SetOptions(merge: true));
-        
-        debugPrint('✅ Cập nhật thông tin người dùng vào Firestore thành công');
-        
-        // Cập nhật thông tin người dùng trong Firebase Auth nếu cần
-        if (displayName != null) {
-          await currentUser.updateDisplayName(displayName);
-        }
-        
-        if (photoURL != null) {
-          await currentUser.updatePhotoURL(photoURL);
-        }
-        
+        await googleSignIn.signOut();
+      } catch (e) {
+
+        // Bỏ qua lỗi này, tiếp tục quy trình
+      }
+      
+      // Hiển thị giao diện chọn tài khoản Google
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
         _isLoading = false;
-        notifyListeners();
-        return true;
-      } catch (firestoreError) {
-        debugPrint('❌ Lỗi khi cập nhật thông tin người dùng vào Firestore: $firestoreError');
-        _errorMessage = 'Lỗi khi lưu dữ liệu: $firestoreError';
-        _isLoading = false;
+        _errorMessage = 'Đã hủy đăng nhập bằng Google.';
         notifyListeners();
         return false;
       }
-    } catch (e) {
-      debugPrint('❌ Lỗi khi cập nhật thông tin người dùng: $e');
       
-      _errorMessage = 'Có lỗi xảy ra: $e';
+      // Lấy thông tin xác thực từ tài khoản Google
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      // Tạo AuthCredential từ thông tin xác thực Google
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      
+      try {
+        // Đăng nhập với Firebase Auth sử dụng credential
+        final userCredential = await _auth.signInWithCredential(credential);
+        _user = userCredential.user;
+        _isAuthenticated = true;
+        
+        // Lưu trạng thái đăng nhập
+        _saveLoginStatus(true);
+        
+        // Lấy và lưu token xác thực
+        if (_user != null) {
+          try {
+            // Lấy token từ Firebase
+            final idToken = await _user!.getIdToken();
+            // Lưu token vào SharedPreferences
+            await _saveAuthToken(idToken);
+
+          } catch (tokenError) {
+
+            // Không ảnh hưởng đến quy trình đăng nhập
+          }
+          
+          // Cập nhật thông tin người dùng trong Firestore
+          // Tạo dữ liệu cơ bản để tránh lỗi chuyển đổi kiểu
+          Map<String, dynamic> userData = {
+            'user_id': _user!.uid,
+            'email': _user!.email,
+            'name': _user!.displayName ?? '',
+            'photo_url': _user!.photoURL,
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+          
+          // Cập nhật vào Firestore
+          try {
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(_user!.uid)
+                .set(userData, SetOptions(merge: true));
+
+          } catch (firestoreError) {
+
+            // Tiếp tục xử lý đăng nhập ngay cả khi không thể lưu vào Firestore
+          }
+        }
+        
+        _isLoading = false;
+        notifyListeners();
+        
+        return true;
+      } catch (firebaseError) {
+        // Xử lý lỗi đặc biệt là type cast error từ PigeonUserDetails
+        if (firebaseError.toString().contains('PigeonUserDetails') || 
+            firebaseError.toString().contains('type cast') ||
+            firebaseError.toString().contains('subtype')) {
+
+          // Kiểm tra xem người dùng đã đăng nhập hay chưa
+          _user = _auth.currentUser;
+          if (_user != null) {
+            _isAuthenticated = true;
+            _saveLoginStatus(true);
+            
+            // Lấy và lưu token xác thực
+            try {
+              final idToken = await _user!.getIdToken();
+              await _saveAuthToken(idToken);
+
+            } catch (tokenError) {
+
+            }
+            
+            _isLoading = false;
+            notifyListeners();
+            return true;
+          }
+        }
+        throw firebaseError;
+      }
+    } on FirebaseAuthException catch (e) {
+      _handleAuthError(e);
+      return false;
+    } catch (e) {
+      _errorMessage = 'Có lỗi xảy ra khi đăng nhập với Google: ${e.toString()}';
+
       _isLoading = false;
       notifyListeners();
-      
       return false;
     }
   }
 
-  // Phương thức để lấy dữ liệu người dùng từ Firebase trực tiếp
-  Future<Map<String, dynamic>> getUserDataFromFirebase() async {
+  // Phương thức đăng nhập bằng số điện thoại (xác thực OTP)
+  Future<bool> signInWithPhoneNumber(String verificationId, String smsCode) async {
     try {
-      if (_user == null) {
-        print('❌ Không thể lấy dữ liệu: Không có người dùng đăng nhập');
-        return {};
-      }
-      
-      print('🔄 Đang lấy dữ liệu người dùng từ Firebase cho: ${_user!.uid}');
-      
-      // Lấy dữ liệu trực tiếp từ Firestore thay vì qua API
-      try {
-        final docSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_user!.uid)
-            .get();
-        
-        if (docSnapshot.exists && docSnapshot.data() != null) {
-          final userData = docSnapshot.data()!;
-          print('✅ Đã lấy dữ liệu người dùng từ Firebase thành công');
-          
-          // Đảm bảo các trường quan trọng không bị null
-          userData['user_id'] = userData['user_id'] ?? _user!.uid;
-          userData['email'] = userData['email'] ?? _user!.email;
-          userData['is_authenticated'] = true;
-          
-          // Đảm bảo trường name có giá trị
-          if (!userData.containsKey('name') || userData['name'] == null || userData['name'].toString().isEmpty) {
-            userData['name'] = _user!.displayName ?? _user!.email ?? 'Người dùng';
-          }
-          
-          return userData;
-        } else {
-          print('⚠️ Không tìm thấy dữ liệu người dùng trên Firebase');
-        }
-      } catch (firestoreError) {
-        print('❌ Lỗi khi đọc dữ liệu trực tiếp từ Firestore: $firestoreError');
-      }
-      
-      // Tạo dữ liệu cơ bản từ Firebase Auth nếu không tìm thấy trong Firestore
-      return {
-        'user_id': _user!.uid,
-        'email': _user!.email,
-        'display_name': _user!.displayName,
-        'photo_url': _user!.photoURL,
-        'is_authenticated': true,
-        'name': _user!.displayName ?? _user!.email ?? 'Người dùng',
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      };
-    } catch (e) {
-      print('❌ Lỗi khi lấy dữ liệu người dùng từ Firebase: $e');
-      
-      // Trả về dữ liệu cơ bản nếu có lỗi
-      return {
-        'user_id': _user?.uid,
-        'email': _user?.email,
-        'display_name': _user?.displayName,
-        'photo_url': _user?.photoURL,
-        'is_authenticated': true,
-        'name': _user?.displayName ?? _user?.email ?? 'Người dùng',
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-        'error': e.toString(),
-      };
-    }
-  }
+      // Kiểm tra xem đã đăng nhập hay chưa
+      if (FirebaseAuth.instance.currentUser?.phoneNumber != null) {
 
-  // Phương thức đọc dữ liệu người dùng từ Firebase và cập nhật vào UserDataProvider
-  Future<void> syncUserDataToProvider(dynamic userDataProvider) async {
-    try {
-      if (_user == null || userDataProvider == null) {
-        print('❌ Không thể đọc dữ liệu: Không có người dùng hoặc UserDataProvider');
-        return;
+        notifyListeners();
+        return true;
       }
+
+      // Nếu chưa đăng nhập, tiến hành xác thực OTP
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+
+      // Đăng nhập với credential
+      await _auth.signInWithCredential(credential);
       
-      print('🔄 Bắt đầu đọc dữ liệu từ Firebase cho người dùng: ${_user!.uid}');
-      
-      // Chỉ cập nhật thông tin cơ bản từ Firebase Auth để tránh lỗi PigeonUserDetails
-      try {
-        // Tạo đối tượng dữ liệu an toàn từ thông tin Firebase Auth
-        Map<String, dynamic> safeData = {
-          'name': _user!.displayName ?? _user!.email ?? 'Người dùng',
-          'email': _user!.email,
-          'photo_url': _user!.photoURL,
-          'user_id': _user!.uid,
-          'created_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
-        };
-          
-        // Cập nhật thông tin cơ bản an toàn vào UserDataProvider
-        try {
-          // Sử dụng phương thức setter thay vì truy cập trực tiếp
-          userDataProvider.setName(safeData['name']);
-          
-          if (safeData['email'] != null) {
-            userDataProvider.setEmail(safeData['email']);
-          }
-          
-          // Đặt userId để có thể tải dữ liệu đầy đủ sau
-          userDataProvider.setUserId(_user!.uid);
-          
-          print('✅ Đã cập nhật thông tin cơ bản từ Firebase Auth vào UserDataProvider');
-          
-          // Kích hoạt tải dữ liệu đầy đủ từ Firestore trong background sau một khoảng thời gian
-          Future.delayed(Duration(seconds: 1), () {
-            try {
-              // Gọi phương thức loadFromFirestore đã được cải thiện
-              userDataProvider.loadFromFirestore();
-            } catch (delayedError) {
-              print('⚠️ Không thể tải toàn bộ dữ liệu trong background: $delayedError');
-            }
-          });
-          
-        } catch (e) {
-          print('❌ Lỗi khi cập nhật thông tin cơ bản: $e');
-        }
-      } catch (authError) {
-        print('❌ Lỗi khi lấy thông tin từ Firebase Auth: $authError');
+      // Xác thực thành công, cập nhật trạng thái
+      _errorMessage = '';
+      notifyListeners();
+      return true;
+    } on FirebaseAuthException catch (e) {
+
+      switch (e.code) {
+        case 'invalid-verification-code':
+          _errorMessage = 'Mã xác thực không hợp lệ. Vui lòng kiểm tra lại.';
+          break;
+        case 'invalid-verification-id':
+          _errorMessage = 'ID xác thực không hợp lệ. Vui lòng thử gửi lại mã.';
+          break;
+        case 'session-expired':
+          _errorMessage = 'Phiên xác thực đã hết hạn. Vui lòng thử gửi lại mã.';
+          break;
+        default:
+          _errorMessage = e.message ?? 'Đã xảy ra lỗi khi xác thực.';
       }
+      notifyListeners();
+      return false;
     } catch (e) {
-      print('❌ Lỗi tổng thể khi đồng bộ dữ liệu người dùng: $e');
+
+      _errorMessage = 'Đã xảy ra lỗi khi xác thực. Vui lòng thử lại sau.';
+      notifyListeners();
+      return false;
     }
   }
 }

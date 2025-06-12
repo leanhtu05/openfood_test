@@ -19,6 +19,7 @@ class NutritionCircle extends StatefulWidget {
   final bool showTotalValue;
   final String? unitLabel;
   final String? tdeeGoal;
+  final String? totalValueText;
 
   const NutritionCircle({
     Key? key,
@@ -39,6 +40,7 @@ class NutritionCircle extends StatefulWidget {
     this.showTotalValue = false,
     this.unitLabel,
     this.tdeeGoal,
+    this.totalValueText,
   }) : super(key: key);
 
   @override
@@ -354,74 +356,22 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
                   ),
                 ),
                 
-              if (widget.showTotalValue)
+              if (widget.totalValueText != null && widget.showTotalValue)
                 Padding(
-                  padding: EdgeInsets.only(top: 4),
+                  padding: EdgeInsets.only(top: 6),
                   child: Container(
-                    width: widget.size * 1.8,
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: widget.color.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${widget.value.round()} / ${widget.max.round()}${widget.unitLabel != null ? ' ${widget.unitLabel}' : ''}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: widget.color,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
-                      softWrap: true,
-                    ),
-                  ),
-                ),
-                
-              if (widget.tdeeGoal != null)
-                Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Container(
-                    width: widget.size * 1.5,
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: widget.color.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'TDEE: ${widget.tdeeGoal}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: widget.color,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-                
-              if (widget.remainingText.isNotEmpty)
-                Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: Container(
-                    width: widget.size * 1.5,
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: widget.color.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: widget.color.withOpacity(0.2),
-                        width: 0.5,
-                      ),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      widget.remainingText,
+                      widget.totalValueText!,
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 12,
                         color: widget.color,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.bold,
                       ),
-                      textAlign: TextAlign.center,
-                      softWrap: true,
                     ),
                   ),
                 ),

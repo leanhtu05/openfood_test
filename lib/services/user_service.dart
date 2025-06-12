@@ -64,13 +64,9 @@ class UserService {
             'last_login_at': FirebaseHelpers.toISOString(DateTime.now()),
             'updated_at': FirebaseHelpers.toISOString(DateTime.now()),
           });
-          debugPrint('✅ Đã cập nhật thời gian đăng nhập');
         } catch (e) {
-          debugPrint('❌ Lỗi khi cập nhật thời gian đăng nhập: $e');
           // Không throw lỗi ở đây để tiếp tục xử lý
         }
-        
-        debugPrint('✅ Found existing user in Firestore');
         return existingUser;
       } else {
         // Create new user model
@@ -97,17 +93,12 @@ class UserService {
         // Lưu vào Firestore
         try {
           await docRef.set(userData);
-          debugPrint('✅ Đã tạo người dùng mới trong Firestore');
         } catch (e) {
-          debugPrint('❌ Lỗi khi tạo người dùng mới trong Firestore: $e');
           // Không throw lỗi ở đây để tiếp tục xử lý
         }
-        
-        debugPrint('✅ Tạo người dùng mới thành công');
         return newUser;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi xử lý thông tin người dùng: $e');
       // Tạo user cơ bản nếu có lỗi
       return AppUser.fromAuth(
         uid: firebaseUser.uid,
@@ -130,8 +121,6 @@ class UserService {
       
       if (docSnapshot.exists) {
         final userData = docSnapshot.data() as Map<String, dynamic>;
-        debugPrint('✅ Got user from Firestore');
-        
         // Xử lý dữ liệu trước khi sử dụng
         final processedData = FirebaseHelpers.processFirestoreData(userData);
         
@@ -156,7 +145,6 @@ class UserService {
         isAnonymous: currentUser.isAnonymous,
       );
     } catch (e) {
-      debugPrint('❌ Error getting current user: $e');
       return null;
     }
   }
@@ -170,12 +158,10 @@ class UserService {
       final docSnapshot = await _getUserDocRef(currentUser.uid).get();
       if (docSnapshot.exists) {
         final userData = docSnapshot.data() as Map<String, dynamic>;
-        debugPrint('✅ Read user profile from Firestore');
         return userData;
       }
       return null;
     } catch (e) {
-      debugPrint('Error reading user profile: $e');
       return null;
     }
   }
@@ -190,12 +176,10 @@ class UserService {
       if (docSnapshot.exists) {
         final userData = docSnapshot.data() as Map<String, dynamic>;
         final settings = userData['settings'] as Map<String, dynamic>?;
-        debugPrint('✅ Read user settings from Firestore');
         return settings;
       }
       return null;
     } catch (e) {
-      debugPrint('Error reading user settings: $e');
       return null;
     }
   }
@@ -210,12 +194,10 @@ class UserService {
       if (docSnapshot.exists) {
         final userData = docSnapshot.data() as Map<String, dynamic>;
         final preferences = userData['preferences'] as Map<String, dynamic>?;
-        debugPrint('✅ Read user preferences from Firestore');
         return preferences;
       }
       return null;
     } catch (e) {
-      debugPrint('Error reading user preferences: $e');
       return null;
     }
   }
@@ -242,13 +224,10 @@ class UserService {
                   (userData['settings'] as Map).containsKey('nutritionGoals')) {
           nutritionGoals = (userData['settings'] as Map)['nutritionGoals'] as Map<String, dynamic>?;
         }
-        
-        debugPrint('✅ Read user nutrition goals from Firestore');
         return nutritionGoals;
       }
       return null;
     } catch (e) {
-      debugPrint('Error reading user nutrition goals: $e');
       return null;
     }
   }
@@ -290,13 +269,10 @@ class UserService {
         if (userData.containsKey('goal')) {
           physicalData['goal'] = userData['goal'];
         }
-        
-        debugPrint('✅ Read user physical data from Firestore');
         return physicalData.isNotEmpty ? physicalData : null;
       }
       return null;
     } catch (e) {
-      debugPrint('Error reading user physical data: $e');
       return null;
     }
   }
@@ -313,6 +289,36 @@ class UserService {
       // Prepare API endpoint
       final endpoint = '$_baseApiUrl$_apiFirestoreEndpoint/${currentUser.uid}';
       
+      // Đảm bảo xử lý đúng định dạng cho diet_restrictions và health_conditions
+      if (userData.containsKey('diet_restrictions') && userData['diet_restrictions'] != null) {
+        // Đảm bảo diet_restrictions luôn là một List<String>
+        if (userData['diet_restrictions'] is! List) {
+          if (userData['diet_restrictions'] is String) {
+            userData['diet_restrictions'] = [userData['diet_restrictions']];
+          } else {
+            userData['diet_restrictions'] = [];
+          }
+        }
+        // Chuyển đổi tất cả các phần tử thành String
+        userData['diet_restrictions'] = (userData['diet_restrictions'] as List)
+            .map((item) => item.toString())
+            .toList();
+      }
+      
+      if (userData.containsKey('health_conditions') && userData['health_conditions'] != null) {
+        // Đảm bảo health_conditions luôn là một List<String>
+        if (userData['health_conditions'] is! List) {
+          if (userData['health_conditions'] is String) {
+            userData['health_conditions'] = [userData['health_conditions']];
+          } else {
+            userData['health_conditions'] = [];
+          }
+        }
+        // Chuyển đổi tất cả các phần tử thành String
+        userData['health_conditions'] = (userData['health_conditions'] as List)
+            .map((item) => item.toString())
+            .toList();
+      }
       // Make API call with PATCH method
       final response = await http.patch(
         Uri.parse(endpoint),
@@ -324,16 +330,10 @@ class UserService {
       );
       
       if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
-        debugPrint('✅ Successfully updated user profile via API');
         return true;
       } else {
-        debugPrint('❌ Failed to update user profile via API: ${response.statusCode}');
-        debugPrint('Response body: ${response.body}');
-        
         // Thử endpoint thay thế nếu endpoint chính thất bại
         final alternativeEndpoint = '$_baseApiUrl$_apiUserEndpoint';
-        debugPrint('⚠️ Trying alternative endpoint: $alternativeEndpoint');
-        
         final alternativeResponse = await http.put(
           Uri.parse(alternativeEndpoint),
           headers: {
@@ -347,16 +347,12 @@ class UserService {
         );
         
         if (alternativeResponse.statusCode == 200 || alternativeResponse.statusCode == 201 || alternativeResponse.statusCode == 204) {
-          debugPrint('✅ Successfully updated user profile via alternative API endpoint');
           return true;
         } else {
-          debugPrint('❌ Failed to update user profile via alternative API endpoint: ${alternativeResponse.statusCode}');
-          debugPrint('Response body: ${alternativeResponse.body}');
           return false;
         }
       }
     } catch (e) {
-      debugPrint('❌ Error updating user profile via API: $e');
       return false;
     }
   }
@@ -435,12 +431,9 @@ class UserService {
       final success = await updateUserProfileViaAPI(preparedData);
       
       if (!success) {
-        debugPrint('⚠️ Failed to update user profile via API, but Firebase Auth was updated');
       } else {
-        debugPrint('✅ Updated user profile via API');
       }
     } catch (e) {
-      debugPrint('Error updating user profile: $e');
       rethrow;
     }
   }
@@ -463,14 +456,11 @@ class UserService {
       final success = await updateUserProfileViaAPI(preparedData);
       
       if (!success) {
-        debugPrint('⚠️ Failed to mark user as deleted in API');
       }
       
       // Delete from Firebase Auth
       await currentUser.delete();
-      debugPrint('✅ User account deleted from Firebase Auth');
     } catch (e) {
-      debugPrint('Error deleting user account: $e');
       rethrow;
     }
   }
@@ -514,12 +504,9 @@ class UserService {
       final success = await updateUserProfileViaAPI(preparedData);
       
       if (!success) {
-        debugPrint('⚠️ Failed to update user profile in API after converting anonymous account');
       } else {
-        debugPrint('✅ User account converted and updated in API');
       }
     } catch (e) {
-      debugPrint('Error converting anonymous account: $e');
       rethrow;
     }
   }
@@ -527,8 +514,6 @@ class UserService {
   /// Xóa tất cả dữ liệu người dùng ở local
   Future<void> clearLocalUserData() async {
     try {
-      debugPrint('🧹 UserService: Đang xóa dữ liệu người dùng local...');
-      
       // 1. Xóa dữ liệu từ SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('user_data');
@@ -542,10 +527,7 @@ class UserService {
       if (_userDataProvider != null) {
         _userDataProvider!.resetData();
       }
-      
-      debugPrint('✅ UserService: Đã xóa tất cả dữ liệu người dùng local thành công');
     } catch (e) {
-      debugPrint('❌ UserService: Lỗi khi xóa dữ liệu người dùng local: $e');
       rethrow;
     }
   }
@@ -553,23 +535,32 @@ class UserService {
   /// Đồng bộ dữ liệu người dùng từ Firebase sau khi đăng nhập
   Future<void> syncUserDataFromFirebase() async {
     if (!isUserAuthenticated()) {
-      debugPrint('⚠️ UserService: Không thể đồng bộ dữ liệu - người dùng chưa đăng nhập hoặc đang ở chế độ ẩn danh');
       return;
     }
 
     try {
       final userId = getCurrentUserId()!;
-      debugPrint('🔄 UserService: Đang đồng bộ dữ liệu người dùng từ Firebase cho $userId...');
-
       // 1. Lấy thông tin người dùng từ Firestore
       final userDoc = await _firestore.collection('users').doc(userId).get();
       
       Map<String, dynamic>? userData;
       if (userDoc.exists) {
         userData = userDoc.data();
-        debugPrint('✅ UserService: Đã tìm thấy dữ liệu người dùng trên Firestore');
+        // In thông tin chi tiết về diet_restrictions và health_conditions
+        if (userData!.containsKey('diet_restrictions')) {
+        } else {
+        }
+        
+        if (userData.containsKey('health_conditions')) {
+        } else {
+        }
+        
+        // In thông tin activity_level
+        if (userData.containsKey('activity_level')) {
+        } else {
+        }
+        
       } else {
-        debugPrint('ℹ️ UserService: Không tìm thấy hồ sơ người dùng trên Firestore, sử dụng thông tin từ Firebase Auth');
         // Sử dụng thông tin cơ bản từ Firebase Auth
         userData = {
           'id': userId,
@@ -586,15 +577,11 @@ class UserService {
       // 3. Cập nhật UserDataProvider nếu có
       if (_userDataProvider != null) {
         _userDataProvider!.loadUserDataFromMap(userData!);
-        debugPrint('✅ UserService: Đã cập nhật UserDataProvider với dữ liệu từ Firebase');
       }
 
       // 4. Tiến hành tải các loại dữ liệu khác (tùy chỉnh theo ứng dụng)
       await _syncAdditionalUserData(userId);
-
-      debugPrint('✅ UserService: Hoàn tất đồng bộ dữ liệu người dùng từ Firebase');
     } catch (e) {
-      debugPrint('❌ UserService: Lỗi khi đồng bộ dữ liệu từ Firebase: $e');
       rethrow;
     }
   }
@@ -602,8 +589,6 @@ class UserService {
   /// Đồng bộ dữ liệu bổ sung của người dùng (thực phẩm, nước uống, bài tập,...)
   Future<void> _syncAdditionalUserData(String userId) async {
     try {
-      debugPrint('🔄 UserService: Đang đồng bộ dữ liệu bổ sung...');
-      
       final prefs = await SharedPreferences.getInstance();
       
       // Đồng bộ dữ liệu nước uống
@@ -611,10 +596,8 @@ class UserService {
         final waterData = await _userProfileAPI.getUserWaterEntries(userId);
         if (waterData != null && waterData.isNotEmpty) {
           await prefs.setString('water_entries', jsonEncode(waterData));
-          debugPrint('✅ UserService: Đã đồng bộ ${waterData.length} bản ghi nước uống');
         }
       } catch (e) {
-        debugPrint('⚠️ UserService: Lỗi khi đồng bộ dữ liệu nước uống: $e');
       }
       
       // Đồng bộ dữ liệu bài tập
@@ -622,10 +605,8 @@ class UserService {
         final exerciseData = await _userProfileAPI.getUserExerciseEntries(userId);
         if (exerciseData != null && exerciseData.isNotEmpty) {
           await prefs.setString('exercise_entries', jsonEncode(exerciseData));
-          debugPrint('✅ UserService: Đã đồng bộ ${exerciseData.length} bản ghi bài tập');
         }
       } catch (e) {
-        debugPrint('⚠️ UserService: Lỗi khi đồng bộ dữ liệu bài tập: $e');
       }
       
       // Đồng bộ dữ liệu thực phẩm
@@ -633,29 +614,56 @@ class UserService {
         final foodData = await _userProfileAPI.getUserFoodEntries(userId);
         if (foodData != null && foodData.isNotEmpty) {
           await prefs.setString('food_entries', jsonEncode(foodData));
-          debugPrint('✅ UserService: Đã đồng bộ ${foodData.length} bản ghi thực phẩm');
         }
       } catch (e) {
-        debugPrint('⚠️ UserService: Lỗi khi đồng bộ dữ liệu thực phẩm: $e');
       }
-      
-      debugPrint('✅ UserService: Đã đồng bộ xong dữ liệu bổ sung');
     } catch (e) {
-      debugPrint('❌ UserService: Lỗi khi đồng bộ dữ liệu bổ sung: $e');
     }
   }
 
   /// Cập nhật thông tin người dùng lên Firebase
   Future<bool> updateUserProfileToFirebase(Map<String, dynamic> userData) async {
     if (!isUserAuthenticated()) {
-      debugPrint('⚠️ UserService: Không thể cập nhật thông tin - người dùng chưa đăng nhập');
       return false;
     }
 
     try {
       final userId = getCurrentUserId()!;
-      debugPrint('🔄 UserService: Đang cập nhật thông tin người dùng lên Firebase...');
+      // Xử lý đặc biệt cho các trường danh sách
+      if (userData.containsKey('diet_restrictions') && userData['diet_restrictions'] != null) {
+        // Đảm bảo diet_restrictions luôn là một List<String>
+        if (userData['diet_restrictions'] is! List) {
+          if (userData['diet_restrictions'] is String) {
+            userData['diet_restrictions'] = [userData['diet_restrictions']];
+          } else {
+            userData['diet_restrictions'] = [];
+          }
+        }
+        // Chuyển đổi tất cả các phần tử thành String
+        userData['diet_restrictions'] = (userData['diet_restrictions'] as List)
+            .map((item) => item.toString())
+            .toList();
+      }
       
+      if (userData.containsKey('health_conditions') && userData['health_conditions'] != null) {
+        // Đảm bảo health_conditions luôn là một List<String>
+        if (userData['health_conditions'] is! List) {
+          if (userData['health_conditions'] is String) {
+            userData['health_conditions'] = [userData['health_conditions']];
+          } else {
+            userData['health_conditions'] = [];
+          }
+        }
+        // Chuyển đổi tất cả các phần tử thành String
+        userData['health_conditions'] = (userData['health_conditions'] as List)
+            .map((item) => item.toString())
+            .toList();
+      }
+      
+      // Đảm bảo có trường updated_at
+      if (!userData.containsKey('updated_at')) {
+        userData['updated_at'] = FieldValue.serverTimestamp();
+      }
       // Cập nhật thông tin người dùng trên Firestore
       await _firestore.collection('users').doc(userId).set(
         userData,
@@ -669,11 +677,8 @@ class UserService {
           photoURL: userData['photo_url'],
         );
       }
-      
-      debugPrint('✅ UserService: Đã cập nhật thông tin người dùng lên Firebase thành công');
       return true;
     } catch (e) {
-      debugPrint('❌ UserService: Lỗi khi cập nhật thông tin người dùng: $e');
       return false;
     }
   }
@@ -687,8 +692,6 @@ class UserService {
       final userDoc = await _firestore.collection('users').doc(userId).get();
       
       if (!userDoc.exists) {
-        debugPrint('🆕 UserService: Tạo hồ sơ người dùng mới cho $userId');
-        
         // Tạo hồ sơ mới với thông tin cơ bản
         await _firestore.collection('users').doc(userId).set({
           'id': userId,
@@ -698,11 +701,8 @@ class UserService {
           'created_at': FieldValue.serverTimestamp(),
           'updated_at': FieldValue.serverTimestamp(),
         });
-        
-        debugPrint('✅ UserService: Đã tạo hồ sơ người dùng mới thành công');
       }
     } catch (e) {
-      debugPrint('❌ UserService: Lỗi khi kiểm tra/tạo hồ sơ người dùng: $e');
     }
   }
 } 

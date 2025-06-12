@@ -1,4 +1,5 @@
 {
     "cmake.sourceDirectory": "C:/Users/LENOVO/AndroidStudioProjects/openfood_test/windows",
-    "java.configuration.updateBuildConfiguration": "disabled"
+    "java.configuration.updateBuildConfiguration": "disabled",
+    "java.compile.nullAnalysis.mode": "automatic"
 }

@@ -16,7 +16,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:openfood/services/food_recognition_service.dart';
 import 'package:openfood/services/food_database_service.dart';
 import 'package:openfood/services/onboarding_service.dart';
 import 'screens/onboarding/onboarding_screen.dart';
@@ -32,6 +31,7 @@ import 'dart:async';
 import 'package:openfood/services/api_service.dart';
 import 'screens/admin/firestore_admin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/user_service.dart';
 
 bool isFirebaseInitialized = false;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -141,6 +141,36 @@ Future<void> main() async {
   // Khởi tạo các service
   await initializeServices();
 
+  // Khởi tạo shared preferences cho local storage
+  await SharedPreferences.getInstance();
+  
+  // Đảm bảo việc chuyển đổi dữ liệu từ Camel Case sang Snake Case đã hoàn tất
+  final userDataProvider = UserDataProvider();
+  await userDataProvider.forceCompleteMigration();
+  
+  // Tải dữ liệu người dùng từ local storage
+  await userDataProvider.loadUserData();
+  debugPrint('📱 Ứng dụng đã khởi động và tải dữ liệu người dùng từ local storage');
+  
+  // Kiểm tra đăng nhập và tải dữ liệu từ Firestore nếu cần
+  User? currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser != null) {
+    debugPrint('🔐 Đã phát hiện người dùng đang đăng nhập: ${currentUser.uid}');
+    debugPrint('📧 Email: ${currentUser.email}');
+    debugPrint('📱 Số điện thoại: ${currentUser.phoneNumber}');
+    
+    try {
+      // Tải dữ liệu từ Firestore cho người dùng đã đăng nhập
+      final userService = UserService();
+      await userService.syncUserDataFromFirebase();
+      debugPrint('✅ Đã đồng bộ dữ liệu người dùng từ Firestore sau khi khởi động');
+    } catch (e) {
+      debugPrint('❌ Lỗi khi đồng bộ dữ liệu người dùng sau khi khởi động: $e');
+    }
+  } else {
+    debugPrint('ℹ️ Không có người dùng đăng nhập, sử dụng dữ liệu cục bộ');
+  }
+
   runApp(
     MultiProvider(
       providers: [
@@ -244,8 +274,8 @@ Future<void> main() async {
 Future<void> initializeServices() async {
   try {
     // Khởi tạo Food Recognition Service
-    final foodRecognitionService = FoodRecognitionService();
-    await foodRecognitionService.initialize();
+
+
 
     // Khởi tạo Food Database Service
     final foodDatabaseService = FoodDatabaseService();

@@ -634,7 +634,7 @@ class WaterProvider with ChangeNotifier {
                                 SnackBar(
                                   content: Text('Đã thêm $selectedAmount ml ${drinkNames[selectedType]}'),
                                   backgroundColor: drinkColors[selectedType],
-                                  behavior: SnackBarBehavior.floating,
+                                  behavior: SnackBarBehavior.fixed,
                                 ),
                               );
                             },

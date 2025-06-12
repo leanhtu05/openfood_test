@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
 import 'onboarding_screen.dart';
@@ -15,19 +16,65 @@ class AgeSelectionPage extends StatefulWidget {
   State<AgeSelectionPage> createState() => _AgeSelectionPageState();
 }
 
-class _AgeSelectionPageState extends State<AgeSelectionPage> {
+class _AgeSelectionPageState extends State<AgeSelectionPage> with SingleTickerProviderStateMixin {
   int age = 30;
+  late FixedExtentScrollController _scrollController;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<Color?> _colorAnimation;
   
   @override
   void initState() {
     super.initState();
+    // Khởi tạo ScrollController với vị trí ban đầu là 30-1 = 29
+    _scrollController = FixedExtentScrollController(initialItem: 29);
+    
+    // Khởi tạo AnimationController
+    _animationController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 300),
+    );
+    
+    // Khởi tạo animation kích thước
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.2,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.elasticOut,
+      ),
+    );
+    
+    // Khởi tạo animation màu sắc
+    _colorAnimation = ColorTween(
+      begin: OnboardingStyles.primaryColor,
+      end: OnboardingStyles.primaryColor,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    
     // Lấy dữ liệu từ provider khi khởi tạo
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userData = Provider.of<UserDataProvider>(context, listen: false);
       setState(() {
         age = userData.age;
+        
+        // Cập nhật vị trí của ScrollController khi có age
+        int initialPickerIndex = age - 1; // age 1 = index 0
+        _scrollController.jumpToItem(initialPickerIndex);
       });
     });
+  }
+  
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _animationController.dispose();
+    super.dispose();
   }
   
   void _saveAge(int newAge) {
@@ -43,6 +90,36 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
         ),
       );
     }
+  }
+
+  // Hàm tạo màu sắc theo tuổi
+  Color _getAgeColor(int age) {
+    if (age < 18) {
+      return Colors.lightBlue;
+    } else if (age < 30) {
+      return Colors.green;
+    } else if (age < 50) {
+      return OnboardingStyles.primaryColor;
+    } else if (age < 70) {
+      return Colors.orange;
+    } else {
+      return Colors.deepOrange;
+    }
+  }
+  
+  // Khởi chạy animation khi thay đổi tuổi
+  void _animateAgeChange(int newAge) {
+    _colorAnimation = ColorTween(
+      begin: _colorAnimation.value ?? OnboardingStyles.primaryColor,
+      end: _getAgeColor(newAge),
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    
+    _animationController.forward(from: 0);
   }
 
   @override
@@ -121,126 +198,76 @@ class _AgeSelectionPageState extends State<AgeSelectionPage> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  const SizedBox(height: 40),
-                  
-                  // Age Selector
-                  Center(
-                    child: Container(
-                      width: 150,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: OnboardingStyles.primaryColor,
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        '$age',
-                        style: TextStyle(
-                          fontSize: 64,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  
-                  // Selector buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Decrease age button
-                      IconButton(
-                        onPressed: () {
-                          if (age > 1) {
-                            setState(() {
-                              age--;
-                            });
-                            _saveAge(age);
-                          }
-                        },
-                        icon: Icon(Icons.remove_circle, size: 40),
-                        color: OnboardingStyles.primaryColor,
-                      ),
-                      const SizedBox(width: 20),
-                      
-                      // Age slider - đảm bảo có Material ancestor
-                      Expanded(
-                        child: Material(
-                          color: Colors.transparent,
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: OnboardingStyles.primaryColor,
-                              inactiveTrackColor: Colors.grey.shade300,
-                              thumbColor: OnboardingStyles.primaryColor,
-                              overlayColor: OnboardingStyles.primaryColor.withOpacity(0.2),
-                              valueIndicatorColor: OnboardingStyles.primaryColor,
-                              valueIndicatorTextStyle: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                  // Thay thế CupertinoPicker bằng ListWheelScrollView
+                  Container(
+                    height: 300,
+                    child: ListWheelScrollView.useDelegate(
+                      controller: _scrollController,
+                      itemExtent: 50,
+                      perspective: 0.005,
+                      diameterRatio: 1.8,
+                      physics: FixedExtentScrollPhysics(),
+                      onSelectedItemChanged: (int selectedItemIndex) {
+                        setState(() {
+                          age = selectedItemIndex + 1; // Chuyển index về tuổi (index 0 = tuổi 1)
+                          _animateAgeChange(age);
+                        });
+                        _saveAge(age);
+                      },
+                      childDelegate: ListWheelChildBuilderDelegate(
+                        childCount: 120,
+                        builder: (context, index) {
+                          final ageValue = index + 1; // index 0 = tuổi 1
+                          final isSelected = ageValue == age;
+                          
+                          return Container(
+                            margin: EdgeInsets.symmetric(vertical: 5, horizontal: 20),
+                            decoration: isSelected 
+                              ? BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.blue,
+                                    width: 2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(15),
+                                  color: Colors.blue.withOpacity(0.1),
+                                )
+                              : null,
+                            alignment: Alignment.center,
+                            child: Text(
+                              '$ageValue',
+                              style: TextStyle(
+                                fontSize: isSelected ? 36 : 30,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                color: isSelected 
+                                  ? Colors.black 
+                                  : Colors.grey,
                               ),
                             ),
-                            child: Slider(
-                              min: 1,
-                              max: 120,
-                              divisions: 119,
-                              value: age.toDouble(),
-                              label: '$age',
-                              onChanged: (value) {
-                                setState(() {
-                                  age = value.toInt();
-                                });
-                                _saveAge(age);
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      
-                      // Increase age button
-                      IconButton(
-                        onPressed: () {
-                          if (age < 120) {
-                            setState(() {
-                              age++;
-                            });
-                            _saveAge(age);
-                          }
+                          );
                         },
-                        icon: Icon(Icons.add_circle, size: 40),
-                        color: OnboardingStyles.primaryColor,
-                      ),
-                    ],
-                  ),
-                  
-                  // Add "Done" button when in update mode
-                  if (widget.updateMode) ...[
-                    const SizedBox(height: 30),
-                    Container(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: OnboardingStyles.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                        child: Text(
-                          'Hoàn thành',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
                       ),
                     ),
-                  ],
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Thêm chú thích
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Center(
+                      child: Text(
+                        'Vuốt lên/xuống để chọn tuổi của bạn',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 30),
+                                  
                 ],
               ),
             ),

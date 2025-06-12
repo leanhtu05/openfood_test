@@ -32,24 +32,24 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
+
         return {};
       }
       
       // Kiểm tra Google Play Services
       final isGooglePlayAvailable = await FirebaseHelpers.isGooglePlayServicesAvailable();
       if (!isGooglePlayAvailable) {
-        debugPrint('⚠️ Google Play Services không khả dụng, sẽ thử lấy dữ liệu trực tiếp từ Firestore');
+
         // Thử lấy dữ liệu trực tiếp từ Firestore
         try {
           final docSnapshot = await _firestore.collection('users').doc(uid).get();
           
           if (docSnapshot.exists && docSnapshot.data() != null) {
-            debugPrint('✅ Đã lấy dữ liệu người dùng trực tiếp từ Firestore');
+
             return docSnapshot.data()!;
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi lấy dữ liệu trực tiếp từ Firestore: $e');
+
         }
         return {};
       }
@@ -59,18 +59,16 @@ class FirestoreService {
       if (docSnapshot.exists) {
         final data = docSnapshot.data();
         if (data != null) {
-          debugPrint('✅ Got user profile from Firestore');
-          
+
           // Xử lý các trường thời gian để đảm bảo tương thích
           final processedData = FirebaseHelpers.processFirestoreData(data);
           return processedData;
         }
       }
-      
-      debugPrint('⚠️ User profile not found in Firestore');
+
       return {};
     } catch (e) {
-      debugPrint('❌ Error getting user profile from Firestore: $e');
+
       return {};
     }
   }
@@ -95,23 +93,23 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
+
         return {};
       }
       
       // Kiểm tra Google Play Services
       final isGooglePlayAvailable = await FirebaseHelpers.isGooglePlayServicesAvailable();
       if (!isGooglePlayAvailable) {
-        debugPrint('⚠️ Google Play Services không khả dụng, sẽ thử lấy dữ liệu từ API');
+
         // Thử lấy dữ liệu từ API
         try {
           final apiData = await ApiService.getUserMealPlan(uid);
           if (apiData != null) {
-            debugPrint('✅ Đã lấy kế hoạch ăn từ API');
+
             return apiData;
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi lấy kế hoạch ăn từ API: $e');
+
         }
         return {};
       }
@@ -122,7 +120,7 @@ class FirestoreService {
       if (latestDocSnapshot.exists) {
         final data = latestDocSnapshot.data();
         if (data != null) {
-          debugPrint('✅ Got meal plan from latest_meal_plans');
+
           return FirebaseHelpers.processFirestoreData(data);
         }
       }
@@ -133,15 +131,14 @@ class FirestoreService {
       if (docSnapshot.exists) {
         final data = docSnapshot.data();
         if (data != null) {
-          debugPrint('✅ Got meal plan from meal_plans');
+
           return FirebaseHelpers.processFirestoreData(data);
         }
       }
-      
-      debugPrint('⚠️ Meal plan not found in both collections');
+
       return {};
     } catch (e) {
-      debugPrint('❌ Error getting meal plan from Firestore: $e');
+
       return {};
     }
   }
@@ -151,7 +148,7 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
+
         return [];
       }
       
@@ -162,14 +159,13 @@ class FirestoreService {
           .get();
       
       if (querySnapshot.docs.isNotEmpty) {
-        debugPrint('✅ Got ${querySnapshot.docs.length} food entries from Firestore');
+
         return querySnapshot.docs.map((doc) => doc.data()).toList();
       }
-      
-      debugPrint('⚠️ No food entries found for date $date');
+
       return [];
     } catch (e) {
-      debugPrint('❌ Error getting food entries from Firestore: $e');
+
       return [];
     }
   }
@@ -179,7 +175,7 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
+
         return [];
       }
       
@@ -190,14 +186,13 @@ class FirestoreService {
           .get();
       
       if (querySnapshot.docs.isNotEmpty) {
-        debugPrint('✅ Got ${querySnapshot.docs.length} exercise entries from Firestore');
+
         return querySnapshot.docs.map((doc) => doc.data()).toList();
       }
-      
-      debugPrint('⚠️ No exercise entries found for date $date');
+
       return [];
     } catch (e) {
-      debugPrint('❌ Error getting exercise entries from Firestore: $e');
+
       return [];
     }
   }
@@ -207,7 +202,7 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
+
         return [];
       }
       
@@ -218,14 +213,13 @@ class FirestoreService {
           .get();
       
       if (querySnapshot.docs.isNotEmpty) {
-        debugPrint('✅ Got ${querySnapshot.docs.length} water entries from Firestore');
+
         return querySnapshot.docs.map((doc) => doc.data()).toList();
       }
-      
-      debugPrint('⚠️ No water entries found for date $date');
+
       return [];
     } catch (e) {
-      debugPrint('❌ Error getting water entries from Firestore: $e');
+
       return [];
     }
   }
@@ -235,7 +229,7 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
+
         return [];
       }
       
@@ -245,14 +239,12 @@ class FirestoreService {
           .get();
       
       if (querySnapshot.docs.isNotEmpty) {
-        debugPrint('✅ Got ${querySnapshot.docs.length} favorites from Firestore');
+
         return querySnapshot.docs.map((doc) => doc.data()).toList();
       }
-      
-      debugPrint('⚠️ No favorites found');
+
       return [];
     } catch (e) {
-      debugPrint('❌ Error getting favorites from Firestore: $e');
       return [];
     }
   }
@@ -275,11 +267,8 @@ class FirestoreService {
     latestSubscription = _firestore.collection('latest_meal_plans').doc(uid).snapshots().listen(
       (latestSnapshot) {
         if (latestSnapshot.exists && latestSnapshot.data() != null) {
-          debugPrint('✅ Streaming meal plan from latest_meal_plans');
           controller.add(latestSnapshot.data()!);
         } else {
-          debugPrint('⚠️ No data in latest_meal_plans, trying meal_plans');
-          
           // Hủy đăng ký từ stream hiện tại
           regularSubscription?.cancel();
           
@@ -287,22 +276,18 @@ class FirestoreService {
           regularSubscription = _firestore.collection('meal_plans').doc(uid).snapshots().listen(
             (snapshot) {
               if (snapshot.exists && snapshot.data() != null) {
-                debugPrint('✅ Streaming meal plan from meal_plans');
                 controller.add(snapshot.data()!);
               } else {
-                debugPrint('⚠️ No data found in both collections');
                 controller.add({});
               }
             },
             onError: (error) {
-              debugPrint('❌ Error streaming from meal_plans: $error');
               controller.addError(error);
             }
           );
         }
       },
       onError: (error) {
-        debugPrint('❌ Error streaming from latest_meal_plans: $error');
         controller.addError(error);
       }
     );
@@ -321,7 +306,6 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
         return;
       }
       
@@ -332,12 +316,9 @@ class FirestoreService {
       });
       
       if (success) {
-        debugPrint('✅ Meal plan updated via API');
       } else {
-        debugPrint('⚠️ Failed to update meal plan via API');
       }
     } catch (e) {
-      debugPrint('❌ Error updating meal plan: $e');
     }
   }
   
@@ -346,7 +327,6 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ No authenticated user found');
         return;
       }
       
@@ -357,12 +337,9 @@ class FirestoreService {
       final success = await ApiService.sendUserProfileToFirestore(uid, preparedData);
       
       if (success) {
-        debugPrint('✅ User profile updated via API');
       } else {
-        debugPrint('⚠️ Failed to update user profile via API');
       }
     } catch (e) {
-      debugPrint('❌ Error updating user profile: $e');
     }
   }
   
@@ -384,11 +361,8 @@ class FirestoreService {
       // Tạo một ID mới nếu không có
       final docRef = _firestore.collection('food_entries').doc();
       await docRef.set(preparedData);
-      
-      debugPrint('✅ Đã thêm bản ghi thức ăn vào Firestore với ID: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      debugPrint('❌ Lỗi khi thêm bản ghi thức ăn vào Firestore: $e');
       throw e;
     }
   }
@@ -415,10 +389,7 @@ class FirestoreService {
       
       // Cập nhật bản ghi
       await _firestore.collection('food_entries').doc(entry.id).update(preparedData);
-      
-      debugPrint('✅ Đã cập nhật bản ghi thức ăn trong Firestore với ID: ${entry.id}');
     } catch (e) {
-      debugPrint('❌ Lỗi khi cập nhật bản ghi thức ăn trong Firestore: $e');
       throw e;
     }
   }
@@ -441,11 +412,8 @@ class FirestoreService {
       // Tạo một ID mới nếu không có
       final docRef = _firestore.collection('exercise_entries').doc();
       await docRef.set(preparedData);
-      
-      debugPrint('✅ Đã thêm bản ghi tập luyện vào Firestore với ID: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      debugPrint('❌ Lỗi khi thêm bản ghi tập luyện vào Firestore: $e');
       throw e;
     }
   }
@@ -468,11 +436,8 @@ class FirestoreService {
       // Tạo một ID mới nếu không có
       final docRef = _firestore.collection('water_entries').doc();
       await docRef.set(preparedData);
-      
-      debugPrint('✅ Đã thêm bản ghi nước vào Firestore với ID: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      debugPrint('❌ Lỗi khi thêm bản ghi nước vào Firestore: $e');
       throw e;
     }
   }
@@ -482,7 +447,6 @@ class FirestoreService {
     try {
       final uid = userId;
       if (uid == null) {
-        debugPrint('❌ Không có người dùng đăng nhập');
         return [];
       }
       
@@ -497,8 +461,6 @@ class FirestoreService {
           .get();
       
       if (querySnapshot.docs.isNotEmpty) {
-        debugPrint('✅ Đã lấy ${querySnapshot.docs.length} bản ghi thức ăn từ Firestore cho ngày $dateString');
-        
         // Chuyển đổi từ document sang FoodEntry
         return querySnapshot.docs.map((doc) {
           final data = FirebaseHelpers.processFirestoreData(doc.data());
@@ -506,11 +468,8 @@ class FirestoreService {
           return FoodEntry.fromJson(data);
         }).toList();
       }
-      
-      debugPrint('⚠️ Không tìm thấy bản ghi thức ăn cho ngày $dateString');
       return [];
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy bản ghi thức ăn từ Firestore: $e');
       return [];
     }
   }

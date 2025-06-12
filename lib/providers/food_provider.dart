@@ -1,12 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+
 import 'dart:math';
 import '../models/food_entry.dart';
 import '../models/food_item.dart';
 import '../services/food_database_service.dart';
-import '../services/food_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
@@ -21,7 +20,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FoodProvider with ChangeNotifier {
   final FoodDatabaseService _databaseService = FoodDatabaseService();
-  final FoodRecognitionService _recognitionService = FoodRecognitionService();
   final _uuid = Uuid();
   final Random _random = Random(); // Biến ngẫu nhiên để sử dụng trong demo mode
   
@@ -30,6 +28,7 @@ class FoodProvider with ChangeNotifier {
   List<FoodItem> _recentItems = [];
   String _selectedDate = DateTime.now().toIso8601String().split('T')[0];
   bool _isLoading = false;
+  bool _isDuplicateCheckEnabled = true; // Biến kiểm soát việc kiểm tra trùng lặp
   
   Map<String, dynamic>? _dailyNutritionSummary;
   List<FoodEntry> _dailyMeals = [];
@@ -663,6 +662,22 @@ class FoodProvider with ChangeNotifier {
     try {
       debugPrint('🔄 addFoodEntry: Đang thêm mục nhập thực phẩm "${entry.description}" với ID ${entry.id}');
       
+      // Kiểm tra và xóa các món trùng lặp trước khi thêm mới
+      await removeDuplicateFoodEntries();
+      
+      // Kiểm tra xem có món ăn tương tự không (cùng ngày, cùng loại, cùng mô tả)
+      final similarEntries = _foodEntries.where((existingEntry) => 
+        existingEntry.description == entry.description &&
+        existingEntry.mealType == entry.mealType &&
+        existingEntry.dateTime.toIso8601String().split('T')[0] == entry.dateTime.toIso8601String().split('T')[0]
+      ).toList();
+      
+      if (similarEntries.isNotEmpty) {
+        debugPrint('⚠️ addFoodEntry: Phát hiện món ăn tương tự. Sẽ cập nhật món ăn này thay vì tạo mới');
+        final existingEntry = similarEntries.first;
+        return await updateFoodEntry(entry.copyWith(id: existingEntry.id));
+      }
+      
       // Thêm vào danh sách local
       _foodEntries.add(entry);
       notifyListeners();
@@ -1274,6 +1289,9 @@ class FoodProvider with ChangeNotifier {
       debugPrint('⚠️ Không có người dùng đăng nhập, không thể tải dữ liệu từ Firestore');
       return;
     }
+    
+    // Xóa các món trùng lặp trước khi tải dữ liệu mới
+    await removeDuplicateFoodEntries();
     
     // Kiểm tra xem đã có dữ liệu cho ngày được chọn chưa
     final hasDataForSelectedDate = _foodEntries.any((entry) => 
@@ -2016,11 +2034,21 @@ class FoodProvider with ChangeNotifier {
   // Cập nhật mục nhập thực phẩm
   Future<bool> updateFoodEntry(FoodEntry updatedEntry) async {
     try {
+      debugPrint('📝 updateFoodEntry: Bắt đầu cập nhật food entry với ID ${updatedEntry.id}');
+      
       // Tìm vị trí của mục cần cập nhật
       final index = _foodEntries.indexWhere((entry) => entry.id == updatedEntry.id);
       
       if (index != -1) {
+        // Cập nhật mục trong danh sách local
         _foodEntries[index] = updatedEntry;
+        
+        // Xóa cache để tính toán lại các giá trị dinh dưỡng
+        _calculationCache.clear();
+        _dailySummaryCache.clear();
+        _dailyMealsCache.clear();
+        
+        // Thông báo cho UI cập nhật
         notifyListeners();
         
         // Lưu vào SharedPreferences
@@ -2049,6 +2077,9 @@ class FoodProvider with ChangeNotifier {
               debugPrint('✅ updateFoodEntry: Đã cập nhật mục nhập thực phẩm trong collection food_records thành công');
             }
             
+            // Xóa các món trùng lặp sau khi cập nhật
+            await removeDuplicateFoodEntries();
+            
             return result;
           } catch (e) {
             debugPrint('❌ updateFoodEntry: Lỗi khi cập nhật mục nhập thực phẩm: $e');
@@ -2056,12 +2087,47 @@ class FoodProvider with ChangeNotifier {
           }
         } else {
           debugPrint('⚠️ updateFoodEntry: Không thể cập nhật mục nhập thực phẩm: Người dùng chưa đăng nhập');
+          
+          // Xóa các món trùng lặp sau khi cập nhật
+          await removeDuplicateFoodEntries();
+          
           return false;
         }
       } else {
-        // Nếu không tìm thấy trong danh sách, thêm mới
-        debugPrint('⚠️ updateFoodEntry: Không tìm thấy mục nhập thực phẩm với ID ${updatedEntry.id}, thử thêm mới');
+        // QUAN TRỌNG: Nếu không tìm thấy trong danh sách, kiểm tra xem có món ăn tương tự không
+        // Để tránh việc tạo các bản sao trùng lặp
+        final similarEntries = _foodEntries.where((entry) => 
+          entry.description == updatedEntry.description &&
+          entry.mealType == updatedEntry.mealType &&
+          entry.dateTime.toIso8601String().split('T')[0] == updatedEntry.dateTime.toIso8601String().split('T')[0]
+        ).toList();
+        
+        if (similarEntries.isNotEmpty) {
+          debugPrint('⚠️ updateFoodEntry: Phát hiện món ăn tương tự. Sẽ cập nhật món ăn này thay vì tạo mới');
+          
+          // Cập nhật món ăn tương tự với ID mới
+          final originalEntry = similarEntries.first;
+          final mergedEntry = updatedEntry.copyWith(id: originalEntry.id);
+          
+          // Gọi lại updateFoodEntry với entry đã hợp nhất ID
+          return await updateFoodEntry(mergedEntry);
+        }
+        
+        // Nếu thực sự không tìm thấy món ăn nào tương tự, thêm mới
+        debugPrint('⚠️ updateFoodEntry: Không tìm thấy mục nhập thực phẩm với ID ${updatedEntry.id}, thêm mới');
+        
+        // Thông báo log chi tiết để debug
+        debugPrint('📋 Thông tin chi tiết trong danh sách (_foodEntries.length=${_foodEntries.length}):');
+        for (var i = 0; i < min(5, _foodEntries.length); i++) {
+          final entry = _foodEntries[i];
+          debugPrint('   - Entry #$i: ID=${entry.id}, Mô tả=${entry.description}, Ngày=${entry.dateTime.toIso8601String().split('T')[0]}');
+        }
+        
         debugPrint('🔄 updateFoodEntry: Chuyển qua phương thức addFoodEntry để thêm mới');
+        
+        // Trước khi thêm mới, kiểm tra một lần nữa để tránh trùng lặp
+        await removeDuplicateFoodEntries();
+        
         return await addFoodEntry(updatedEntry);
       }
     } catch (e) {
@@ -2087,6 +2153,9 @@ class FoodProvider with ChangeNotifier {
       final index = _foodEntries.indexWhere((entry) => entry.id == entryId);
       
       if (index != -1) {
+        // Lưu tham chiếu đến entry trước khi xóa để sử dụng khi xóa trên Firestore
+        final entryToDelete = _foodEntries[index];
+        
         // Xóa khỏi danh sách local
         _foodEntries.removeAt(index);
         notifyListeners();
@@ -2094,10 +2163,42 @@ class FoodProvider with ChangeNotifier {
         // Lưu vào SharedPreferences
         await _saveFoodEntriesToPrefs();
         
-        // Xóa trên API
-        final userId = _authService.currentUser?.uid;
-        if (userId != null) {
+        // Xóa trên Firestore nếu đã đăng nhập và đã cấu hình trực tiếp
+        final user = _authService.currentUser;
+        if (user != null && ApiService.useDirectFirestore) {
           try {
+            debugPrint('🔄 Đang xóa mục nhập thực phẩm trực tiếp từ Firestore...');
+            
+            await FirebaseFirestore.instance
+              .collection('food_entries')
+              .doc(entryId)
+              .delete();
+            
+            debugPrint('✅ Đã xóa mục nhập thực phẩm khỏi Firestore thành công');
+            return true;
+          } catch (e) {
+            debugPrint('❌ Lỗi khi xóa mục nhập thực phẩm khỏi Firestore: $e');
+            
+            // Thử xóa qua ApiService nếu xóa trực tiếp thất bại
+            try {
+              final userId = user.uid;
+              final result = await ApiService.deleteFoodEntry(entryId, userId);
+              if (result) {
+                debugPrint('✅ Đã xóa mục nhập thực phẩm trên API thành công');
+              } else {
+                debugPrint('⚠️ Không thể xóa mục nhập thực phẩm trên API');
+              }
+              return result;
+            } catch (apiError) {
+              debugPrint('❌ Lỗi khi xóa mục nhập thực phẩm qua ApiService: $apiError');
+              return false;
+            }
+          }
+        } 
+        // Xóa qua ApiService nếu không sử dụng Firestore trực tiếp
+        else if (user != null) {
+          try {
+            final userId = user.uid;
             final result = await ApiService.deleteFoodEntry(entryId, userId);
             if (result) {
               debugPrint('✅ Đã xóa mục nhập thực phẩm trên API thành công');
@@ -2111,6 +2212,7 @@ class FoodProvider with ChangeNotifier {
           }
         }
         
+        // Nếu không có kết nối, vẫn trả về true vì đã xóa thành công ở local
         return true;
       }
       return false;
@@ -2165,6 +2267,44 @@ class FoodProvider with ChangeNotifier {
   // Thêm mục nhập thực phẩm thủ công
   Future<FoodEntry?> addFoodEntryManual(String description, String mealType, List<FoodItem> items) async {
     try {
+      // Xóa các món trùng lặp trước khi thêm mới
+      await removeDuplicateFoodEntries();
+      
+      // Kiểm tra xem có món ăn tương tự không
+      final entryDate = DateTime.now().toIso8601String().split('T')[0];
+      final similarEntries = _foodEntries.where((existingEntry) => 
+        existingEntry.description == description &&
+        existingEntry.mealType == mealType &&
+        existingEntry.dateTime.toIso8601String().split('T')[0] == entryDate
+      ).toList();
+      
+      // Nếu có món ăn tương tự, cập nhật món ăn đó thay vì tạo mới
+      if (similarEntries.isNotEmpty) {
+        debugPrint('⚠️ addFoodEntryManual: Phát hiện món ăn tương tự. Sẽ cập nhật món ăn này thay vì tạo mới');
+        
+        // Lấy món ăn đầu tiên tìm thấy để cập nhật
+        final existingEntry = similarEntries.first;
+        
+        // Tính toán giá trị dinh dưỡng từ các item mới
+        final calories = items.fold(0.0, (sum, item) => sum + (item.calories * item.servingSize));
+        
+        // Tạo món ăn cập nhật với các item mới
+        final updatedEntry = existingEntry.copyWith(
+          items: items,
+          calories: calories,
+        );
+        
+        // Cập nhật món ăn
+        await updateFoodEntry(updatedEntry);
+        
+        // Thêm các item vào danh sách gần đây
+        for (var item in items) {
+          _addToRecentItems(item);
+        }
+        
+        return updatedEntry;
+      }
+      
       // Tính toán giá trị dinh dưỡng từ các item
       final calories = items.fold(0.0, (sum, item) => sum + (item.calories * item.servingSize));
       
@@ -2256,5 +2396,115 @@ class FoodProvider with ChangeNotifier {
     }
     
     notifyListeners();
+  }
+
+  // Phương thức mới để xóa các món ăn trùng lặp
+  Future<void> removeDuplicateFoodEntries() async {
+    debugPrint('🧹 Bắt đầu xóa các món ăn trùng lặp...');
+    
+    // Danh sách tạm để lưu trữ những món đã kiểm tra
+    final Map<String, FoodEntry> uniqueEntries = {};
+    final List<FoodEntry> duplicates = [];
+    
+    // Tạo khóa duy nhất cho mỗi bữa ăn dựa trên ngày, loại bữa và mô tả
+    for (final entry in _foodEntries) {
+      final entryDate = entry.dateTime.toIso8601String().split('T')[0];
+      final key = '$entryDate|${entry.mealType}|${entry.description}';
+      
+      if (uniqueEntries.containsKey(key)) {
+        // Đã tìm thấy món trùng lặp
+        duplicates.add(entry);
+        debugPrint('🔍 Phát hiện món trùng lặp: ${entry.description} (ID: ${entry.id})');
+      } else {
+        // Thêm món vào danh sách các món duy nhất
+        uniqueEntries[key] = entry;
+      }
+    }
+    
+    // Xóa các món trùng lặp
+    if (duplicates.isNotEmpty) {
+      for (final duplicate in duplicates) {
+        _foodEntries.removeWhere((entry) => entry.id == duplicate.id);
+        debugPrint('🗑️ Đã xóa món trùng lặp: ${duplicate.description} (ID: ${duplicate.id})');
+      }
+      
+      // Lưu danh sách mới vào SharedPreferences
+      await _saveFoodEntriesToPrefs();
+      
+      // Thông báo cho UI cập nhật
+      notifyListeners();
+      
+      debugPrint('✅ Đã xóa ${duplicates.length} món trùng lặp. Tổng số món ăn còn lại: ${_foodEntries.length}');
+    } else {
+      debugPrint('✅ Không tìm thấy món trùng lặp');
+    }
+  }
+
+  // Phương thức đồng bộ dữ liệu với Firebase
+  Future<bool> synchronizeWithFirebase() async {
+    try {
+      debugPrint('🔄 Bắt đầu đồng bộ dữ liệu với Firebase...');
+      
+      // Kiểm tra xem người dùng đã đăng nhập chưa
+      final user = _authService.currentUser;
+      if (user == null) {
+        debugPrint('⚠️ Không thể đồng bộ với Firebase vì người dùng chưa đăng nhập');
+        return false;
+      }
+      
+      // Kiểm tra có cấu hình trực tiếp với Firestore không
+      if (!ApiService.useDirectFirestore) {
+        debugPrint('⚠️ Đồng bộ trực tiếp với Firestore đã bị tắt trong cấu hình');
+        return false;
+      }
+      
+      // Lấy danh sách các mục nhập thực phẩm cho ngày đã chọn
+      final entriesForSelectedDate = _foodEntries.where((entry) {
+        final entryDate = entry.dateTime.toIso8601String().split('T')[0];
+        return entryDate == _selectedDate;
+      }).toList();
+      
+      debugPrint('📊 Tìm thấy ${entriesForSelectedDate.length} mục nhập thực phẩm cho ngày $_selectedDate');
+      
+      // Chuẩn bị dữ liệu để đồng bộ với Firestore
+      for (final entry in entriesForSelectedDate) {
+        try {
+          // Chuyển đổi dữ liệu thành định dạng JSON
+          final entryData = {
+            ...entry.toJson(),
+            'user_id': user.uid,
+            'date': _selectedDate, // Thêm trường date để dễ truy vấn
+            'updated_at': DateTime.now().toIso8601String(),
+            'id': entry.id,
+            'description': entry.description,
+            'dateTime': entry.dateTime.toIso8601String(),
+            'mealType': entry.mealType,
+            'imageUrl': entry.imageUrl,
+            'imagePath': entry.imagePath,
+          };
+          
+          // Ghi log cho mục đang đồng bộ
+          debugPrint('📋 Đồng bộ mục ${entry.id} - ${entry.description}');
+          debugPrint('   📷 imageUrl: ${entry.imageUrl}');
+          debugPrint('   📷 imagePath: ${entry.imagePath}');
+          
+          // Lưu dữ liệu lên Firestore
+          await FirebaseFirestore.instance
+            .collection('food_entries')
+            .doc(entry.id)
+            .set(entryData, SetOptions(merge: true));
+            
+          debugPrint('✅ Đã đồng bộ thành công mục ${entry.id}');
+        } catch (e) {
+          debugPrint('❌ Lỗi khi đồng bộ mục ${entry.id}: $e');
+        }
+      }
+      
+      debugPrint('✅ Đã đồng bộ (ghi đè hoàn toàn) dữ liệu lên Firebase thành công');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi đồng bộ dữ liệu với Firebase: $e');
+      return false;
+    }
   }
 } 

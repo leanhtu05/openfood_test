@@ -9,6 +9,8 @@ import '../screens/auth/auth_screen.dart' as auth;
 import '../services/api_service.dart';
 import 'sync_settings_screen.dart';
 import 'sync_reset_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 // Import các màn hình onboarding
 import 'onboarding/age_selection_page.dart';
@@ -23,6 +25,7 @@ import 'onboarding/diet_preference_page.dart';
 import 'onboarding/health_condition_page.dart';
 import 'onboarding/weight_gain_pace_page.dart';
 import 'onboarding/integration_settings_page.dart';
+import 'account_linking_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -404,6 +407,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         isLast: !authService.isAuthenticated, // Adjusted isLast logic
                       ),
                     ],
+                    if (authService.isAuthenticated && !authService.user!.isAnonymous)
+                      _buildSettingItem(
+                        leadingIcon: Icons.link,
+                        title: "Liên kết tài khoản",
+                        trailingWidget: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: 200),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _getLinkedProvidersText(authService),
+                                style: TextStyle(color: Colors.grey.shade600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: Colors.grey.shade400,
+                              ),
+                            ],
+                          ),
+                        ),
+                        onTap: () async {
+                          // Thay vì hiển thị bottom sheet, chuyển đến màn hình quản lý liên kết tài khoản
+                          final result = await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => AccountLinkingScreen(authService: authService),
+                            ),
+                          );
+                          
+                          // Làm mới UI sau khi quay lại từ màn hình liên kết
+                          setState(() {
+                            // Cập nhật lại danh sách các phương thức liên kết
+                            // Không cần làm gì ở đây, setState sẽ kích hoạt build lại UI
+                          });
+                        },
+                      ),
                     _buildSettingItem(
                       leadingIcon: Icons.sync,
                       title: "Tích hợp",
@@ -489,7 +530,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
 
               // Phần Dữ liệu và đồng bộ
-
 
               // Diet Section
               _buildSectionTitle("Chế độ ăn"),
@@ -620,121 +660,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-
-              // App Section
-              _buildSectionTitle("Ứng dụng"),
-              Card(
-                elevation: 0,
-                color: Colors.grey.shade50,
-                margin: EdgeInsets.only(bottom: 24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!authService.isPremiumUser()) // Show promo only if not premium
-                      _buildPromotionItem(
-                        leadingIcon: Icons.stars,
-                        title: "Dùng thử FitAI miễn phí! Giảm giá 80% cho bạn!",
-                        icon: Icons.arrow_forward_ios,
-                        onTap: () {
-                          // TODO: Navigate to Promotion Screen
-                        },
-                      ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.workspace_premium,
-                      title: "Nâng cấp lên PRO",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        if (!authService.isAuthenticated) {
-                          _showAuthRequiredDialog(context);
-                          return;
-                        }
-                        // TODO: Navigate to upgrade page
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.all_inclusive,
-                      title: "Ưu đãi trọn đời",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        if (!authService.isAuthenticated) {
-                          _showAuthRequiredDialog(context);
-                          return;
-                        }
-                        // TODO: Navigate to lifetime deals page
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.star,
-                      title: "Đánh giá chúng tôi",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        // TODO: Implement app review functionality
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.email,
-                      title: "Liên hệ chúng tôi",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        // TODO: Implement contact us functionality (e.g., mailto link)
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.manage_accounts,
-                      title: "Quản lý đăng ký",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        if (!authService.isAuthenticated) {
-                          _showAuthRequiredDialog(context);
-                          return;
-                        }
-                        // TODO: Navigate to subscription management
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.description,
-                      title: "Điều khoản dịch vụ",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        // TODO: Navigate to Terms of Service page/URL
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.security,
-                      title: "Chính sách bảo mật",
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        // TODO: Navigate to Privacy Policy page/URL
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.language,
-                      title: "Ngôn ngữ",
-                      value: "Tiếng Việt", // This could be dynamic in the future
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        // TODO: Implement language selection
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.flag,
-                      title: "Quốc gia",
-                      value: "Việt Nam", // This could be dynamic or from user profile
-                      icon: Icons.arrow_forward_ios,
-                      onTap: () {
-                        // TODO: Implement country selection if needed
-                      },
-                      isLast: true,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Version info
               Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -747,8 +672,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ),
-
-
 
             ],
           ),
@@ -1321,6 +1244,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context) => page,
       ),
     );
+  }
+
+  // Phương thức để hiển thị thông tin về các phương thức đã liên kết
+  String _getLinkedProvidersText(AuthService authService) {
+    final providers = [];
+    
+    if (authService.isLinkedWithEmail()) {
+      providers.add('Email');
+    }
+    
+    if (authService.isLinkedWithPhone()) {
+      providers.add('SĐT');
+    }
+    
+    if (authService.isLinkedWithGoogle()) {
+      providers.add('Google');
+    }
+    
+    return providers.isEmpty ? 'Chưa liên kết' : providers.join(', ');
   }
 }
 

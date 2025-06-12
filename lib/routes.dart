@@ -7,7 +7,6 @@ import 'screens/water_history_screen.dart';
 import 'screens/combined_history_screen.dart';
 import 'screens/food_logging_screen.dart';
 import 'screens/food_history_screen.dart';
-import 'screens/food_recognition_screen.dart';
 import 'screens/food_search_screen.dart';
 import 'screens/food_detail_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
@@ -22,6 +21,9 @@ import 'screens/onboarding/weight_selection_page.dart';
 import 'screens/onboarding/diet_goal_page.dart';
 import 'screens/settings_screen.dart';
 import 'screens/auth/auth_screen.dart';
+import 'screens/grocery_list_screen.dart';
+import 'screens/recipe_detail_screen.dart';
+import 'models/meal_plan.dart';
 
 Map<String, WidgetBuilder> routes = {
   '/home': (context) => HomeScreen(),
@@ -33,7 +35,6 @@ Map<String, WidgetBuilder> routes = {
   '/combined_history': (context) => CombinedHistoryScreen(),
   FoodLoggingScreen.routeName: (context) => FoodLoggingScreen(),
   FoodHistoryScreen.routeName: (context) => FoodHistoryScreen(),
-  FoodRecognitionScreen.routeName: (context) => FoodRecognitionScreen(),
   FoodSearchScreen.routeName: (context) => FoodSearchScreen(),
   '/onboarding': (context) => const OnboardingScreen(),
   '/age': (context) => const AgeSelectionPage(),
@@ -45,6 +46,7 @@ Map<String, WidgetBuilder> routes = {
   '/tdee-calculator': (context) => const TDEECalculatorScreen(),
   '/meal-recording': (context) => const MealRecordingScreen(initialDate: null),
   '/diet-plan': (context) => const DietPlanScreen(),
+  '/grocery-list': (context) => GroceryListScreen(),
   '/settings': (context) => SettingsScreen(),
   '/auth': (context) {
     final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
@@ -66,12 +68,7 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
       builder: (context) => FoodDetailScreen(id: foodId),
     );
   }
-  
-  if (settings.name == '/food-recognition') {
-    return MaterialPageRoute(
-      builder: (context) => FoodRecognitionScreen(),
-    );
-  }
+
   
   if (settings.name == '/food-search') {
     return MaterialPageRoute(
@@ -85,6 +82,13 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
       builder: (context) => MealScreen(mealId: mealId),
     );
   }
-  
+
+  if (settings.name == '/recipe_detail') {
+    final dish = settings.arguments as Dish;
+    return MaterialPageRoute(
+      builder: (context) => RecipeDetailScreen(dish: dish),
+    );
+  }
+
   return null;
 }

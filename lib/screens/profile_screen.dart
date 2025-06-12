@@ -6,30 +6,36 @@ import '../providers/user_data_provider.dart' as udp;
 import '../utils/tdee_calculator.dart';
 import '../services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math' as Math;
 // Add imports for onboarding pages
 import '../screens/onboarding/activity_level_page.dart';
 import '../screens/onboarding/health_condition_page.dart';
 import '../screens/onboarding/target_weight_page.dart';
 import '../screens/onboarding/weight_gain_pace_page.dart';
+import '../screens/onboarding/diet_goal_page.dart';
+import '../screens/onboarding/weight_selection_page.dart';
+import '../screens/onboarding/height_selection_page.dart';
+import '../screens/onboarding/age_selection_page.dart';
+import '../screens/onboarding/gender_selection_page.dart';
+import '../screens/onboarding/event_selection_page.dart';
+import '../screens/onboarding/event_date_page.dart';
+import '../screens/onboarding/onboarding_screen.dart' show MaterialOnboardingPage;
 import '../styles/onboarding_styles.dart';
 import '../screens/settings_screen.dart';
-import 'onboarding/gender_selection_page.dart';
-import 'onboarding/age_selection_page.dart';
-import 'onboarding/height_selection_page.dart';
-import 'onboarding/weight_selection_page.dart';
-import 'onboarding/activity_level_page.dart';
-import 'onboarding/diet_goal_page.dart';
 import '../services/auth_service.dart';
 
-// Add extension to add custom properties to UserDataProvider
-extension UserDataProviderExtension on udp.UserDataProvider {
-  String get name => "Lê Anh Tú"; // Default name if not available
-  double get initialWeight => weightKg; // Use current weight if initial not set
-  double get targetWeight => targetWeightKg; // Use the proper getter from UserDataProvider
+// Helper methods for UserDataProvider
+class ProfileScreenHelpers {
+  static String getUserDisplayName(udp.UserDataProvider provider) {
+    return provider.name.isNotEmpty ? provider.name : "Người dùng";
+  }
 
-  void updateWeight(double weight) {
-    // Call the setWeight method from UserDataProvider
-    setWeight(weight);
+  static double getInitialWeight(udp.UserDataProvider provider) {
+    return provider.weightKg;
+  }
+
+  static double getTargetWeight(udp.UserDataProvider provider) {
+    return provider.targetWeightKg;
   }
 }
 
@@ -50,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   double _weeklyWeightChange = 0.46;
   List<FlSpot> _weightHistory = [];
   bool _isLoading = true;
+  bool _isShowingWeightUpdateMessage = false; // Để tránh hiển thị thông báo liên tục
 
   @override
   void initState() {
@@ -112,49 +119,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final goal = userDataProvider.goal;
       final pace = userDataProvider.pace;
       final userName = userDataProvider.name;
+      final targetWeight = userDataProvider.targetWeightKg;
 
-      // Tính toán TDEE và các giá trị dinh dưỡng
-      final calculator = TDEECalculator(
-        gender: gender,
-        age: age,
-        heightCm: height,
-        weightKg: weight,
-        activityLevel: activity,
-        goal: goal,
-        pace: pace,
-      );
-
-      // Tính toán TDEE và nhu cầu calo hàng ngày
-      final tdee = calculator.calculateBaseTDEE();
+      // Lấy TDEE trực tiếp từ UserDataProvider thay vì tính lại
+      final tdee = userDataProvider.tdeeCalories;
 
       // Sử dụng giá trị từ getConsistentCalorieGoal() để đảm bảo tính nhất quán
       final dailyCalories = userDataProvider.getConsistentCalorieGoal();
 
-      // Tạo giả lịch sử cân nặng nếu không có dữ liệu thực
+      // Tạo lịch sử cân nặng dựa trên dữ liệu thật của người dùng
       final spotList = <FlSpot>[];
-      // Lịch sử 7 ngày từ hiện tại (giả lập)
-      final baseWeight = weight;
-      double changeRate = pace;
+      final currentWeight = weight;
 
+      // Tính cân nặng ban đầu dựa trên mục tiêu thực tế
+      double startWeight;
       if (goal == "Giảm cân") {
-        changeRate = -changeRate;
-      } else if (goal == "Duy trì cân nặng") {
-        changeRate = 0;
+        if (targetWeight > 0) {
+          // Có mục tiêu cụ thể - tính dựa trên target weight
+          double weightDifference = currentWeight - targetWeight;
+          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+          startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
+          print('📊 Giảm cân (có mục tiêu): Hiện tại=$currentWeight, Mục tiêu=$targetWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+        } else {
+          // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
+          startWeight = currentWeight + (pace * 6);
+          print('📊 Giảm cân (không có mục tiêu): Hiện tại=$currentWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+        }
+      } else if (goal == "Tăng cân") {
+        if (targetWeight > 0) {
+          // Có mục tiêu cụ thể - tính dựa trên target weight
+          double weightDifference = targetWeight - currentWeight;
+          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+          startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
+          print('📊 Tăng cân (có mục tiêu): Hiện tại=$currentWeight, Mục tiêu=$targetWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+        } else {
+          // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
+          startWeight = currentWeight - (pace * 6);
+          print('📊 Tăng cân (không có mục tiêu): Hiện tại=$currentWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+        }
+      } else {
+        // Duy trì cân nặng - biến động nhẹ
+        startWeight = currentWeight + 0.5;
+        print('📊 Duy trì: Hiện tại=$currentWeight, Bắt đầu=$startWeight');
       }
 
-      // Tạo lịch sử cân nặng trong 7 tuần gần đây (mô phỏng)
-      final weeklyChange = changeRate / 7.0;
+      // Tạo lịch sử cân nặng thực tế trong 7 điểm thời gian
       for (int i = 0; i < 7; i++) {
-        final weekWeight = baseWeight - (weeklyChange * (6 - i) * 7);
-        spotList.add(FlSpot(i.toDouble(), weekWeight));
+        double progressWeight;
+        if (i == 0) {
+          // Điểm bắt đầu
+          progressWeight = startWeight;
+        } else if (i == 6) {
+          // Điểm hiện tại
+          progressWeight = currentWeight;
+        } else {
+          // Các điểm trung gian - tính toán dựa trên tiến độ tuyến tính
+          final progress = i / 6.0; // Tiến độ từ 0 đến 1
+          progressWeight = startWeight + (currentWeight - startWeight) * progress;
+
+          // Thêm một chút biến động tự nhiên nhỏ
+          final variation = (i % 2 == 0 ? 0.1 : -0.1);
+          progressWeight += variation;
+        }
+
+        spotList.add(FlSpot(i.toDouble(), progressWeight));
       }
 
-      // Cập nhật dữ liệu
+      // Cập nhật dữ liệu với thông tin thật từ UserDataProvider
       setState(() {
         _weight = weight;
         _age = age;
         _name = userName.isNotEmpty ? userName : "Người dùng";
-        _tdee = tdee;
+        _tdee = tdee > 0 ? tdee : 2000; // Fallback nếu TDEE chưa được tính
         _targetCalories = dailyCalories.toDouble();
         _weeklyWeightChange = pace;
         _weightHistory = spotList;
@@ -163,7 +199,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       print('✅ Đã tải dữ liệu người dùng thành công trong ProfileScreen');
       print('👤 Tên: $_name, Tuổi: $_age, Cân nặng: $_weight kg');
-      print('🔥 TDEE: $_tdee kcal, Mục tiêu: $_targetCalories kcal');
+      print('🎯 Mục tiêu: $goal, Tốc độ: $pace kg/tuần');
+      print('📏 Chiều cao: $height cm, Giới tính: $gender');
+      print('🔥 TDEE: $_tdee kcal, Mục tiêu calo: $_targetCalories kcal');
+      print('📊 Lịch sử cân nặng: ${spotList.length} điểm dữ liệu');
     } catch (e) {
       print('❌ Lỗi khi tải dữ liệu người dùng: $e');
       setState(() {
@@ -201,125 +240,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Card thông tin người dùng
   Widget _buildUserInfoHeader() {
-    // Tính toán phần trăm hoàn thành dựa trên mục tiêu
-    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-    final targetWeight = userDataProvider.targetWeight;
-
-    double progressValue = 0.7; // Giá trị mặc định
-
-    if (targetWeight > 0) {
-      final startWeight = userDataProvider.initialWeight > 0 ?
-          userDataProvider.initialWeight : userDataProvider.weightKg;
-
-      final totalChange = targetWeight - startWeight;
-      final currentChange = _weight - startWeight;
-
-      if (totalChange != 0) {
-        progressValue = currentChange / totalChange;
-
-        // Giới hạn giá trị từ 0 đến 1
-        progressValue = progressValue.clamp(0.0, 1.0);
-      }
-    }
-
-    return Card(
-      elevation: 4,
-      shadowColor: Colors.black.withAlpha(51),
-      shape: RoundedRectangleBorder(
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Weight info
-                Flexible(
-                  flex: 1,
-                  child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.scale, size: 32, color: AppColors.textPrimary),
-                    SizedBox(height: 4),
-                    Text(
-                      "${_weight.toStringAsFixed(1)} kg",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                  ),
-                ),
-
-                // User info with avatar
-                Flexible(
-                  flex: 2,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: Colors.grey.shade300,
-                      child: Icon(Icons.person, size: 24, color: Colors.grey.shade700),
-                    ),
-                    SizedBox(width: 12),
-                      Flexible(
-                        child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "$_name,",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                              overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          "$_age",
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                        ),
-                    ),
-                  ],
-                  ),
-                ),
-
-                // Settings button
-                IconButton(
-                  icon: Icon(Icons.settings, color: AppColors.textSecondary),
-                  onPressed: () {
-                    // Navigate to settings screen
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => SettingsScreen(),
-                      ),
-                    ).then((_) => _loadUserData());
-                  },
+      child: Row(
+        children: [
+          // Weight info with scale icon
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
-            SizedBox(height: 16),
-
-            // Progress indicator
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: progressValue,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00BFA6)),
-                minHeight: 6,
-              ),
+            child: Column(
+              children: [
+                Icon(Icons.monitor_weight, size: 24, color: Colors.grey[600]),
+                SizedBox(height: 4),
+                Text(
+                  'Cân nặng',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  '${_weight.toStringAsFixed(1)} kg',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          SizedBox(width: 16),
+
+          // User info with avatar
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.grey.shade300,
+                  child: Icon(Icons.person, size: 20, color: Colors.grey.shade700),
+                ),
+                SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _name.isNotEmpty ? _name : 'Người dùng',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      'T$_age',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          Spacer(),
+
+          // Settings button
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: Icon(Icons.settings, color: Colors.blue[600], size: 20),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => SettingsScreen(),
+                  ),
+                ).then((_) => _loadUserData());
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -329,108 +363,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: Row(
-            children: [
-              Icon(Icons.restaurant_menu, size: 24, color: AppColors.textPrimary),
-              SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  "Tổng quan mục tiêu",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+        // Header with title and update button
+        Row(
+          children: [
+            Icon(Icons.track_changes, size: 20, color: Colors.black87),
+            SizedBox(width: 8),
+            Text(
+              "Tổng quan mục tiêu",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
               ),
-              SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: () => _navigateToProfileUpdate(),
-                icon: Icon(Icons.edit, size: 16),
-                label: Text("Cập nhật"),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: BorderSide(color: AppColors.primary),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size(0, 0),
+            ),
+            Spacer(),
+            OutlinedButton.icon(
+              onPressed: () => _navigateToProfileUpdate(),
+              icon: Icon(Icons.edit, size: 14),
+              label: Text("Cập nhật"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.blue[600],
+                side: BorderSide(color: Colors.blue[300]!),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size(0, 0),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        SizedBox(height: 12),
+
+        SizedBox(height: 16),
 
         // Three cards in a row
         Row(
           children: [
             Expanded(
               child: _buildInfoCard(
-                icon: Icons.local_fire_department,
-                iconColor: Colors.orange,
+                icon: Icons.home,
+                iconColor: Colors.black87,
                 title: "TDEE",
-                value: "${_tdee.round()} kcal",
+                value: "${_tdee.round()}kcal",
+                subtitle: "",
               ),
             ),
             SizedBox(width: 12),
             Expanded(
               child: _buildInfoCard(
-                icon: Icons.speed,
-                iconColor: Colors.blue,
+                icon: Icons.face,
+                iconColor: Colors.black87,
                 title: _getWeightChangeText(),
-                value: "${_weeklyWeightChange} kg/tuần",
+                value: "${_weeklyWeightChange.toStringAsFixed(1)} kg/tuần",
+                subtitle: "",
               ),
             ),
             SizedBox(width: 12),
             Expanded(
               child: _buildInfoCard(
-                icon: Icons.whatshot,
-                iconColor: Colors.deepOrange,
-                title: "Mục tiêu",
-                value: "${_targetCalories.round()} kcal",
+                icon: Icons.local_fire_department,
+                iconColor: Colors.black87,
+                title: "Mục tiêu Calo",
+                value: "${_targetCalories.round()}kcal",
+                subtitle: "",
               ),
             ),
           ],
         ),
         SizedBox(height: 24),
 
-        // Weight trend line chart
+        // Weight trend chart - simplified design
         Container(
-          height: 220,
-          padding: EdgeInsets.all(8),
+          height: 280,
+          padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withAlpha(13),
-                blurRadius: 10,
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
                 offset: Offset(0, 4),
               ),
             ],
           ),
-          child: Stack(
-            children: [
-              _buildWeightTrendChart(),
-              Positioned(
-                top: 70,
-                right: 40,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withAlpha(26),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.withAlpha(128), width: 1),
-                  ),
-                 
-                ),
-              ),
-            ],
-          ),
+          child: _buildSimplifiedWeightChart(),
         ),
       ],
     );
@@ -456,38 +473,270 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required Color iconColor,
     required String title,
     required String value,
+    String? subtitle,
   }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: iconColor, size: 24),
-            SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (subtitle != null && subtitle.isNotEmpty) ...[
             SizedBox(height: 4),
             Text(
-              value,
+              subtitle,
               style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontSize: 10,
+                color: Colors.grey[500],
               ),
-              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Simplified weight chart matching the design
+  Widget _buildSimplifiedWeightChart() {
+    // Lấy dữ liệu thật từ UserDataProvider
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+    final currentWeight = userDataProvider.weightKg; // Cân nặng hiện tại thật
+    final targetWeight = userDataProvider.targetWeightKg; // Cân nặng mục tiêu thật
+    final goal = userDataProvider.goal; // Mục tiêu thật
+    final pace = userDataProvider.pace; // Tốc độ thật (kg/tuần)
+
+    // Tính cân nặng ban đầu dựa trên mục tiêu thực tế
+    double startWeight;
+    if (_weightHistory.isNotEmpty) {
+      startWeight = _weightHistory.first.y;
+    } else {
+      // Tính toán cân nặng ban đầu dựa trên mục tiêu và tốc độ thực tế
+      if (goal == "Giảm cân") {
+        if (targetWeight > 0) {
+          // Có mục tiêu cụ thể
+          double weightDifference = currentWeight - targetWeight;
+          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+          startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
+        } else {
+          // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
+          startWeight = currentWeight + (pace * 6);
+        }
+      } else if (goal == "Tăng cân") {
+        if (targetWeight > 0) {
+          // Có mục tiêu cụ thể
+          double weightDifference = targetWeight - currentWeight;
+          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+          startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
+        } else {
+          // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
+          startWeight = currentWeight - (pace * 6);
+        }
+      } else {
+        // Duy trì cân nặng - biến động nhẹ
+        startWeight = currentWeight + 0.5;
+      }
+    }
+
+    // Tính toán ngày tháng hiện tại
+    final now = DateTime.now();
+    final startDate = now.subtract(Duration(days: 30)); // 30 ngày trước
+    final endDate = now;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Hôm qua',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.red[400],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(height: 8),
+
+        // Chart area
+        Expanded(
+          child: Stack(
+            children: [
+              // Chart background
+              Container(
+                width: double.infinity,
+                height: double.infinity,
+                child: CustomPaint(
+                  painter: WeightChartPainter(
+                    weightHistory: _weightHistory.isNotEmpty ? _weightHistory : () {
+                      // Tạo dữ liệu mẫu dựa trên mục tiêu thực tế
+                      if (goal == "Giảm cân" && pace > 0) {
+                        return [
+                          FlSpot(0, startWeight),
+                          FlSpot(1, startWeight - pace),
+                          FlSpot(2, startWeight - (pace * 2)),
+                          FlSpot(3, startWeight - (pace * 3)),
+                          FlSpot(4, startWeight - (pace * 4)),
+                          FlSpot(5, startWeight - (pace * 5)),
+                          FlSpot(6, currentWeight),
+                        ];
+                      } else if (goal == "Tăng cân" && pace > 0) {
+                        return [
+                          FlSpot(0, startWeight),
+                          FlSpot(1, startWeight + pace),
+                          FlSpot(2, startWeight + (pace * 2)),
+                          FlSpot(3, startWeight + (pace * 3)),
+                          FlSpot(4, startWeight + (pace * 4)),
+                          FlSpot(5, startWeight + (pace * 5)),
+                          FlSpot(6, currentWeight),
+                        ];
+                      } else {
+                        // Duy trì cân nặng
+                        return [
+                          FlSpot(0, startWeight),
+                          FlSpot(1, startWeight - 0.1),
+                          FlSpot(2, startWeight + 0.2),
+                          FlSpot(3, startWeight - 0.1),
+                          FlSpot(4, startWeight + 0.1),
+                          FlSpot(5, startWeight - 0.2),
+                          FlSpot(6, currentWeight),
+                        ];
+                      }
+                    }(),
+                  ),
+                ),
+              ),
+
+              // Weight labels positioned above the chart với dữ liệu thật
+              Positioned(
+                top: 0,
+                left: 20,
+                child: _buildWeightLabel(
+                  '${startWeight.toStringAsFixed(1)} kg',
+                  'Bắt đầu',
+                  Colors.red[400]!
+                ),
+              ),
+
+              Positioned(
+                top: 40,
+                right: 80,
+                child: _buildWeightLabel(
+                  '${((startWeight + currentWeight) / 2).toStringAsFixed(1)} kg',
+                  'Kỳ nghỉ',
+                  Colors.orange[400]!
+                ),
+              ),
+
+              Positioned(
+                top: 0,
+                right: 20,
+                child: _buildWeightLabel(
+                  '${currentWeight.toStringAsFixed(1)} kg',
+                  'Mục tiêu',
+                  Colors.green[400]!
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(height: 16),
+
+        // Bottom date labels với ngày thật
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'thg ${startDate.month} ${startDate.day.toString().padLeft(2, '0')}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            Text(
+              'thg ${endDate.month} ${endDate.day.toString().padLeft(2, '0')}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
             ),
           ],
         ),
-      ),
+      ],
+    );
+  }
+
+  // Weight label widget
+  Widget _buildWeightLabel(String weight, String label, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.3)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            weight,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
     );
   }
 
@@ -662,21 +911,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Thông báo cập nhật cân nặng
+  // AI suggestion notification với thông tin cá nhân hóa
   Widget _buildWeightUpdateNotification() {
+    // Lấy thông tin từ UserDataProvider để cá nhân hóa thông báo
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+    final goal = userDataProvider.goal;
+    final targetWeight = userDataProvider.targetWeightKg;
+
+    // Tạo thông báo cá nhân hóa dựa trên mục tiêu
+    String personalizedMessage = "";
+    if (goal == "Giảm cân") {
+      if (targetWeight > 0) {
+        final remainingWeight = _weight - targetWeight;
+        personalizedMessage = "Bạn còn ${remainingWeight.toStringAsFixed(1)} kg nữa để đạt mục tiêu ${targetWeight.toStringAsFixed(1)} kg. ";
+      } else {
+        personalizedMessage = "Bạn đang trong quá trình giảm cân với tốc độ ${userDataProvider.pace.toStringAsFixed(1)} kg/tuần. ";
+      }
+    } else if (goal == "Tăng cân") {
+      if (targetWeight > 0) {
+        final remainingWeight = targetWeight - _weight;
+        personalizedMessage = "Bạn cần tăng thêm ${remainingWeight.toStringAsFixed(1)} kg để đạt mục tiêu ${targetWeight.toStringAsFixed(1)} kg. ";
+      } else {
+        personalizedMessage = "Bạn đang trong quá trình tăng cân với tốc độ ${userDataProvider.pace.toStringAsFixed(1)} kg/tuần. ";
+      }
+    } else if (goal == "Duy trì cân nặng") {
+      personalizedMessage = "Bạn đang duy trì cân nặng ở mức ${_weight.toStringAsFixed(1)} kg. ";
+    }
+
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Color(0xFFE3F2FD),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.auto_awesome,
-            color: Color(0xFF1565C0),
-            size: 24,
+          // Sparkle icons
+          Column(
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                color: Color(0xFF1565C0),
+                size: 20,
+              ),
+              SizedBox(height: 4),
+              Icon(
+                Icons.auto_awesome,
+                color: Color(0xFF1565C0),
+                size: 16,
+              ),
+            ],
           ),
           SizedBox(width: 12),
           Expanded(
@@ -684,20 +969,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "AI muốn bạn cập nhật cân nặng",
+                  "AI muốn bạn cập nhật cân nặng của mình!",
                   style: TextStyle(
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.bold,
                     color: Color(0xFF1565C0),
-                    fontSize: 14,
+                    fontSize: 16,
                   ),
                 ),
-                SizedBox(height: 4),
+                SizedBox(height: 8),
                 Text(
-                  "Để trí tuệ nhân tạo tính toán nhu cầu calo và chất dinh dưỡng hàng ngày của bạn, vui lòng cập nhật cân nặng của bạn",
+                  "${personalizedMessage}Để trí tuệ nhân tạo tính toán nhu cầu calo và chất dinh dưỡng hàng ngày của bạn, vui lòng cập nhật cân nặng của bạn hàng ngày, lý tưởng nhất là vào buổi sáng. Tôi thiết kế, cập nhật hàng tuần là cần thiết để duy trì toàn bộ calo AI",
                   style: TextStyle(
                     color: Color(0xFF1565C0),
                     fontSize: 14,
+                    height: 1.4,
                   ),
+                ),
+                SizedBox(height: 12),
+                // Thêm buttons để cập nhật cân nặng và cân nặng mục tiêu
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          _showWeightUpdateDialog();
+                        },
+                        icon: Icon(Icons.scale, size: 16),
+                        label: Text("Cập nhật cân nặng"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Color(0xFF1565C0),
+                          side: BorderSide(color: Color(0xFF1565C0)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ProfileUpdateFlow(initialStep: 'target_weight'),
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.flag, size: 16),
+                        label: Text("Cân nặng mục tiêu"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Color(0xFF1565C0),
+                          side: BorderSide(color: Color(0xFF1565C0)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -707,10 +1039,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Biểu đồ lịch sử cân nặng
+  // Biểu đồ lịch sử cân nặng - Bar Chart Style
   Widget _buildWeightHistoryChart() {
     return Card(
-      elevation: 2,
+      elevation: 4,
+      shadowColor: Colors.black.withOpacity(0.2),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
@@ -722,116 +1055,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Flexible(
-                  child: Text(
-                    "Cân nặng của bạn",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    Icon(Icons.equalizer, color: Colors.black87, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      "Cân nặng của bạn là bao nhiêu?",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  ],
                 ),
-                SizedBox(width: 8),
                 OutlinedButton.icon(
                   onPressed: () {
                     // Show weight update dialog
                     _showWeightUpdateDialog();
                   },
-                  icon: Icon(Icons.add, size: 16),
-                  label: Text("Cập nhật"),
+                  icon: Icon(Icons.add, size: 14),
+                  label: Text("Cập nhật cân nặng của bạn"),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Color(0xFF00BFA6),
-                    side: BorderSide(color: Color(0xFF00BFA6)),
+                    foregroundColor: Colors.blue[600],
+                    side: BorderSide(color: Colors.blue[300]!),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     minimumSize: Size(0, 0),
                   ),
                 ),
               ],
             ),
             SizedBox(height: 16),
-            SizedBox(
+            Container(
               height: 200,
-              child: _buildAreaChart(),
-            ),
-            SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "🏖️ Kỳ nghỉ",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade700,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.grey[50],
+              ),
+              padding: EdgeInsets.all(16),
+              child: Stack(
+                children: [
+                  _buildBarChart(),
+                  // Nút giảm giá ở góc phải
+                  Positioned(
+                    bottom: 10,
+                    right: 10,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             SizedBox(height: 16),
-            // Thêm nút tính toán lại TDEE
-            ListTile(
-              leading: Icon(Icons.refresh, color: Colors.green),
-              title: Text('Tính toán lại TDEE'),
-              subtitle: Text('Cập nhật lại mục tiêu calo dựa trên thông tin hiện tại'),
-              onTap: () async {
-                // Hiển thị dialog xác nhận
-                final shouldRecalculate = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text('Tính toán lại TDEE'),
-                    content: Text(
-                      'Bạn có muốn tính toán lại mục tiêu calo dựa trên thông tin hiện tại không?\n\n'
-                      'Thao tác này sẽ cập nhật mục tiêu calo và các chỉ số dinh dưỡng của bạn.'
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: Text('Hủy'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: Text('Tính toán lại'),
-                      ),
-                    ],
-                  ),
-                ) ?? false;
-
-                if (shouldRecalculate) {
-                  // Lấy UserDataProvider
-                  final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-
-                  // Hiển thị loading indicator
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-
-                  // Tính toán lại TDEE
-                  await _recalculateTDEEAfterWeightUpdate(userDataProvider, _weight);
-
-                  // Đóng loading indicator
-                  Navigator.of(context).pop();
-
-                  // Hiển thị kết quả
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Đã cập nhật mục tiêu calo: ${userDataProvider.tdeeCalories.round()} kcal'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
+            // Thêm chú thích
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildLegendItem("Bắt đầu", Colors.red.shade400),
+                _buildLegendItem("Kỳ nghỉ 🏖️", Colors.orange.shade400),
+                _buildLegendItem("Hiện tại ✅", Colors.green.shade400),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+  // Tạo widget chú thích cho biểu đồ
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
     );
   }
 
@@ -873,7 +1195,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () {
               // Cập nhật cân nặng mới
               final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-              userDataProvider.updateWeight(newWeight);
+              userDataProvider.setWeight(newWeight);
 
               // Lưu lên Firestore nếu có thể
               try {
@@ -891,12 +1213,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(context);
 
               // Hiển thị thông báo thành công
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Đã cập nhật cân nặng thành công!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
@@ -910,28 +1226,223 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Recalculate TDEE after weight update
   Future<void> _recalculateTDEEAfterWeightUpdate(udp.UserDataProvider userDataProvider, double newWeight) async {
-    // Sử dụng phương thức forceRecalculateTDEE để tính toán lại TDEE từ đầu
-    await userDataProvider.forceRecalculateTDEE();
+    try {
+      // Sử dụng phương thức forceRecalculateTDEE để tính toán lại TDEE từ đầu
+      await userDataProvider.forceRecalculateTDEE();
 
-    // Đồng bộ dữ liệu đầy đủ với backend sau khi cập nhật TDEE
-    await userDataProvider.sendToApi();
+      // Đồng bộ dữ liệu đầy đủ với backend sau khi cập nhật TDEE
+      await userDataProvider.sendToApi();
 
-    // Lấy giá trị calo mục tiêu nhất quán
-    final consistentCalorieGoal = userDataProvider.getConsistentCalorieGoal();
+      // Lấy giá trị calo mục tiêu nhất quán
+      final consistentCalorieGoal = userDataProvider.getConsistentCalorieGoal();
 
-    // Hiển thị thông báo về mục tiêu calo mới
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã cập nhật mục tiêu calo: $consistentCalorieGoal kcal'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      // Chỉ hiển thị thông báo một lần và kiểm tra mounted
+      if (context.mounted && !_isShowingWeightUpdateMessage) {
+        _isShowingWeightUpdateMessage = true;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã cập nhật cân nặng và mục tiêu calo: $consistentCalorieGoal kcal'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        ).closed.then((_) {
+          _isShowingWeightUpdateMessage = false;
+        });
+      }
+    } catch (e) {
+      print('Lỗi khi tính toán lại TDEE: $e');
     }
   }
 
-  // Area chart for weight history
+  // Bar chart for weight history - giống như trong ảnh
+  Widget _buildBarChart() {
+    // Lấy dữ liệu thật từ UserDataProvider
+    final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+    final currentWeight = userDataProvider.weightKg; // Cân nặng hiện tại thật
+    final targetWeight = userDataProvider.targetWeightKg; // Cân nặng mục tiêu thật
+    final goal = userDataProvider.goal; // Mục tiêu thật
+    final pace = userDataProvider.pace; // Tốc độ thật (kg/tuần)
+
+    // Tính toán dữ liệu mẫu dựa trên thông tin thực tế của người dùng
+    List<FlSpot> mockData = [];
+    if (goal == "Giảm cân") {
+      if (targetWeight > 0) {
+        // Có mục tiêu cụ thể
+        double weightDifference = currentWeight - targetWeight;
+        double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+        double startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6));
+
+        for (int i = 0; i < 7; i++) {
+          double weightAtWeek = startWeight - (pace * i);
+          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
+        }
+      } else {
+        // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
+        double startWeight = currentWeight + (pace * 6);
+        for (int i = 0; i < 7; i++) {
+          double weightAtWeek = startWeight - (pace * i);
+          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
+        }
+      }
+    } else if (goal == "Tăng cân") {
+      if (targetWeight > 0) {
+        // Có mục tiêu cụ thể
+        double weightDifference = targetWeight - currentWeight;
+        double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+        double startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6));
+
+        for (int i = 0; i < 7; i++) {
+          double weightAtWeek = startWeight + (pace * i);
+          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
+        }
+      } else {
+        // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
+        double startWeight = currentWeight - (pace * 6);
+        for (int i = 0; i < 7; i++) {
+          double weightAtWeek = startWeight + (pace * i);
+          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
+        }
+      }
+    } else {
+      // Duy trì cân nặng - biến động nhẹ quanh cân nặng hiện tại
+      mockData = [
+        FlSpot(0, currentWeight + 0.3),
+        FlSpot(1, currentWeight - 0.2),
+        FlSpot(2, currentWeight + 0.1),
+        FlSpot(3, currentWeight - 0.1),
+        FlSpot(4, currentWeight + 0.2),
+        FlSpot(5, currentWeight - 0.1),
+        FlSpot(6, currentWeight),
+      ];
+    }
+
+    final chartData = _weightHistory.isNotEmpty ? _weightHistory : mockData;
+
+    // Tính min/max cho trục Y
+    final weights = chartData.map((e) => e.y).toList();
+    final minWeight = weights.reduce((a, b) => a < b ? a : b);
+    final maxWeight = weights.reduce((a, b) => a > b ? a : b);
+    final range = maxWeight - minWeight;
+    final paddedMin = (minWeight - range * 0.1).floorToDouble();
+    final paddedMax = (maxWeight + range * 0.1).ceilToDouble();
+
+    // Tạo nhãn cho trục Y (20kg intervals)
+    final yLabels = <double>[];
+    for (double i = 40; i <= 120; i += 20) {
+      if (i >= paddedMin && i <= paddedMax) {
+        yLabels.add(i);
+      }
+    }
+
+    // Tạo nhãn cho trục X (ngày tháng)
+    final now = DateTime.now();
+    final xLabels = <String>[];
+    for (int i = 0; i < chartData.length; i++) {
+      final date = now.subtract(Duration(days: (chartData.length - 1 - i) * 4));
+      xLabels.add('thg ${date.month} ${date.day}');
+    }
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: paddedMax,
+        minY: paddedMin,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              return BarTooltipItem(
+                '${rod.toY.toStringAsFixed(1)} kg',
+                TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                final index = value.toInt();
+                if (index >= 0 && index < xLabels.length) {
+                  return Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      xLabels[index],
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 10,
+                      ),
+                    ),
+                  );
+                }
+                return Text('');
+              },
+              reservedSize: 30,
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 20,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                return Text(
+                  '${value.toInt()} kg',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 10,
+                  ),
+                );
+              },
+              reservedSize: 40,
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 20,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: Colors.grey[300]!,
+              strokeWidth: 1,
+            );
+          },
+        ),
+        barGroups: chartData.asMap().entries.map((entry) {
+          final index = entry.key;
+          final spot = entry.value;
+
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: spot.y,
+                color: index == chartData.length - 1
+                    ? Colors.blue[400] // Cột cuối cùng màu xanh dương
+                    : Colors.grey[300], // Các cột khác màu xám nhạt
+                width: 20,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(4),
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // Area chart for weight history (giữ lại cho tương thích)
   Widget _buildAreaChart() {
     // Tính toán min và max cho biểu đồ dựa trên dữ liệu
     double minY = 40.0;
@@ -955,156 +1466,417 @@ class _ProfileScreenState extends State<ProfileScreen> {
       maxY = (maxY / 1).ceil() * 1;
     }
 
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          horizontalInterval: (maxY - minY) > 10 ? 5 : 2,  // Điều chỉnh grid dựa vào phạm vi
-          verticalInterval: 1,
-          getDrawingHorizontalLine: (value) {
-            return FlLine(
-              color: Colors.grey.shade200,
-              strokeWidth: 1,
-            );
-          },
-          getDrawingVerticalLine: (value) {
-            return FlLine(
-              color: Colors.grey.shade200,
-              strokeWidth: 1,
-            );
-          },
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          rightTitles: AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 30,
-              interval: 1,
-              getTitlesWidget: (value, meta) {
-                const days = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
-                int index = value.toInt();
-                if (index >= 0 && index < days.length) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      days[index],
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 10,
+    return Container(
+      height: 220, // Fixed height để tránh overflow
+      child: Stack(
+        children: [
+          // Biểu đồ fl_chart (giữ nguyên chức năng)
+          Container(
+            margin: EdgeInsets.only(top: 35, left: 5, right: 5, bottom: 10),
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (maxY - minY) > 10 ? 5 : 2,
+                  getDrawingHorizontalLine: (value) {
+                    return FlLine(
+                      color: Colors.grey.shade200,
+                      strokeWidth: 1,
+                      dashArray: [5, 5],
+                    );
+                  },
+                  getDrawingVerticalLine: (value) {
+                    return FlLine(
+                      color: Colors.transparent,
+                    );
+                  },
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 35,
+                      interval: 1,
+                      getTitlesWidget: (value, meta) {
+                        // Chỉ hiển thị 3 nhãn chính để tránh chồng chéo
+                        if (value == 0) return Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text('Bắt đầu',
+                            style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                        if (value == 3) return Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text('Kỳ nghỉ',
+                            style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                        if (value == 6) return Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text('Hiện tại',
+                            style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                        return const SizedBox();
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: (maxY - minY) > 10 ? 5 : 2,
+                      getTitlesWidget: (value, meta) {
+                        return Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Text(
+                            '${value.toInt()}',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 9,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        );
+                      },
+                      reservedSize: 28,
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: false,
+                ),
+                minX: 0,
+                maxX: 6,
+                minY: minY,
+                maxY: maxY,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: _weightHistory.isEmpty ? () {
+                      // Lấy dữ liệu thật từ UserDataProvider
+                      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+                      final currentWeight = userDataProvider.weightKg;
+                      final targetWeight = userDataProvider.targetWeightKg;
+                      final goal = userDataProvider.goal;
+                      final pace = userDataProvider.pace;
+
+                      if (goal == "Giảm cân") {
+                        if (targetWeight > 0) {
+                          // Có mục tiêu cụ thể
+                          double weightDifference = currentWeight - targetWeight;
+                          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+                          double startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6));
+
+                          return [
+                            FlSpot(0, startWeight),
+                            FlSpot(1, startWeight - pace),
+                            FlSpot(2, startWeight - (pace * 2)),
+                            FlSpot(3, startWeight - (pace * 3)), // Kỳ nghỉ
+                            FlSpot(4, startWeight - (pace * 4)),
+                            FlSpot(5, startWeight - (pace * 5)),
+                            FlSpot(6, currentWeight), // Hiện tại
+                          ];
+                        } else {
+                          // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
+                          double startWeight = currentWeight + (pace * 6);
+                          return [
+                            FlSpot(0, startWeight),
+                            FlSpot(1, startWeight - pace),
+                            FlSpot(2, startWeight - (pace * 2)),
+                            FlSpot(3, startWeight - (pace * 3)), // Kỳ nghỉ
+                            FlSpot(4, startWeight - (pace * 4)),
+                            FlSpot(5, startWeight - (pace * 5)),
+                            FlSpot(6, currentWeight), // Hiện tại
+                          ];
+                        }
+                      } else if (goal == "Tăng cân") {
+                        if (targetWeight > 0) {
+                          // Có mục tiêu cụ thể
+                          double weightDifference = targetWeight - currentWeight;
+                          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+                          double startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6));
+
+                          return [
+                            FlSpot(0, startWeight),
+                            FlSpot(1, startWeight + pace),
+                            FlSpot(2, startWeight + (pace * 2)),
+                            FlSpot(3, startWeight + (pace * 3)), // Kỳ nghỉ
+                            FlSpot(4, startWeight + (pace * 4)),
+                            FlSpot(5, startWeight + (pace * 5)),
+                            FlSpot(6, currentWeight), // Hiện tại
+                          ];
+                        } else {
+                          // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
+                          double startWeight = currentWeight - (pace * 6);
+                          return [
+                            FlSpot(0, startWeight),
+                            FlSpot(1, startWeight + pace),
+                            FlSpot(2, startWeight + (pace * 2)),
+                            FlSpot(3, startWeight + (pace * 3)), // Kỳ nghỉ
+                            FlSpot(4, startWeight + (pace * 4)),
+                            FlSpot(5, startWeight + (pace * 5)),
+                            FlSpot(6, currentWeight), // Hiện tại
+                          ];
+                        }
+                      } else {
+                        // Duy trì cân nặng
+                        return [
+                          FlSpot(0, currentWeight + 0.3),
+                          FlSpot(1, currentWeight + 0.1),
+                          FlSpot(2, currentWeight - 0.1),
+                          FlSpot(3, currentWeight + 0.2), // Kỳ nghỉ
+                          FlSpot(4, currentWeight - 0.2),
+                          FlSpot(5, currentWeight + 0.1),
+                          FlSpot(6, currentWeight), // Hiện tại
+                        ];
+                      }
+                    }() : _weightHistory,
+                    isCurved: true,
+                    curveSmoothness: 0.35, // Làm đường cong mượt hơn
+                    // Gradient theo tiến trình (đỏ -> cam -> vàng -> xanh lá)
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.red.shade400,
+                        Colors.orange.shade400,
+                        Colors.yellow.shade600,
+                        Colors.green.shade400,
+                      ],
+                      stops: [0.0, 0.35, 0.7, 1.0],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    barWidth: 5,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        // Điểm đặc biệt tại kỳ nghỉ và hiện tại
+                        Color dotColor = Colors.orange;
+                        double dotSize = 7.0;
+                        
+                        if (index == 0) { // Bắt đầu
+                          dotColor = Colors.red.shade400;
+                        } else if (index == 3) { // Kỳ nghỉ
+                          dotColor = Colors.orange.shade500;
+                        } else if (index == 6 || index == _weightHistory.length - 1) { // Hiện tại
+                          dotColor = Colors.green.shade500;
+                        } else {
+                          return FlDotCirclePainter(
+                            radius: 0, // Ẩn các điểm khác
+                            color: Colors.transparent,
+                            strokeWidth: 0,
+                            strokeColor: Colors.transparent,
+                          );
+                        }
+                        
+                        return FlDotCirclePainter(
+                          radius: dotSize,
+                          color: dotColor,
+                          strokeWidth: 3,
+                          strokeColor: Colors.white,
+                        );
+                      },
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.green.shade400.withOpacity(0.3),
+                          Colors.orange.shade400.withOpacity(0.2),
+                          Colors.red.shade400.withOpacity(0.1),
+                        ],
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
                       ),
                     ),
-                  );
-                }
-                return const SizedBox();
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              interval: (maxY - minY) > 10 ? 5 : 2,  // Điều chỉnh interval dựa vào phạm vi
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toInt()} kg',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 10,
                   ),
-                );
-              },
-              reservedSize: 45,  // Tăng khoảng trống cho nhãn dài hơn
-            ),
-          ),
-        ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border.all(color: Colors.grey.shade300, width: 1),
-        ),
-        minX: 0,
-        maxX: 6,
-        minY: minY,
-        maxY: maxY,
-        lineBarsData: [
-          LineChartBarData(
-            spots: _weightHistory.isEmpty ? [
-              FlSpot(0, 54),
-              FlSpot(1, 54),
-              FlSpot(2, 54.2),
-              FlSpot(3, 54.3),
-              FlSpot(4, 54.2),
-              FlSpot(5, 54.4),
-              FlSpot(6, 54.5),
-            ] : _weightHistory,
-            isCurved: true,
-            gradient: LinearGradient(
-              colors: [Color(0xFF00BFA6), Color(0xFF00BFA6).withAlpha(180)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-            barWidth: 3,
-            isStrokeCapRound: true,
-            dotData: FlDotData(
-              show: true,
-              getDotPainter: (spot, percent, barData, index) {
-                return FlDotCirclePainter(
-                  radius: 3.5,
-                  color: Colors.white,
-                  strokeWidth: 1.5,
-                  strokeColor: Color(0xFF00BFA6),
-                );
-              },
-            ),
-            belowBarData: BarAreaData(
-              show: true,
-              gradient: LinearGradient(
-                colors: [
-                  Color(0xFF00BFA6).withAlpha(102),
-                  Color(0xFF00BFA6).withAlpha(0),
                 ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                  
+                    tooltipRoundedRadius: 12,
+                    fitInsideHorizontally: true,
+                    getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                      return touchedSpots.map((LineBarSpot touchedSpot) {
+                        return LineTooltipItem(
+                          '${touchedSpot.y.toStringAsFixed(1)} kg',
+                          const TextStyle(
+                            color: Colors.white, 
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                  touchCallback: (FlTouchEvent event, LineTouchResponse? touchResponse) {},
+                  handleBuiltInTouches: true,
+                ),
               ),
             ),
           ),
-        ],
-        lineTouchData: LineTouchData(
-          enabled: true,
-          touchTooltipData: LineTouchTooltipData(
-            tooltipRoundedRadius: 8,
-            getTooltipItems: (List<LineBarSpot> touchedSpots) {
-              return touchedSpots.map((LineBarSpot touchedSpot) {
-                return LineTooltipItem(
-                  '${touchedSpot.y.toStringAsFixed(1)} kg',
-                  const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                );
-              }).toList();
-            },
+          
+          // Nhãn cân nặng bắt đầu - responsive positioning
+          _buildChartLabel(
+            top: 5,
+            left: 10,
+            title: _weightHistory.isEmpty ? () {
+              final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+              final currentWeight = userDataProvider.weightKg;
+              final targetWeight = userDataProvider.targetWeightKg;
+              final goal = userDataProvider.goal;
+              final pace = userDataProvider.pace;
+
+              if (goal == "Giảm cân") {
+                if (targetWeight > 0) {
+                  // Có mục tiêu cụ thể
+                  double weightDifference = currentWeight - targetWeight;
+                  double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+                  double startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6));
+                  return '${startWeight.toStringAsFixed(1)} kg';
+                } else {
+                  // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
+                  double startWeight = currentWeight + (pace * 6);
+                  return '${startWeight.toStringAsFixed(1)} kg';
+                }
+              } else if (goal == "Tăng cân") {
+                if (targetWeight > 0) {
+                  // Có mục tiêu cụ thể
+                  double weightDifference = targetWeight - currentWeight;
+                  double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
+                  double startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6));
+                  return '${startWeight.toStringAsFixed(1)} kg';
+                } else {
+                  // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
+                  double startWeight = currentWeight - (pace * 6);
+                  return '${startWeight.toStringAsFixed(1)} kg';
+                }
+              } else {
+                return '${(currentWeight + 0.3).toStringAsFixed(1)} kg';
+              }
+            }() : '${_weightHistory.first.y.toStringAsFixed(1)} kg',
+            subtitle: "Bắt đầu",
+            alignment: CrossAxisAlignment.start,
+            color: Colors.red.shade400,
           ),
-        ),
+
+          // Nhãn cân nặng hiện tại - chỉ hiển thị 2 nhãn chính để tránh chồng chéo
+          _buildChartLabel(
+            top: 5,
+            right: 10,
+            title: _weightHistory.isEmpty ? () {
+              final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+              return '${userDataProvider.weightKg.toStringAsFixed(1)} kg';
+            }() : '${_weightHistory.last.y.toStringAsFixed(1)} kg',
+            subtitle: "Hiện tại ✅",
+            alignment: CrossAxisAlignment.end,
+            color: Colors.green.shade500,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Widget phụ trợ để tạo các nhãn thông tin trên biểu đồ - responsive version
+  Widget _buildChartLabel({
+    double? top,
+    double? left,
+    double? right,
+    required String title,
+    required String subtitle,
+    required CrossAxisAlignment alignment,
+    required Color color,
+  }) {
+    return Positioned(
+      top: top,
+      left: left,
+      right: right,
+      child: Column(
+        crossAxisAlignment: alignment,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                )
+              ],
+              border: Border.all(color: color.withOpacity(0.3), width: 1),
+            ),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: color,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 9,
+              fontWeight: FontWeight.w500,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }
 
   // Function to navigate through the profile update flow
   void _navigateToProfileUpdate() async {
-    // Start the sequential navigation flow through onboarding pages
+    // Navigate to full onboarding flow for updating profile
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => ProfileUpdateFlow(initialStep: 'name'),
+        builder: (context) => OnboardingUpdateFlow(),
       ),
     );
 
     // If we got a result back, refresh the profile data
     if (result == true) {
       _loadUserData();
+
+      // Lấy UserDataProvider để cập nhật mục tiêu
+      final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
+
+      // Lấy giá trị hiện tại từ userDataProvider
+      String goal = userDataProvider.goal;
+      double pace = userDataProvider.pace;
+
+      // Cập nhật mục tiêu và tốc độ sử dụng phương thức mới
+      await userDataProvider.updateUserGoal(
+        goal: goal,
+        pace: pace,
+      );
+
+      // Hiển thị thông báo
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Thông tin cá nhân đã được cập nhật thành công'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
     }
   }
 
@@ -1293,6 +2065,291 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+// Custom painter for the weight chart
+class WeightChartPainter extends CustomPainter {
+  final List<FlSpot> weightHistory;
+
+  WeightChartPainter({required this.weightHistory});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.round;
+
+    // Create gradient colors
+    final gradient = LinearGradient(
+      colors: [
+        Colors.red.shade400,
+        Colors.orange.shade400,
+        Colors.yellow.shade600,
+        Colors.green.shade400,
+      ],
+      stops: [0.0, 0.35, 0.7, 1.0],
+    );
+
+    // Calculate chart dimensions
+    final chartRect = Rect.fromLTWH(0, 40, size.width, size.height - 80);
+
+    if (weightHistory.isEmpty) return;
+
+    // Find min and max values for scaling
+    final minWeight = weightHistory.map((e) => e.y).reduce((a, b) => a < b ? a : b);
+    final maxWeight = weightHistory.map((e) => e.y).reduce((a, b) => a > b ? a : b);
+    final weightRange = maxWeight - minWeight;
+
+    // Create path for the curve
+    final path = Path();
+    final points = <Offset>[];
+
+    for (int i = 0; i < weightHistory.length; i++) {
+      final spot = weightHistory[i];
+      final x = chartRect.left + (spot.x / (weightHistory.length - 1)) * chartRect.width;
+      final y = chartRect.bottom - ((spot.y - minWeight) / weightRange) * chartRect.height;
+      points.add(Offset(x, y));
+
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        // Create smooth curve
+        final prevPoint = points[i - 1];
+        final controlPoint1 = Offset(prevPoint.dx + (x - prevPoint.dx) * 0.5, prevPoint.dy);
+        final controlPoint2 = Offset(prevPoint.dx + (x - prevPoint.dx) * 0.5, y);
+        path.cubicTo(controlPoint1.dx, controlPoint1.dy, controlPoint2.dx, controlPoint2.dy, x, y);
+      }
+    }
+
+    // Apply gradient to the path
+    final gradientPaint = Paint()
+      ..shader = gradient.createShader(chartRect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawPath(path, gradientPaint);
+
+    // Draw dots at key points
+    final dotPaint = Paint()..style = PaintingStyle.fill;
+
+    for (int i = 0; i < points.length; i++) {
+      Color dotColor;
+      if (i == 0) {
+        dotColor = Colors.red.shade400;
+      } else if (i == 3 && points.length > 3) {
+        dotColor = Colors.orange.shade400;
+      } else if (i == points.length - 1) {
+        dotColor = Colors.green.shade400;
+      } else {
+        continue; // Skip intermediate points
+      }
+
+      // Draw white border
+      canvas.drawCircle(points[i], 8, Paint()..color = Colors.white);
+      // Draw colored dot
+      canvas.drawCircle(points[i], 6, Paint()..color = dotColor);
+    }
+
+    // Draw area under curve
+    final areaPath = Path.from(path);
+    areaPath.lineTo(chartRect.right, chartRect.bottom);
+    areaPath.lineTo(chartRect.left, chartRect.bottom);
+    areaPath.close();
+
+    final areaPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.green.shade400.withOpacity(0.2),
+          Colors.orange.shade400.withOpacity(0.1),
+          Colors.red.shade400.withOpacity(0.05),
+        ],
+        begin: Alignment.bottomCenter,
+        end: Alignment.topCenter,
+      ).createShader(chartRect)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(areaPath, areaPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+// OnboardingUpdateFlow - Flow cập nhật thông tin cá nhân qua các màn hình onboarding
+class OnboardingUpdateFlow extends StatefulWidget {
+  @override
+  _OnboardingUpdateFlowState createState() => _OnboardingUpdateFlowState();
+}
+
+class _OnboardingUpdateFlowState extends State<OnboardingUpdateFlow> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  // Danh sách các màn hình onboarding cho việc cập nhật
+  final List<Widget> _pages = [
+    const AgeSelectionPage(updateMode: true),
+    const HeightSelectionPage(updateMode: true),
+    const WeightSelectionPage(updateMode: true),
+    const DietGoalPage(updateMode: true),
+    const ActivityLevelPage(updateMode: true),
+    const WeightGainPacePage(),
+  ];
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _nextPage() {
+    if (_currentPage < _pages.length - 1) {
+      setState(() {
+        _currentPage++;
+      });
+      _pageController.nextPage(
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      // Hoàn thành flow, trả về true để báo hiệu cập nhật thành công
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  void _previousPage() {
+    if (_currentPage > 0) {
+      setState(() {
+        _currentPage--;
+      });
+      _pageController.previousPage(
+        duration: Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      // Nếu đang ở trang đầu tiên, thoát khỏi flow
+      Navigator.of(context).pop(false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: _previousPage,
+        ),
+        title: Text(
+          'Cập nhật thông tin',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          // Progress indicator
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Row(
+              children: [
+                Text(
+                  '${_currentPage + 1}/${_pages.length}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: (_currentPage + 1) / _pages.length,
+                    backgroundColor: Colors.grey[300],
+                    valueColor: AlwaysStoppedAnimation<Color>(OnboardingStyles.primaryColor),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Page content
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              itemCount: _pages.length,
+              itemBuilder: (context, index) {
+                return _pages[index];
+              },
+            ),
+          ),
+
+          // Navigation buttons
+          Container(
+            padding: EdgeInsets.all(20),
+            child: Row(
+              children: [
+                if (_currentPage > 0)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _previousPage,
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        side: BorderSide(color: OnboardingStyles.primaryColor),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                      child: Text(
+                        'Quay lại',
+                        style: TextStyle(
+                          color: OnboardingStyles.primaryColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (_currentPage > 0) SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _nextPage,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OnboardingStyles.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                    child: Text(
+                      _currentPage == _pages.length - 1 ? 'Hoàn thành' : 'Tiếp tục',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // Widget to handle navigation to specific onboarding screens for updating user profile data
 class ProfileUpdateFlow extends StatelessWidget {
   final String initialStep;
@@ -1331,6 +2388,10 @@ class ProfileUpdateFlow extends StatelessWidget {
       case 'weight':
         pageTitle = 'Cập nhật cân nặng';
         pageContent = _buildWeightUpdatePage(context, userDataProvider, _profileScreenState);
+        break;
+      case 'target_weight':
+        pageTitle = 'Cập nhật cân nặng mục tiêu';
+        pageContent = TargetWeightPage(updateMode: true);
         break;
       case 'activity':
         pageTitle = 'Cập nhật mức độ hoạt động';

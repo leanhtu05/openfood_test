@@ -134,7 +134,7 @@ class WaterSection extends StatelessWidget {
                         SnackBar(
                           content: Text('Đã ghi lại uống thêm $ml mL nước'),
                           backgroundColor: AppColors.water,
-                          behavior: SnackBarBehavior.floating,
+                          behavior: SnackBarBehavior.fixed,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),

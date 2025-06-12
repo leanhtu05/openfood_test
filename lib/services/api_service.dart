@@ -46,17 +46,15 @@ class ApiService {
     // Sử dụng Firestore trực tiếp cho các chức năng CRUD đơn giản
     if (useDirectFirestore) {
       // Các chức năng CRUD đơn giản
-      if (featureType == 'user_profile' || 
-          featureType == 'food_entry' || 
-          featureType == 'water_entry' || 
+      if (featureType == 'user_profile' ||
+          featureType == 'food_entry' ||
+          featureType == 'water_entry' ||
           featureType == 'exercise') {
-        debugPrint('ℹ️ Sử dụng Firestore trực tiếp cho chức năng: $featureType');
         return true;
       }
     }
-    
+
     // Các chức năng phức tạp vẫn sử dụng API
-    debugPrint('ℹ️ Sử dụng API cho chức năng phức tạp: $featureType');
     return false;
   }
   
@@ -80,7 +78,6 @@ class ApiService {
         await Future.delayed(Duration(milliseconds: 100));
         final token = await user.getIdToken(true); // force refresh
         headers['Authorization'] = 'Bearer $token';
-        debugPrint('✅ Đính kèm Firebase ID Token vào request');
       } else {
         // Thử lấy token từ SharedPreferences nếu không có user đăng nhập
         try {
@@ -88,26 +85,21 @@ class ApiService {
           final apiToken = prefs.getString('api_token');
           if (apiToken != null) {
             headers['Authorization'] = 'Bearer $apiToken';
-            debugPrint('✅ Đính kèm API Token từ SharedPreferences vào request');
-          } else {
-            debugPrint('⚠️ Không có người dùng đăng nhập, không thể lấy token');
           }
         } catch (e) {
-          debugPrint('❌ Lỗi khi lấy token từ SharedPreferences: $e');
+          // Silent error handling
         }
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy Firebase ID Token: $e');
       // Thử lấy token từ SharedPreferences nếu có lỗi
       try {
         final prefs = await SharedPreferences.getInstance();
         final apiToken = prefs.getString('api_token');
         if (apiToken != null) {
           headers['Authorization'] = 'Bearer $apiToken';
-          debugPrint('✅ Đính kèm API Token từ SharedPreferences vào request (fallback)');
         }
       } catch (e) {
-        debugPrint('❌ Lỗi khi lấy token từ SharedPreferences (fallback): $e');
+        // Silent error handling
       }
     }
     
@@ -123,7 +115,6 @@ class ApiService {
       
       return response.statusCode == 200;
     } catch (e) {
-      print('Lỗi kết nối API: $e');
       return false;
     }
   }
@@ -131,30 +122,22 @@ class ApiService {
   // Kiểm tra kết nối với API và trả về thông tin chi tiết
   static Future<Map<String, dynamic>> checkApiConnectionDetailed() async {
     try {
-      debugPrint('🔍 Đang kiểm tra kết nối API tại: ${authBaseUrl}${ApiEndpoints.apiStatus}');
-      
       final response = await http.get(
         Uri.parse('${authBaseUrl}${AppConfig.ApiEndpoints.apiStatus}'),
       ).timeout(
         Duration(seconds: 5),
         onTimeout: () {
-          debugPrint('⏱️ Timeout: API không phản hồi sau 5 giây');
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
-      
-      debugPrint('📊 Trạng thái API: ${response.statusCode}');
-      // Không in nội dung phản hồi để tránh hiển thị dữ liệu
-      
+
       if (response.statusCode == 200) {
-        debugPrint('✅ Kết nối API thành công');
         return {
           'success': true,
           'status_code': response.statusCode,
           'message': 'Kết nối API thành công'
         };
       } else {
-        debugPrint('❌ Kết nối API thất bại: ${response.statusCode}');
         return {
           'success': false,
           'status_code': response.statusCode,
@@ -162,7 +145,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi kiểm tra kết nối API: $e');
       return {
         'success': false,
         'status_code': null,
@@ -183,7 +165,6 @@ class ApiService {
       }
       return {'ai_available': false, 'error': 'Không thể kết nối với AI'};
     } catch (e) {
-      print('Lỗi khi kiểm tra AI: $e');
       return {'ai_available': false, 'error': 'Lỗi kết nối: $e'};
     }
   }
@@ -191,9 +172,8 @@ class ApiService {
   // Thông báo đã đọc dữ liệu
   static Future<void> notifyDataRead(String dataType, String userId) async {
     // Không gọi API không tồn tại nữa
-    debugPrint('📖 Đã đọc dữ liệu: $dataType cho người dùng: $userId');
     // Endpoint /api/data-read-notification không tồn tại trong backend
-    // nên chỉ ghi log mà không gọi API
+
   }
   
   // USER PROFILE METHODS
@@ -233,12 +213,9 @@ class ApiService {
           },
         }),
       );
-      
-      debugPrint('API Response: ${response.statusCode} - ${response.body}');
-      
+
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      debugPrint('Error sending data to API: $e');
       return false;
     }
   }
@@ -252,16 +229,12 @@ class ApiService {
         headers: headers,
         body: jsonEncode(userData),
       );
-      
-      debugPrint('API Response: ${response.statusCode} - ${response.body}');
-      
+
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      debugPrint('Error sending user profile data to API: $e');
       return false;
     }
   }
-  
 
   // Gửi thông tin người dùng đầy đủ đến endpoint /firestore/users/{user_id}
   static Future<bool> sendUserProfileToFirestore(String userId, Map<String, dynamic> userData) async {
@@ -277,19 +250,14 @@ class ApiService {
       // Thêm header cho authorization nếu có
       final headers = await getAuthHeaders();
       
-      debugPrint('🔄 Đang gửi dữ liệu người dùng lên API...');
-      
       final response = await http.post(
         Uri.parse('$firestoreUsersUrl/$userId'),
         headers: headers,
         body: jsonEncode(preparedData),
       );
-      
-      debugPrint('API Response (sendUserProfileToFirestore): ${response.statusCode} - ${response.body}');
-      
+
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      debugPrint('Error sending user profile to Firestore API: $e');
       return false;
     }
   }
@@ -297,14 +265,12 @@ class ApiService {
   // Phương thức này đã bị xóa để tránh đồng bộ dữ liệu từ backend
   // Trả về true để không làm ảnh hưởng đến luồng chạy của ứng dụng
   static Future<bool> syncUserProfileToFirestore(String userId, Map<String, dynamic> userData) async {
-    debugPrint('✅ Phương thức syncUserProfileToFirestore đã bị vô hiệu hóa - không đồng bộ với API');
     return true;
   }
-  
+
   // Phương thức này đã bị xóa để tránh đồng bộ dữ liệu từ backend
   // Trả về true để không làm ảnh hưởng đến luồng chạy của ứng dụng
   static Future<bool> syncFullUserData(String userId, Map<String, dynamic> userData) async {
-    debugPrint('✅ Phương thức syncFullUserData đã bị vô hiệu hóa - không đồng bộ với API');
     return true;
   }
   
@@ -323,7 +289,7 @@ class ApiService {
       
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      print('Lỗi khi gửi kế hoạch ăn: $e');
+
       return false;
     }
   }
@@ -337,8 +303,7 @@ class ApiService {
       
       // Sử dụng phương thức POST với body JSON
       final replaceUrl = Uri.parse('$baseUrl${ApiEndpoints.replaceMeal}');
-      
-      debugPrint('🔄 Đang thay thế bữa ăn từ API: $replaceUrl');
+
       final response = await http.post(
         replaceUrl,
         headers: {
@@ -349,22 +314,21 @@ class ApiService {
       ).timeout(
         Duration(seconds: 60),  // Tăng timeout lên 60 giây
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi thay thế bữa ăn');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã thay thế bữa ăn thành công');
+
         return json.decode(response.body);
       } else if (response.statusCode == 404) {
         // Trả về lỗi 404 để caller có thể xử lý
-        debugPrint('⚠️ Không tìm thấy kế hoạch ăn: ${response.statusCode} - ${response.body}');
+
         return {'error': 'not_found', 'status': 404, 'message': 'Không tìm thấy kế hoạch ăn'};
       } else if (response.statusCode == 500) {
         // Trả về lỗi 500 để caller có thể xử lý
-        debugPrint('❌ Lỗi server: ${response.statusCode} - ${response.body}');
-        
+
         // Phân tích lỗi nếu có thể
         String errorMessage = 'Lỗi server';
         try {
@@ -373,7 +337,7 @@ class ApiService {
             errorMessage = errorData['detail'];
           }
         } catch (e) {
-          debugPrint('Không thể phân tích lỗi server: $e');
+
         }
         
         return {
@@ -382,11 +346,11 @@ class ApiService {
           'message': errorMessage
         };
       } else {
-        debugPrint('❌ Lỗi khi thay thế bữa ăn: ${response.statusCode} - ${response.body}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API thay thế bữa ăn: $e');
+
       return null;
     }
   }
@@ -407,27 +371,19 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('Lỗi khi thay thế ngày: $e');
+
       return null;
     }
   }
-  
-  // FOOD LOG METHODS
-  
+
   // Send food entry to FastAPI
   static Future<bool> sendFoodEntry(FoodEntry entry, String userId) async {
     try {
       // In ra thông tin chi tiết về mục nhập thực phẩm
-      debugPrint('🍽️ Thông tin mục nhập thực phẩm:');
-      debugPrint('   - ID: ${entry.id}');
-      debugPrint('   - Mô tả: ${entry.description}');
-      debugPrint('   - Ngày: ${entry.dateTime.toIso8601String()}');
-      debugPrint('   - User ID: $userId');
-      
+
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('food_entry')) {
-        debugPrint('🔄 Đang lưu mục nhập thực phẩm trực tiếp vào Firestore (collection mới)...');
-        
+
         try {
           // Chuẩn bị dữ liệu để lưu vào Firestore
           final foodData = entry.toJson();
@@ -441,24 +397,21 @@ class ApiService {
               .collection('food_records')
               .doc(entry.id)
               .set(foodData);
-          
-          debugPrint('✅ Đã lưu mục nhập thực phẩm trực tiếp vào collection food_records thành công');
-          
+
           // Kiểm tra số lượng bản ghi trong collection mới
           final countQuery = await FirebaseFirestore.instance
               .collection('food_records')
               .where('user_id', isEqualTo: userId)
               .get();
-          
-          debugPrint('   - Tổng số mục nhập thực phẩm trong collection mới của người dùng: ${countQuery.docs.length}');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi lưu mục nhập thực phẩm vào Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang gửi mục nhập thực phẩm đến API...');
+
         final headers = await getAuthHeaders();
         final response = await http.post(
           Uri.parse(foodLogUrl),
@@ -468,13 +421,11 @@ class ApiService {
             'entry': entry.toJson(),
           }),
         );
-        
-        debugPrint('API Response (sendFoodEntry): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200 || response.statusCode == 201;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gửi mục nhập thực phẩm: $e');
+
       return false;
     }
   }
@@ -486,24 +437,22 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('food_entry')) {
-        debugPrint('🔄 Đang xóa mục nhập thực phẩm trực tiếp từ Firestore (collection food_records)...');
-        
+
         try {
           // Xóa mục nhập thực phẩm từ collection mới food_records
           await FirebaseFirestore.instance
               .collection('food_records')
               .doc(entryId)
               .delete();
-          
-          debugPrint('✅ Đã xóa mục nhập thực phẩm từ collection food_records thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi xóa mục nhập thực phẩm từ Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang xóa mục nhập thực phẩm qua API...');
+
         final headers = await getAuthHeaders();
         final response = await http.delete(
           Uri.parse('$foodLogUrl/$userId/$entryId'),
@@ -513,7 +462,7 @@ class ApiService {
         return response.statusCode == 200 || response.statusCode == 204;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi xóa mục nhập thực phẩm: $e');
+
       return false;
     }
   }
@@ -523,8 +472,7 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('food_entry')) {
-        debugPrint('🔄 Đang cập nhật mục nhập thực phẩm trực tiếp vào collection food_records...');
-        
+
         try {
           // Chuẩn bị dữ liệu để cập nhật vào Firestore
           final entryData = entry.toJson();
@@ -537,24 +485,21 @@ class ApiService {
               .collection('food_records')
               .doc(entry.id)
               .set(entryData, SetOptions(merge: true));
-          
-          debugPrint('✅ Đã cập nhật mục nhập thực phẩm trong collection food_records thành công');
-          
+
           // Kiểm tra số lượng bản ghi trong collection mới
           final countQuery = await FirebaseFirestore.instance
               .collection('food_records')
               .where('user_id', isEqualTo: userId)
               .get();
-          
-          debugPrint('   - Tổng số mục nhập thực phẩm trong collection food_records: ${countQuery.docs.length}');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi cập nhật mục nhập thực phẩm vào collection food_records: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang cập nhật mục nhập thực phẩm qua API...');
+
         final headers = await getAuthHeaders();
         final response = await http.put(
           Uri.parse('$foodLogUrl/$userId/${entry.id}'),
@@ -563,12 +508,11 @@ class ApiService {
             'entry': entry.toJson(),
           }),
         );
-        
-        debugPrint('API Response (updateFoodEntry): ${response.statusCode} - ${response.body}');
+
         return response.statusCode == 200;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi cập nhật mục nhập thực phẩm: $e');
+
       return false;
     }
   }
@@ -579,8 +523,7 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('exercise')) {
-        debugPrint('🔄 Đang lưu bài tập trực tiếp vào Firestore...');
-        
+
         try {
           // Chuẩn bị dữ liệu để lưu vào Firestore
           final exerciseData = exercise.toJson();
@@ -593,16 +536,15 @@ class ApiService {
               .collection('exercises')
               .doc(exercise.id)
               .set(exerciseData);
-          
-          debugPrint('✅ Đã lưu bài tập trực tiếp vào Firestore thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi lưu bài tập vào Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang gửi bài tập đến API...');
+
         final headers = await getAuthHeaders();
         final response = await http.post(
           Uri.parse(exerciseUrl),
@@ -612,13 +554,11 @@ class ApiService {
             'exercise_data': exercise.toJson(),
           }),
         );
-        
-        debugPrint('API Response (sendExercise): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200 || response.statusCode == 201;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gửi bài tập: $e');
+
       return false;
     }
   }
@@ -628,8 +568,7 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('exercise')) {
-        debugPrint('🔄 Đang cập nhật bài tập trực tiếp vào Firestore...');
-        
+
         try {
           // Chuẩn bị dữ liệu để cập nhật vào Firestore
           final exerciseData = exercise.toJson();
@@ -641,16 +580,15 @@ class ApiService {
               .collection('exercises')
               .doc(exercise.id)
               .set(exerciseData, SetOptions(merge: true));
-          
-          debugPrint('✅ Đã cập nhật bài tập trực tiếp vào Firestore thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi cập nhật bài tập vào Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang cập nhật bài tập qua API...');
+
         final headers = await getAuthHeaders();
         final response = await http.put(
           Uri.parse('$exerciseUrl/${exercise.id}'),
@@ -660,13 +598,11 @@ class ApiService {
             'exercise_data': exercise.toJson(),
           }),
         );
-        
-        debugPrint('API Response (updateExercise): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi cập nhật bài tập: $e');
+
       return false;
     }
   }
@@ -676,24 +612,22 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('exercise')) {
-        debugPrint('🔄 Đang xóa bài tập trực tiếp từ Firestore...');
-        
+
         try {
           // Xóa bài tập từ Firestore
           await FirebaseFirestore.instance
               .collection('exercises')
               .doc(exerciseId)
               .delete();
-          
-          debugPrint('✅ Đã xóa bài tập từ Firestore thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi xóa bài tập từ Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang xóa bài tập qua API...');
+
         final headers = await getAuthHeaders();
         final response = await http.delete(
           Uri.parse('$exerciseUrl/$exerciseId'),
@@ -702,13 +636,11 @@ class ApiService {
             'user_id': userId,
           }),
         );
-        
-        debugPrint('API Response (deleteExercise): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi xóa bài tập: $e');
+
       return false;
     }
   }
@@ -722,8 +654,7 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('water_entry')) {
-        debugPrint('🔄 Đang lưu mục nhập nước uống trực tiếp vào Firestore...');
-        
+
         try {
           // Chuẩn bị dữ liệu để lưu vào Firestore
           final waterData = entry.toMap();
@@ -736,16 +667,15 @@ class ApiService {
               .collection('water_entries')
               .doc(entry.id)
               .set(waterData);
-          
-          debugPrint('✅ Đã lưu mục nhập nước uống trực tiếp vào Firestore thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi lưu mục nhập nước uống vào Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang gửi mục nhập nước uống đến API...');
+
         final headers = await getAuthHeaders();
         final response = await http.post(
           Uri.parse(waterLogUrl),
@@ -755,13 +685,11 @@ class ApiService {
             'water_data': entry.toMap(),
           }),
         );
-        
-        debugPrint('API Response (sendWaterEntry): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200 || response.statusCode == 201;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gửi mục nhập nước uống: $e');
+
       return false;
     }
   }
@@ -771,24 +699,22 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('water_entry')) {
-        debugPrint('🔄 Đang xóa mục nhập nước uống trực tiếp từ Firestore...');
-        
+
         try {
           // Xóa mục nhập nước uống từ Firestore
           await FirebaseFirestore.instance
               .collection('water_entries')
               .doc(entryId)
               .delete();
-          
-          debugPrint('✅ Đã xóa mục nhập nước uống từ Firestore thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi xóa mục nhập nước uống từ Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang xóa mục nhập nước uống qua API...');
+
         final headers = await getAuthHeaders();
         final response = await http.delete(
           Uri.parse('$waterLogUrl/$entryId'),
@@ -797,13 +723,11 @@ class ApiService {
             'user_id': userId,
           }),
         );
-        
-        debugPrint('API Response (deleteWaterEntry): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi xóa mục nhập nước uống: $e');
+
       return false;
     }
   }
@@ -813,8 +737,7 @@ class ApiService {
     try {
       // Kiểm tra xem có nên sử dụng Firestore trực tiếp không
       if (shouldUseDirectFirestore('water_entry')) {
-        debugPrint('🔄 Đang xóa tất cả mục nhập nước uống trực tiếp từ Firestore...');
-        
+
         try {
           // Lấy tất cả mục nhập nước uống của người dùng
           final querySnapshot = await FirebaseFirestore.instance
@@ -830,28 +753,25 @@ class ApiService {
           
           // Thực hiện xóa hàng loạt
           await batch.commit();
-          
-          debugPrint('✅ Đã xóa ${querySnapshot.docs.length} mục nhập nước uống từ Firestore thành công');
+
           return true;
         } catch (firestoreError) {
-          debugPrint('❌ Lỗi khi xóa tất cả mục nhập nước uống từ Firestore: $firestoreError');
+
           return false;
         }
       } else {
         // Sử dụng API
-        debugPrint('🔄 Đang xóa tất cả mục nhập nước uống qua API...');
+
         final headers = await getAuthHeaders();
         final response = await http.delete(
           Uri.parse('$waterLogUrl/$userId/all'),
           headers: headers,
         );
-        
-        debugPrint('API Response (clearAllWaterEntries): ${response.statusCode} - ${response.body}');
-        
+
         return response.statusCode == 200;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi xóa tất cả mục nhập nước uống: $e');
+
       return false;
     }
   }
@@ -870,7 +790,7 @@ class ApiService {
       
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      debugPrint('Error adding to favorites via API: $e');
+
       return false;
     }
   }
@@ -886,7 +806,7 @@ class ApiService {
       
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
-      debugPrint('Error removing from favorites via API: $e');
+
       return false;
     }
   }
@@ -907,28 +827,24 @@ class ApiService {
       ).timeout(
         Duration(seconds: 3), // Giảm thời gian timeout xuống 3 giây
         onTimeout: () {
-          debugPrint('⚠️ Login API timeout - có thể server đang bận');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
-      
-      debugPrint('Login API Response: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
-        debugPrint('✅ Đăng nhập API thành công');
+
         try {
           final responseData = json.decode(response.body);
           // Xử lý phản hồi bằng helper
           return FirebaseHelpers.safeHandleApiResponse(responseData);
         } catch (e) {
-          debugPrint('⚠️ Không thể phân tích phản hồi API login: $e');
+
           // Trả về một đối tượng đơn giản
           return {'success': true, 'parse_error': e.toString()};
         }
       }
-      
-      debugPrint('⚠️ Đăng nhập API thất bại với mã ${response.statusCode}');
-      
+
       // Xử lý lỗi cụ thể
       if (response.statusCode == 401) {
         return {'error': 'Không có quyền truy cập. Token không hợp lệ hoặc hết hạn'};
@@ -943,7 +859,7 @@ class ApiService {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error logging in via API: $e');
+
       return {'error': 'Lỗi kết nối: ${e.toString()}'};
     }
   }
@@ -951,8 +867,7 @@ class ApiService {
   // Phương thức này đã bị xóa để tránh nhận dữ liệu từ backend
   // Trả về thông tin người dùng trực tiếp từ Firebase
   static Future<Map<String, dynamic>?> getCurrentUser() async {
-    debugPrint('✅ Phương thức getCurrentUser đã bị vô hiệu hóa - lấy dữ liệu trực tiếp từ Firebase');
-    
+
     try {
       // Lấy thông tin người dùng hiện tại từ Firebase
       final currentUser = FirebaseAuth.instance.currentUser;
@@ -969,7 +884,7 @@ class ApiService {
         return {'error': 'Không có người dùng đăng nhập'};
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi lấy thông tin người dùng từ Firebase: $e');
+
       return {'error': 'Lỗi kết nối Firebase: ${e.toString()}'};
     }
   }
@@ -984,22 +899,20 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⚠️ Validate token API timeout - có thể server đang bận');
+
           return http.Response('{"valid": false, "error": "Timeout"}', 408);
         },
       );
-      
-      debugPrint('Validate Token API Response: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        debugPrint('✅ Token hợp lệ');
+
         return data['valid'] ?? false;
       }
-      debugPrint('⚠️ Token không hợp lệ');
+
       return false;
     } catch (e) {
-      debugPrint('❌ Lỗi khi kiểm tra token: $e');
+
       return false;
     }
   }
@@ -1007,7 +920,7 @@ class ApiService {
   // Kiểm tra endpoint cụ thể có tồn tại hay không
   static Future<bool> checkEndpointExists(String endpoint) async {
     try {
-      debugPrint('📡 Đang kiểm tra endpoint: $authBaseUrl$endpoint');
+
       final headers = await getAuthHeaders();
       final response = await http.get(
         Uri.parse('$authBaseUrl$endpoint'),
@@ -1015,16 +928,15 @@ class ApiService {
       ).timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-          debugPrint('⏱️ Timeout: Endpoint không phản hồi sau 5 giây');
+
           return http.Response('Timeout', 408);
         },
       );
-      
-      debugPrint('📊 Trạng thái endpoint: ${response.statusCode}');
+
       // 200 OK hoặc 404 Not Found
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('❌ Lỗi kiểm tra endpoint: $e');
+
       return false;
     }
   }
@@ -1032,10 +944,9 @@ class ApiService {
   // Lấy dữ liệu food entries từ Firebase
   static Future<List<FoodEntry>?> getFoodEntriesFromFirebase(String userId, String date) async {
     try {
-      debugPrint('🔄 Truy vấn trực tiếp vào Firestore cho thực phẩm ngày $date...');
-      
+
       // Ưu tiên truy vấn collection mới food_records trước
-      debugPrint('   🔍 Ưu tiên truy vấn collection food_records với date="$date" và user_id="$userId"');
+
       final newCollectionQuery = await FirebaseFirestore.instance
           .collection('food_records')
           .where('user_id', isEqualTo: userId)
@@ -1044,8 +955,7 @@ class ApiService {
       
       // Nếu tìm thấy dữ liệu trong collection mới food_records
       if (newCollectionQuery.docs.isNotEmpty) {
-        debugPrint('   ✅ Tìm thấy ${newCollectionQuery.docs.length} mục trong collection food_records');
-        
+
         // Chuyển đổi kết quả truy vấn thành danh sách FoodEntry
         final entries = newCollectionQuery.docs.map((doc) {
           final data = doc.data();
@@ -1055,14 +965,12 @@ class ApiService {
           }
           return FoodEntry.fromJson(data);
         }).toList();
-        
-        debugPrint('✅ Đã tìm thấy ${entries.length} mục thực phẩm cho ngày $date trong collection food_records');
+
         return entries;
       }
       
       // Nếu không tìm thấy trong collection mới, thử truy vấn collection cũ (chiến lược fallback)
-      debugPrint('   ⚠️ Không tìm thấy dữ liệu trong collection food_records, thử fallback vào collection food_entries...');
-      debugPrint('   🔍 Truy vấn collection food_entries với date="$date" và user_id="$userId"');
+
       final oldCollectionQuery = await FirebaseFirestore.instance
           .collection('food_entries')
           .where('user_id', isEqualTo: userId)
@@ -1071,8 +979,7 @@ class ApiService {
       
       // Nếu không tìm thấy dữ liệu trong collection cũ, thử phương pháp khác
       if (oldCollectionQuery.docs.isEmpty) {
-        debugPrint('   ! Không tìm thấy mục nào trong collection food_entries, thử lấy tất cả và lọc');
-        
+
         // Lấy tất cả food entries của người dùng và lọc theo ngày
         final allEntriesSnapshot = await FirebaseFirestore.instance
             .collection('food_entries')
@@ -1080,9 +987,7 @@ class ApiService {
             .get();
         
         final filteredEntries = <FoodEntry>[];
-        
-        debugPrint('   ℹ️ Tìm thấy ${allEntriesSnapshot.docs.length} mục thực phẩm tổng cộng, đang lọc theo ngày $date');
-        
+
         for (var doc in allEntriesSnapshot.docs) {
           final data = doc.data();
           String entryDate = '';
@@ -1112,9 +1017,9 @@ class ApiService {
         }
         
         if (filteredEntries.isEmpty) {
-          debugPrint('   ! Không tìm thấy mục nhập thực phẩm nào cho người dùng $userId');
+
         } else {
-          debugPrint('   ℹ️ Tìm thấy ${filteredEntries.length} mục sau khi lọc theo ngày');
+
         }
         return filteredEntries;
       }
@@ -1128,11 +1033,10 @@ class ApiService {
         }
         return FoodEntry.fromJson(data);
       }).toList();
-      
-      debugPrint('✅ Đã tìm thấy ${entries.length} mục thực phẩm cho ngày $date trong collection food_entries');
+
       return entries;
     } catch (e) {
-      debugPrint('❌ Lỗi khi truy vấn thực phẩm từ Firestore: $e');
+
       return null;
     }
   }
@@ -1140,8 +1044,7 @@ class ApiService {
   // Lấy dữ liệu exercise từ Firebase
   static Future<List<Exercise>?> getExercisesFromFirebase(String userId, String date) async {
     try {
-      debugPrint('🔄 Truy vấn trực tiếp vào Firestore cho ngày $date...');
-      
+
       // Thử truy vấn với date
       final querySnapshot = await FirebaseFirestore.instance
           .collection('exercises')
@@ -1156,9 +1059,7 @@ class ApiService {
             .collection('exercises')
             .where('user_id', isEqualTo: userId)
             .get();
-        
-        debugPrint('✅ Tìm thấy ${allExercisesSnapshot.docs.length} bài tập trong Firestore, đang lọc theo ngày $date');
-        
+
         final filteredExercises = <Exercise>[];
         
         for (var doc in allExercisesSnapshot.docs) {
@@ -1185,12 +1086,11 @@ class ApiService {
             if (data['id'] == null) {
               data['id'] = doc.id;
             }
-            debugPrint('  ✅ Tìm thấy bài tập cho ngày $date: ${data['name'] ?? data['description'] ?? 'Bài tập không tên'}');
+
             filteredExercises.add(Exercise.fromJson(data));
           }
         }
-        
-        debugPrint('✅ Đã tải ${filteredExercises.length} bài tập cho ngày $date');
+
         return filteredExercises;
       }
       
@@ -1203,11 +1103,10 @@ class ApiService {
         }
         return Exercise.fromJson(data);
       }).toList();
-      
-      debugPrint('✅ Đã tìm thấy ${exercises.length} bài tập cho ngày $date trong Firestore');
+
       return exercises;
     } catch (e) {
-      debugPrint('❌ Lỗi khi truy vấn bài tập từ Firestore: $e');
+
       return null;
     }
   }
@@ -1235,7 +1134,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting all exercises from Firebase: $e');
+
       return null;
     }
   }
@@ -1243,8 +1142,7 @@ class ApiService {
   // Lấy dữ liệu water entries từ Firebase
   static Future<List<WaterEntry>?> getWaterEntriesFromFirebase(String userId, String date) async {
     try {
-      debugPrint('🔄 Truy vấn trực tiếp vào Firestore cho nước ngày $date...');
-      
+
       // Thử truy vấn dựa trên trường date
       final querySnapshot = await FirebaseFirestore.instance
           .collection('water_entries')
@@ -1289,8 +1187,7 @@ class ApiService {
             filteredEntries.add(WaterEntry.fromMap(data));
           }
         }
-        
-        debugPrint('ℹ️ Không có bản ghi nước nào trên Firestore cho ngày $date');
+
         return filteredEntries;
       }
       
@@ -1303,11 +1200,10 @@ class ApiService {
         }
         return WaterEntry.fromMap(data);
       }).toList();
-      
-      debugPrint('✅ Đã tìm thấy ${entries.length} bản ghi nước cho ngày $date trong Firestore');
+
       return entries;
     } catch (e) {
-      debugPrint('❌ Lỗi khi truy vấn bản ghi nước từ Firestore: $e');
+
       return null;
     }
   }
@@ -1315,8 +1211,7 @@ class ApiService {
   // Lấy tất cả water entries từ Firebase
   static Future<List<WaterEntry>?> getAllWaterEntriesFromFirebase(String userId) async {
     try {
-      debugPrint('🔄 Truy vấn trực tiếp tất cả bản ghi nước từ Firestore cho người dùng $userId...');
-      
+
       // Truy vấn trực tiếp từ Firestore
       final querySnapshot = await FirebaseFirestore.instance
           .collection('water_entries')
@@ -1324,7 +1219,7 @@ class ApiService {
           .get();
       
       if (querySnapshot.docs.isEmpty) {
-        debugPrint('ℹ️ Không tìm thấy bản ghi nước nào cho người dùng $userId');
+
         return [];
       }
       
@@ -1337,11 +1232,10 @@ class ApiService {
         }
         return WaterEntry.fromMap(data);
       }).toList();
-      
-      debugPrint('✅ Đã tìm thấy ${entries.length} bản ghi nước trong Firestore');
+
       return entries;
     } catch (e) {
-      debugPrint('❌ Lỗi khi truy vấn tất cả bản ghi nước từ Firestore: $e');
+
       return null;
     }
   }
@@ -1357,15 +1251,13 @@ class ApiService {
         headers: headers,
         body: jsonEncode(mealPlanData),
       );
-      
-      debugPrint('API Response (createMealPlan): ${response.statusCode}');
-      
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         return json.decode(response.body);
       }
       return null;
     } catch (e) {
-      debugPrint('Error creating meal plan: $e');
+
       return null;
     }
   }
@@ -1384,7 +1276,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting meal plan by ID: $e');
+
       return null;
     }
   }
@@ -1403,7 +1295,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting meal plan by date: $e');
+
       return null;
     }
   }
@@ -1419,7 +1311,7 @@ class ApiService {
       
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
-      debugPrint('Error deleting meal plan: $e');
+
       return false;
     }
   }
@@ -1439,7 +1331,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting meal plans by user: $e');
+
       return null;
     }
   }
@@ -1454,20 +1346,20 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi lấy kế hoạch ăn mới nhất');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã lấy kế hoạch ăn mới nhất từ API');
+
         return json.decode(response.body);
       } else {
-        debugPrint('❌ Lỗi khi lấy kế hoạch ăn mới nhất: ${response.statusCode}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API lấy kế hoạch ăn mới nhất: $e');
+
       return null;
     }
   }
@@ -1500,8 +1392,7 @@ class ApiService {
       
       // Sử dụng phương thức POST với body JSON
       final generateUrl = Uri.parse('$baseUrl${ApiEndpoints.generateMealPlan}');
-      
-      debugPrint('🔄 Đang tạo kế hoạch ăn mới từ API: $generateUrl');
+
       final response = await http.post(
         generateUrl,
         headers: {
@@ -1512,18 +1403,17 @@ class ApiService {
       ).timeout(
         Duration(seconds: 60), // Tăng timeout lên 60 giây vì tạo kế hoạch ăn có thể mất nhiều thời gian
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi tạo kế hoạch ăn mới');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('✅ Đã tạo kế hoạch ăn mới từ API thành công');
+
         return json.decode(response.body);
       } else if (response.statusCode == 500) {
         // Trả về lỗi 500 để caller có thể xử lý
-        debugPrint('❌ Lỗi server khi tạo kế hoạch ăn: ${response.statusCode} - ${response.body}');
-        
+
         // Phân tích lỗi nếu có thể
         String errorMessage = 'Lỗi server';
         try {
@@ -1532,7 +1422,7 @@ class ApiService {
             errorMessage = errorData['detail'];
           }
         } catch (e) {
-          debugPrint('Không thể phân tích lỗi server: $e');
+
         }
         
         return {
@@ -1541,11 +1431,11 @@ class ApiService {
           'message': errorMessage
         };
       } else {
-        debugPrint('❌ Lỗi khi tạo kế hoạch ăn mới: ${response.statusCode} - ${response.body}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API tạo kế hoạch ăn: $e');
+
       return null;
     }
   }
@@ -1560,26 +1450,24 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi lấy kế hoạch ăn từ API');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã lấy kế hoạch ăn từ API thành công');
+
         return json.decode(response.body);
       } else {
-        debugPrint('❌ Lỗi khi lấy kế hoạch ăn từ API: ${response.statusCode}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API lấy kế hoạch ăn: $e');
+
       return null;
     }
   }
-  
-  
-  
+
   // FIRESTORE USERS METHODS
   
   // GET /firestore/users/{user_id}: Lấy thông tin người dùng từ Firestore
@@ -1592,24 +1480,24 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi lấy thông tin người dùng từ Firestore');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã lấy thông tin người dùng từ Firestore thành công');
+
         final responseData = json.decode(response.body);
         return FirebaseHelpers.safeHandleApiResponse(responseData);
       } else if (response.statusCode == 404) {
-        debugPrint('⚠️ Không tìm thấy người dùng trong Firestore');
+
         return null;
       } else {
-        debugPrint('❌ Lỗi khi lấy thông tin người dùng từ Firestore: ${response.statusCode}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API lấy thông tin người dùng: $e');
+
       return null;
     }
   }
@@ -1630,9 +1518,7 @@ class ApiService {
       
       // Thêm header cho authorization
       final headers = await getAuthHeaders();
-      
-      debugPrint('🔄 Đang tạo người dùng mới trong Firestore...');
-      
+
       final response = await http.post(
         Uri.parse('$baseUrl${ApiEndpoints.createUser}/$userId'),
         headers: {
@@ -1643,21 +1529,21 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi tạo người dùng mới');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('✅ Đã tạo người dùng mới trong Firestore thành công');
+
         final responseData = json.decode(response.body);
         return FirebaseHelpers.safeHandleApiResponse(responseData);
       } else {
-        debugPrint('❌ Lỗi khi tạo người dùng mới trong Firestore: ${response.statusCode} - ${response.body}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API tạo người dùng mới: $e');
+
       return null;
     }
   }
@@ -1676,9 +1562,7 @@ class ApiService {
       
       // Thêm header cho authorization
       final headers = await getAuthHeaders();
-      
-      debugPrint('🔄 Đang cập nhật thông tin người dùng trong Firestore...');
-      
+
       final response = await http.patch(
         Uri.parse('$baseUrl${ApiEndpoints.updateUser}/$userId'),
         headers: {
@@ -1689,21 +1573,21 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi cập nhật thông tin người dùng');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã cập nhật thông tin người dùng trong Firestore thành công');
+
         final responseData = json.decode(response.body);
         return FirebaseHelpers.safeHandleApiResponse(responseData);
       } else {
-        debugPrint('❌ Lỗi khi cập nhật thông tin người dùng trong Firestore: ${response.statusCode} - ${response.body}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API cập nhật thông tin người dùng: $e');
+
       return null;
     }
   }
@@ -1713,29 +1597,27 @@ class ApiService {
     try {
       // Thêm header cho authorization
       final headers = await getAuthHeaders();
-      
-      debugPrint('🔄 Đang xóa người dùng khỏi Firestore...');
-      
+
       final response = await http.delete(
         Uri.parse('$baseUrl${ApiEndpoints.deleteUser}/$userId'),
         headers: headers,
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi xóa người dùng');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã xóa người dùng khỏi Firestore thành công');
+
         return true;
       } else {
-        debugPrint('❌ Lỗi khi xóa người dùng khỏi Firestore: ${response.statusCode} - ${response.body}');
+
         return false;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API xóa người dùng: $e');
+
       return false;
     }
   }
@@ -1757,9 +1639,7 @@ class ApiService {
         'password': password,
         'display_name': displayName ?? email.split('@')[0],
       };
-      
-      debugPrint('🔄 Đang chuyển đổi tài khoản ẩn danh thành tài khoản thường...');
-      
+
       final response = await http.post(
         Uri.parse('$baseUrl${ApiEndpoints.convertAnonymous}/$userId/convert-anonymous'),
         headers: {
@@ -1770,21 +1650,21 @@ class ApiService {
       ).timeout(
         Duration(seconds: 15), // Tăng timeout vì quá trình này có thể mất nhiều thời gian
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi chuyển đổi tài khoản ẩn danh');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200) {
-        debugPrint('✅ Đã chuyển đổi tài khoản ẩn danh thành công');
+
         final responseData = json.decode(response.body);
         return FirebaseHelpers.safeHandleApiResponse(responseData);
       } else {
-        debugPrint('❌ Lỗi khi chuyển đổi tài khoản ẩn danh: ${response.statusCode} - ${response.body}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API chuyển đổi tài khoản ẩn danh: $e');
+
       return null;
     }
   }
@@ -1796,9 +1676,7 @@ class ApiService {
     try {
       // Thêm header cho authorization
       final headers = await getAuthHeaders();
-      
-      debugPrint('🔄 Đang tạo hoặc cập nhật hồ sơ người dùng...');
-      
+
       final response = await http.post(
         Uri.parse('$baseUrl${ApiEndpoints.createUpdateUserProfile}'),
         headers: {
@@ -1809,20 +1687,20 @@ class ApiService {
       ).timeout(
         defaultTimeout,
         onTimeout: () {
-          debugPrint('⏱️ Timeout khi tạo hoặc cập nhật hồ sơ người dùng');
+
           return http.Response('{"error": "Timeout"}', 408);
         },
       );
       
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('✅ Đã tạo hoặc cập nhật hồ sơ người dùng thành công');
+
         return json.decode(response.body);
       } else {
-        debugPrint('❌ Lỗi khi tạo hoặc cập nhật hồ sơ người dùng: ${response.statusCode} - ${response.body}');
+
         return null;
       }
     } catch (e) {
-      debugPrint('❌ Lỗi khi gọi API tạo hoặc cập nhật hồ sơ người dùng: $e');
+
       return null;
     }
   }

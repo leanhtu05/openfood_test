@@ -52,23 +52,36 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
                   Center(
                     child: Column(
                       children: [
-                        Text(
-                          'DietAI',
-                          style: OnboardingStyles.appTitleStyle,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Diet',
+                              style: OnboardingStyles.appTitleStyle.copyWith(
+                                color: OnboardingStyles.titleColor,
+                              ),
+                            ),
+                            Text(
+                              'AI',
+                              style: OnboardingStyles.appTitleStyle.copyWith(
+                                color: OnboardingStyles.primaryColor,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 24),
                         
                         // Biểu tượng sự kiện
                         SizedBox(
-                          width: OnboardingStyles.iconSize,
-                          height: OnboardingStyles.iconSize,
+                          width: 80,
+                          height: 80,
                           child: Image.asset(
                             'assets/images/event_icon.png',
                             errorBuilder: (context, error, stackTrace) {
                               return Icon(
                                 Icons.event_note,
-                                size: 100,
-                                color: OnboardingStyles.accentColor,
+                                size: 80,
+                                color: Colors.black54,
                               );
                             },
                           ),
@@ -134,6 +147,9 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
                       _saveEvent('Không');
                     },
                   ),
+                  
+                  // Thêm nút tiếp tục
+
                 ],
               ),
             ),
@@ -155,58 +171,76 @@ class _EventSelectionPageState extends State<EventSelectionPage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.grey.shade200,
+          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
             width: 2,
           ),
+          boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: OnboardingStyles.primaryColor.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
         ),
         child: Row(
           children: [
             // Emoji
             Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 24),
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isSelected ? OnboardingStyles.primaryColor.withOpacity(0.1) : Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  emoji,
+                  style: const TextStyle(fontSize: 24),
+                ),
               ),
             ),
             const SizedBox(width: 16),
             
             // Nhãn
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
+                ),
               ),
             ),
             
-            // Spacer
-            const Spacer(),
-            
             // Nút chọn
             if (isSelected)
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: OnboardingStyles.primaryColor,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 16,
-                ),
+              Icon(
+                Icons.check_circle,
+                color: OnboardingStyles.primaryColor,
+                size: 28,
               ),
           ],
         ),
       ),
     );
+  }
+  
+  @override
+  void dispose() {
+    super.dispose();
+  }
+  
+  // Chuyển đến trang tiếp theo
+  void _goToNextPage() {
+    final onboarding = context.findAncestorStateOfType<OnboardingScreenState>();
+    if (onboarding != null) {
+      onboarding.goToNextPage();
+    }
   }
 } 

@@ -84,6 +84,9 @@ class MealPlanProvider with ChangeNotifier {
     required double proteinGoal,
     required double fatGoal,
     required double carbsGoal,
+    List<String> dietRestrictions = const [],
+    List<String> healthConditions = const [],
+    String? dietPreference,
   }) async {
     _setLoading(true);
     try {
@@ -111,44 +114,37 @@ class MealPlanProvider with ChangeNotifier {
         }
       }
       
-      // Bây giờ thay thế ngày cụ thể
-      final updatedDayPlan = await _mealPlanService.replaceDayMealPlan(
+      // Bây giờ thay thế ngày cụ thể - sử dụng MealPlan.replaceDay
+      final success = await MealPlan.replaceDay(
         userId: userId,
         dayOfWeek: dayOfWeek,
-        caloriesGoal: caloriesGoal,
-        proteinGoal: proteinGoal,
-        fatGoal: fatGoal,
-        carbsGoal: carbsGoal,
+        caloriesTarget: caloriesGoal.round(),
+        proteinTarget: proteinGoal.round(),
+        fatTarget: fatGoal.round(),
+        carbsTarget: carbsGoal.round(),
+        useAi: true,
+        preferences: dietRestrictions,
+        allergies: healthConditions,
+        cuisineStyle: dietPreference,
       );
       
-      debugPrint('✅ Đã nhận kế hoạch mới cho ngày $dayOfWeek từ API');
-      
-      // Cập nhật kế hoạch tuần hiện tại
-      final updatedWeeklyPlan = {..._currentMealPlan!.weeklyPlan};
-      updatedWeeklyPlan[dayOfWeek] = updatedDayPlan;
-      
-      _currentMealPlan = MealPlan(
-        id: _currentMealPlan!.id,
-        userId: _currentMealPlan!.userId,
-        createdAt: _currentMealPlan!.createdAt,
-        weeklyPlan: updatedWeeklyPlan,
-        nutritionTargets: _currentMealPlan!.nutritionTargets,
-      );
-      
-      debugPrint('📊 Đã cập nhật kế hoạch trong bộ nhớ, số ngày: ${_currentMealPlan!.weeklyPlan.length}');
-      
-      // Đồng bộ lên Firebase nếu được bật
-      if (_syncEnabled) {
-        final saveResult = await _firebaseService.saveMealPlan(_currentMealPlan!);
-        debugPrint(saveResult 
-          ? '✅ Đã đồng bộ kế hoạch đã cập nhật lên Firebase thành công' 
-          : '⚠️ Lưu kế hoạch lên Firebase thất bại');
+      if (success) {
+        debugPrint('✅ Đã gửi yêu cầu thay thế kế hoạch ngày thành công');
+        
+        // Chờ một chút để Firebase cập nhật
+        await Future.delayed(const Duration(seconds: 2));
+        
+        // Tải lại kế hoạch từ Firebase
+        _currentMealPlan = await _firebaseService.getCurrentMealPlan(userId);
+        debugPrint('📊 Đã tải lại kế hoạch từ Firebase sau khi thay thế ngày');
+      } else {
+        throw Exception('Thay thế kế hoạch ngày không thành công');
       }
       
       _errorMessage = null;
     } catch (e) {
       _errorMessage = e.toString();
-      debugPrint('Lỗi khi thay thế kế hoạch bữa ăn cho một ngày: $e');
+      debugPrint('❌ Lỗi khi thay thế kế hoạch bữa ăn cho một ngày: $e');
     } finally {
       _setLoading(false);
     }

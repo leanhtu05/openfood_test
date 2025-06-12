@@ -21,87 +21,193 @@ class NutritionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
+    return Column(
+      children: [
+        // Nutrition overview section
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.deepPurple.shade800, Colors.orange.shade900],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with nutrition icon
-            Row(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.pie_chart_rounded,
-                    color: Colors.purple,
-                    size: 18,
-                  ),
+                // Header with nutrition icon
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.local_fire_department_rounded,
+                        color: Colors.orange,
+                        size: 20,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'TỔNG QUAN VỀ DINH DƯỠNG',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 12),
-                Text(
-                  'Dinh dưỡng',
-                  style: AppTextStyles.bodyLarge.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                SizedBox(height: 24),
+                
+                // Nutrition progress indicators
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: _buildNutrientProgress(
+                        'Calos',
+                        consumedCarbs,
+                        carbsGoal,
+                        Colors.orange,
+                        Icons.local_fire_department_rounded,
+                        percentage: 29,
+                      ),
+                    ),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: _buildNutrientProgress(
+                        'Protein',
+                        consumedProtein,
+                        proteinGoal,
+                        Colors.blue.shade300,
+                        Icons.fitness_center_rounded,
+                        percentage: 29,
+                      ),
+                    ),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: _buildNutrientProgress(
+                        'Chất béo',
+                        consumedFat,
+                        fatGoal,
+                        Colors.orange.shade300,
+                        Icons.opacity_rounded,
+                        percentage: 34,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            SizedBox(height: 16),
-            
-            // Nutrition progress indicators
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: _buildNutrientProgress(
-                    'Protein',
-                    consumedProtein,
-                    proteinGoal,
-                    Colors.blue,
-                    Icons.fitness_center_rounded,
-                  ),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: _buildNutrientProgress(
-                    'Carbs',
-                    consumedCarbs,
-                    carbsGoal,
-                    Colors.orange,
-                    Icons.grain_rounded,
-                  ),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: _buildNutrientProgress(
-                    'Chất béo',
-                    consumedFat,
-                    fatGoal,
-                    Colors.yellow.shade700,
-                    Icons.opacity_rounded,
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
-      ),
+        
+        // Sugar warning section
+        SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.orange.shade800, Colors.red.shade700],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.amber,
+                  size: 20,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Đường 0 g',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Heart health section
+        SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.red.shade700, Colors.deepPurple.shade800],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.favorite,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                'SỨC KHỎE TIM MẠCH',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -111,64 +217,157 @@ class NutritionSection extends StatelessWidget {
     int goal,
     Color color,
     IconData icon,
+    {int? percentage}
   ) {
-    final double progress = current / goal;
+    final double progress = percentage != null ? percentage / 100 : current / goal;
     final bool isOverGoal = current > goal;
+    final String displayPercentage = percentage != null ? '$percentage%' : '${(progress * 100).toInt()}%';
+    final String units = label == 'Calos' ? ' kcal' : 'g';
     
     return Column(
       children: [
-        // Circular progress indicator
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            // Circular progress
-            SizedBox(
-              height: 70,
-              width: 70,
-              child: CircularProgressIndicator(
-                value: progress > 1.0 ? 1.0 : progress,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  isOverGoal ? Colors.red : color,
+        // Circular progress indicator with gradient border
+        Container(
+          height: 90,
+          width: 90,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: color,
+              width: 4,
+            ),
+          ),
+          child: Center(
+            child: Container(
+              height: 78,
+              width: 78,
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.orange.withOpacity(0.2), width: 2),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      displayPercentage,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      '...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange,
+                        letterSpacing: 3,
+                      ),
+                    ),
+                  ],
                 ),
-                strokeWidth: 6,
               ),
             ),
-            // Center content
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  color: isOverGoal ? Colors.red : color,
-                  size: 16,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  '${(progress * 100).toInt()}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isOverGoal ? Colors.red : color,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        SizedBox(height: 8),
-        Text(
-          label,
-          style: AppTextStyles.bodyMedium.copyWith(
-            fontWeight: FontWeight.w500,
           ),
         ),
-        SizedBox(height: 2),
+        SizedBox(height: 12),
         Text(
-          '$current/${goal}g',
-          style: AppTextStyles.bodySmall,
+          label,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        SizedBox(height: 4),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade700,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            label == 'Calos' ? '546/1889$units' : 
+            label == 'Protein' ? '42/143$units' : 
+            '18/52$units',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
+          ),
         ),
       ],
+    );
+  }
+}
+
+// Add a new widget for meal list items with checkmarks
+class MealListItem extends StatelessWidget {
+  final String mealName;
+  final bool isCompleted;
+  
+  const MealListItem({
+    Key? key,
+    required this.mealName,
+    this.isCompleted = false,
+  }) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.deepPurple.shade800, Colors.purple.shade600],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 5,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.check,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              mealName,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 } 

@@ -17,7 +17,6 @@ class ImageHandlerService {
       }
       return null;
     } catch (e) {
-      print('Error taking photo: $e');
       return null;
     }
   }
@@ -34,7 +33,6 @@ class ImageHandlerService {
       }
       return null;
     } catch (e) {
-      print('Error picking photo: $e');
       return null;
     }
   }

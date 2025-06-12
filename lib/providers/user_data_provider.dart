@@ -78,6 +78,10 @@ class UserDataProvider with ChangeNotifier {
   double _tdeeProtein = 0.0;
   double _tdeeCarbs = 0.0;
   double _tdeeFat = 0.0;
+  
+  // Cờ để đánh dấu TDEE đã được tính và tránh tính lại nhiều lần
+  bool _tdeeCalculated = false;
+  Timer? _debounceTimer;
 
   // Sync status
   bool _syncEnabled = true;
@@ -385,69 +389,76 @@ class UserDataProvider with ChangeNotifier {
 
   // Rename the async version to avoid conflicts
   Future<void> _initializeTDEEAsync() async {
-    // Only calculate if TDEE is not already set
-    if (_tdeeCalories <= 0) {
-      try {
-        // Kiểm tra dữ liệu đầu vào hợp lệ
-        if (_weightKg <= 0 || _heightCm <= 0 || _age <= 0) {
-          debugPrint('Dữ liệu người dùng không hợp lệ cho việc tính TDEE');
-          _tdeeCalories = 2000.0;
-          _tdeeProtein = 120.0;
-          _tdeeCarbs = 200.0;
-          _tdeeFat = 65.0;
-          return;
-        }
+    // Kiểm tra cờ đã tính TDEE chưa
+    if (_tdeeCalculated && _tdeeCalories > 0) {
+      debugPrint('TDEE đã được tính toán trước đó: $_tdeeCalories, bỏ qua việc tính lại');
+      return;
+    }
 
-        // Use the static method from TDEECalculator
-        final tdeeValues = TDEECalculator.calculateTDEE(
-          weight: _weightKg,
-          height: _heightCm,
-          age: _age,
-          gender: _gender,
-          activityLevel: _activityLevel,
-          goal: _goal,
-          pace: _pace,
-        );
+    try {
+      // Kiểm tra dữ liệu đầu vào hợp lệ
+      if (_weightKg <= 0 || _heightCm <= 0 || _age <= 0) {
+        debugPrint('Dữ liệu người dùng không hợp lệ cho việc tính TDEE');
+        _tdeeCalories = 2000.0;
+        _tdeeProtein = 120.0;
+        _tdeeCarbs = 200.0;
+        _tdeeFat = 65.0;
+        _tdeeCalculated = true; // Đánh dấu đã tính TDEE
+        return;
+      }
 
-        // Update TDEE values if calculation was successful
-        if (tdeeValues['calories']! > 0) {
-          _tdeeCalories = tdeeValues['calories']!;
-          _tdeeProtein = tdeeValues['protein']!;
-          _tdeeCarbs = tdeeValues['carbs']!;
-          _tdeeFat = tdeeValues['fat']!;
+      // Use the static method from TDEECalculator
+      final tdeeValues = TDEECalculator.calculateTDEE(
+        weight: _weightKg,
+        height: _heightCm,
+        age: _age,
+        gender: _gender,
+        activityLevel: _activityLevel,
+        goal: _goal,
+        pace: _pace,
+      );
 
-          // Also update daily calories
-          _dailyCalories = _tdeeCalories.toInt();
+      // Update TDEE values if calculation was successful
+      if (tdeeValues['calories']! > 0) {
+        _tdeeCalories = tdeeValues['calories']!;
+        _tdeeProtein = tdeeValues['protein']!;
+        _tdeeCarbs = tdeeValues['carbs']!;
+        _tdeeFat = tdeeValues['fat']!;
 
-          // Save the calculated values
-          saveUserData();
+        // Also update daily calories
+        _dailyCalories = _tdeeCalories.toInt();
 
-          debugPrint(
-              'TDEE initialized: $_tdeeCalories calories');
-        } else {
-          // If calculation failed, use default values
-          _tdeeCalories = _dailyCalories.toDouble();
-          _tdeeProtein = _protein;
-          _tdeeCarbs = _carbs;
-          _tdeeFat = _fat;
+        // Đánh dấu đã tính TDEE
+        _tdeeCalculated = true;
 
-          debugPrint(
-              'TDEE initialization failed, using defaults: $_tdeeCalories calories');
-        }
-      } catch (e) {
-        // In case of error, use default values
-        debugPrint('Error initializing TDEE: $e');
+        // Save the calculated values
+        saveUserData();
+
+        debugPrint('TDEE initialized: $_tdeeCalories calories');
+      } else {
+        // If calculation failed, use default values
         _tdeeCalories = _dailyCalories.toDouble();
         _tdeeProtein = _protein;
         _tdeeCarbs = _carbs;
         _tdeeFat = _fat;
-      }
+        _tdeeCalculated = true; // Đánh dấu đã tính TDEE
 
-      // Cập nhật nutrition goals với giá trị TDEE mới
-      // Sử dụng phương thức chuyên biệt để điều chỉnh mục tiêu dinh dưỡng dựa trên TDEE
-      updateNutritionGoalsByTDEE();
-      debugPrint('✅ Đã cập nhật mục tiêu dinh dưỡng theo TDEE mới: ${_nutritionGoals['calories']} calories');
+        debugPrint('TDEE initialization failed, using defaults: $_tdeeCalories calories');
+      }
+    } catch (e) {
+      // In case of error, use default values
+      debugPrint('Error initializing TDEE: $e');
+      _tdeeCalories = _dailyCalories.toDouble();
+      _tdeeProtein = _protein;
+      _tdeeCarbs = _carbs;
+      _tdeeFat = _fat;
+      _tdeeCalculated = true; // Đánh dấu đã tính TDEE
     }
+
+    // Cập nhật nutrition goals với giá trị TDEE mới
+    // Sử dụng phương thức chuyên biệt để điều chỉnh mục tiêu dinh dưỡng dựa trên TDEE
+    updateNutritionGoalsByTDEE(notify: false);
+    debugPrint('✅ Đã cập nhật mục tiêu dinh dưỡng theo TDEE mới: ${_nutritionGoals['calories']} calories');
   }
 
   @override
@@ -581,8 +592,26 @@ class UserDataProvider with ChangeNotifier {
 
   // Phương thức trung tâm để trigger TDEE recalculation và cập nhật UI
   void _triggerTDEERecalculation() {
-    recalculateTDEE().then((_) {
-      updateNutritionGoalsByTDEE();
+    // Nếu đang trong quá trình onboarding, không trigger liên tục
+    final prefs = SharedPreferences.getInstance();
+    prefs.then((prefs) {
+      bool isOnboarding = prefs.getBool('is_onboarding') ?? true;
+      
+      if (isOnboarding) {
+        debugPrint('⚠️ Đang trong quá trình onboarding, giới hạn việc tính toán TDEE liên tục');
+        // Sử dụng debounce để giới hạn số lần tính toán TDEE
+        if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+        _debounceTimer = Timer(const Duration(seconds: 3), () {
+          recalculateTDEE().then((_) {
+            updateNutritionGoalsByTDEE(notify: true);
+          });
+        });
+      } else {
+        // Trong trường hợp bình thường, tính TDEE ngay lập tức
+        recalculateTDEE().then((_) {
+          updateNutritionGoalsByTDEE(notify: true);
+        });
+      }
     });
   }
 
@@ -613,12 +642,16 @@ class UserDataProvider with ChangeNotifier {
     
     if (_heightCm != value) {
       _heightCm = value;
-      Future.microtask(() {
+      _tdeeCalculated = false; // Reset cờ để tính lại TDEE
+      
+      // Sử dụng debounce để tránh tính toán quá nhiều lần
+      if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+      _debounceTimer = Timer(const Duration(seconds: 1), () {
         notifyListeners();
+        saveUserData();
+        _markDataAsChanged(); // Đánh dấu dữ liệu đã thay đổi
+        _triggerTDEERecalculation(); // Sử dụng phương thức trung tâm
       });
-      saveUserData();
-      _markDataAsChanged(); // Đánh dấu dữ liệu đã thay đổi
-      _triggerTDEERecalculation(); // Sử dụng phương thức trung tâm
     }
   }
 
@@ -628,15 +661,18 @@ class UserDataProvider with ChangeNotifier {
       debugPrint('⚠️ Giá trị cân nặng không hợp lệ: $value');
       return;
     }
-    
+
     if (_weightKg != value) {
       _weightKg = value;
-      Future.microtask(() {
+
+      // Sử dụng debounce để tránh thông báo quá nhiều lần
+      if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 500), () {
         notifyListeners();
+        saveUserData();
+        _markDataAsChanged(); // Đánh dấu dữ liệu đã thay đổi
+        _triggerTDEERecalculation(); // Sử dụng phương thức trung tâm
       });
-      saveUserData();
-      _markDataAsChanged(); // Đánh dấu dữ liệu đã thay đổi
-      _triggerTDEERecalculation(); // Sử dụng phương thức trung tâm
     }
   }
 
@@ -660,13 +696,18 @@ class UserDataProvider with ChangeNotifier {
   }
 
   // Phương thức trung tâm để cập nhật mục tiêu dinh dưỡng dựa trên TDEE
-  void updateNutritionGoalsByTDEE() {
+  void updateNutritionGoalsByTDEE({bool notify = true}) {
     _adjustCaloriesByGoal();
     _calculateMacrosByCalories();
     saveUserData();
-    Future.microtask(() {
-      notifyListeners();
-    });
+    
+    if (notify) {
+      // Sử dụng debounce để tránh thông báo quá nhiều lần
+      if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+        notifyListeners();
+      });
+    }
   }
 
   // Điều chỉnh calories dựa trên mục tiêu
@@ -950,6 +991,8 @@ class UserDataProvider with ChangeNotifier {
     required double carbs,
     required double fat,
   }) async {
+    debugPrint('🔄 updateTDEEValues được gọi với calories=$calories, protein=$protein, carbs=$carbs, fat=$fat');
+    
     // Convert calories to int if it's a double
     if (calories is double) {
       _dailyCalories = calories.toInt();
@@ -966,6 +1009,15 @@ class UserDataProvider with ChangeNotifier {
     _tdeeProtein = protein;
     _tdeeCarbs = carbs;
     _tdeeFat = fat;
+    
+    // Lưu TDEE trực tiếp vào SharedPreferences để đảm bảo dữ liệu được lưu
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_tdeeCaloriesKey, _tdeeCalories);
+    await prefs.setDouble(_tdeeProteinKey, _tdeeProtein);
+    await prefs.setDouble(_tdeeCarbsKey, _tdeeCarbs);
+    await prefs.setDouble(_tdeeFatKey, _tdeeFat);
+    
+    debugPrint('✅ Lưu trực tiếp TDEE: calories=$_tdeeCalories, protein=$_tdeeProtein, carbs=$_tdeeCarbs, fat=$_tdeeFat');
 
     // Cập nhật mục tiêu dinh dưỡng dựa trên TDEE mới
     updateNutritionGoalsByTDEE();
@@ -1100,6 +1152,7 @@ class UserDataProvider with ChangeNotifier {
       'target_weight_kg': _targetWeightKg,
       'diet_restrictions': _dietRestrictions,
       'health_conditions': _healthConditions,
+      'diet_preference': _dietPreference, // Thêm diet_preference vào dữ liệu đồng bộ
       'last_sync_time': DateTime.now().millisecondsSinceEpoch,
       'sync_enabled': _syncEnabled,
       'updated_at': DateTime.now().toIso8601String(),
@@ -1169,6 +1222,16 @@ class UserDataProvider with ChangeNotifier {
       // Lưu danh sách hạn chế chế độ ăn và tình trạng sức khỏe
       await prefs.setStringList('user_dietary_restrictions', dietaryRestrictions);
       await prefs.setStringList('user_health_conditions', healthConditions);
+      
+      // Lưu cả dạng JSON để đảm bảo dữ liệu được lưu chính xác
+      await prefs.setString(_dietRestrictionKey, jsonEncode(_dietRestrictions));
+      await prefs.setString(_healthConditionsKey, jsonEncode(_healthConditions));
+      await prefs.setString(_dietPreferenceKey, _dietPreference);
+      
+      // Debug các giá trị đã lưu
+      debugPrint('📋 Đã lưu diet_preference vào SharedPreferences: $_dietPreference');
+      debugPrint('📋 Đã lưu diet_restrictions vào SharedPreferences: $_dietRestrictions');
+      debugPrint('📋 Đã lưu health_conditions vào SharedPreferences: $_healthConditions');
       
       // Lưu trường measurement_system
       await prefs.setString('user_measurement_system', measurementSystem);
@@ -1291,6 +1354,7 @@ class UserDataProvider with ChangeNotifier {
 
     // Load diet preference
     _dietPreference = prefs.getString(_dietPreferenceKey) ?? '';
+    debugPrint('📋 Đã tải diet_preference từ SharedPreferences: $_dietPreference');
 
     // Load health conditions
     final healthConditionsString = prefs.getString(_healthConditionsKey);
@@ -1298,9 +1362,17 @@ class UserDataProvider with ChangeNotifier {
       try {
         final List<dynamic> conditionsList = jsonDecode(healthConditionsString);
           _healthConditions = conditionsList.map((item) => item.toString()).toList();
+          debugPrint('📋 Đã tải health_conditions từ SharedPreferences: $_healthConditions');
       } catch (e) {
           print('Error parsing health conditions: $e');
       }
+    }
+    
+    // Load diet restrictions
+    final dietRestrictionsListRaw = prefs.getStringList('user_dietary_restrictions');
+    if (dietRestrictionsListRaw != null && dietRestrictionsListRaw.isNotEmpty) {
+      _dietRestrictions = dietRestrictionsListRaw;
+      debugPrint('📋 Đã tải diet_restrictions từ SharedPreferences direct list: $_dietRestrictions');
     }
 
     // Load nutrition goals
@@ -1381,12 +1453,19 @@ class UserDataProvider with ChangeNotifier {
 
   // Hàm đồng bộ hoặc lấy dữ liệu user sau khi đăng nhập
   Future<void> syncOrFetchUserData(BuildContext context) async {
+    debugPrint('🔄 Bắt đầu syncOrFetchUserData...');
+    debugPrint('📋 Trước khi đồng bộ: diet_preference=$_dietPreference, diet_restrictions=$_dietRestrictions, health_conditions=$_healthConditions');
+    
     // Kiểm tra trạng thái đăng nhập trước khi đồng bộ dữ liệu
     if (!isUserAuthenticated()) {
       debugPrint(
           '⚠️ Người dùng chưa đăng nhập: Ưu tiên dữ liệu từ local, bỏ qua đồng bộ dữ liệu');
       // Đảm bảo dữ liệu local được tải
       await loadUserData();
+      debugPrint('📊 Sau khi tải dữ liệu local:');
+      debugPrint('📊 diet_restrictions: $_dietRestrictions');
+      debugPrint('📊 health_conditions: $_healthConditions');
+      debugPrint('📊 diet_preference: $_dietPreference');
       return;
     }
 
@@ -1591,14 +1670,19 @@ class UserDataProvider with ChangeNotifier {
   // Recalculate TDEE based on current user data
   Future<void> recalculateTDEE() async {
     try {
-      // Kiểm tra dữ liệu đầu vào hợp lệ
+      // Nếu dữ liệu đầu vào không hợp lệ, không thực hiện tính toán
       if (_weightKg <= 0 || _heightCm <= 0 || _age <= 0) {
-        debugPrint(
-            '⚠️ Không thể tính TDEE do thiếu thông tin: weight=$_weightKg, height=$_heightCm, age=$_age');
+        debugPrint('⚠️ Dữ liệu đầu vào không hợp lệ cho việc tính TDEE');
         return;
       }
 
-      // Use the static method from TDEECalculator
+      // Nếu chúng ta đang sử dụng debounce, hãy đợi cho timer hoàn thành
+      if (_debounceTimer?.isActive ?? false) {
+        debugPrint('⚠️ Đang chờ debounce timer để tính TDEE...');
+        return;
+      }
+
+      // Tính toán TDEE mới
       final tdeeValues = TDEECalculator.calculateTDEE(
         weight: _weightKg,
         height: _heightCm,
@@ -1609,23 +1693,29 @@ class UserDataProvider with ChangeNotifier {
         pace: _pace,
       );
 
-      // Update TDEE values
-      await updateTDEEValues(
-        calories: tdeeValues['calories']!,
-        protein: tdeeValues['protein']!,
-        carbs: tdeeValues['carbs']!,
-        fat: tdeeValues['fat']!,
-      );
+      // Cập nhật giá trị nếu tính toán thành công
+      if (tdeeValues['calories']! > 0) {
+        // Cập nhật giá trị TDEE
+        _tdeeCalories = tdeeValues['calories']!;
+        _tdeeProtein = tdeeValues['protein']!;
+        _tdeeCarbs = tdeeValues['carbs']!;
+        _tdeeFat = tdeeValues['fat']!;
+        _tdeeCalculated = true;
 
-      // Cập nhật dữ liệu lên Firestore (nếu cần)
-      if (_isFirebaseAvailable && isUserAuthenticated()) {
-        await syncToFirebase();
+        // Lưu trực tiếp vào SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setDouble(_tdeeCaloriesKey, _tdeeCalories);
+        await prefs.setDouble(_tdeeProteinKey, _tdeeProtein);
+        await prefs.setDouble(_tdeeCarbsKey, _tdeeCarbs);
+        await prefs.setDouble(_tdeeFatKey, _tdeeFat);
+        await prefs.setBool('tdee_calculated', true);
+
+        debugPrint('TDEE recalculated: $_tdeeCalories calories, nutrition goals updated');
+      } else {
+        debugPrint('⚠️ Tính toán TDEE thất bại, giữ nguyên giá trị hiện tại');
       }
-
-      debugPrint(
-          'TDEE recalculated: $_tdeeCalories calories, nutrition goals updated');
     } catch (e) {
-      debugPrint('Error recalculating TDEE: $e');
+      debugPrint('❌ Lỗi khi tính lại TDEE: $e');
     }
   }
 
@@ -1756,6 +1846,16 @@ class UserDataProvider with ChangeNotifier {
       _tdeeCarbs = 0.0;
       _tdeeFat = 0.0;
 
+      // DEBUG: In thông tin đầu vào
+      debugPrint('🔍 DEBUG TDEE - Thông tin đầu vào:');
+      debugPrint('🔍 gender: $_gender (loại: ${_gender.runtimeType})');
+      debugPrint('🔍 age: $_age (loại: ${_age.runtimeType})');
+      debugPrint('🔍 heightCm: $_heightCm (loại: ${_heightCm.runtimeType})');
+      debugPrint('🔍 weightKg: $_weightKg (loại: ${_weightKg.runtimeType})');
+      debugPrint('🔍 activityLevel: $_activityLevel (loại: ${_activityLevel.runtimeType})');
+      debugPrint('🔍 goal: $_goal (loại: ${_goal.runtimeType})');
+      debugPrint('🔍 pace: $_pace (loại: ${_pace.runtimeType})');
+
       // Tính toán lại TDEE
       final tdeeValues = TDEECalculator.calculateTDEE(
         weight: _weightKg,
@@ -1766,6 +1866,10 @@ class UserDataProvider with ChangeNotifier {
         goal: _goal,
         pace: _pace,
       );
+
+      // DEBUG: In kết quả tính toán TDEE
+      debugPrint('🔍 DEBUG TDEE - Kết quả tính toán:');
+      debugPrint('🔍 tdeeValues: $tdeeValues');
 
       // Cập nhật giá trị TDEE mới
       await updateTDEEValues(
@@ -1782,7 +1886,7 @@ class UserDataProvider with ChangeNotifier {
       debugPrint('Mục tiêu dinh dưỡng đã được cập nhật: ${_nutritionGoals['calories']} calories');
       return;
     } catch (e) {
-      debugPrint('Lỗi khi tính toán lại TDEE: $e');
+      debugPrint('Error recalculating TDEE: $e');
       // Sử dụng giá trị mặc định nếu có lỗi
       await updateTDEEValues(
         calories: 2000.0,
@@ -2000,21 +2104,34 @@ class UserDataProvider with ChangeNotifier {
       _eventMonth = _safeParseInt(standardData['event_month'], _eventMonth);
       _eventYear = _safeParseInt(standardData['event_year'], _eventYear);
       
-      // Xử lý các danh sách
+      // Xử lý các danh sách chế độ ăn và sức khỏe
       if (standardData.containsKey('diet_restrictions') && standardData['diet_restrictions'] != null) {
         if (standardData['diet_restrictions'] is List) {
           _dietRestrictions = List<String>.from(standardData['diet_restrictions']);
+          debugPrint('📋 Đã tải diet_restrictions từ Firestore: $_dietRestrictions');
+        } else if (standardData['diet_restrictions'] is String) {
+          _dietRestrictions = [standardData['diet_restrictions'].toString()];
+          debugPrint('📋 Đã tải diet_restrictions (string) từ Firestore: $_dietRestrictions');
         }
       }
       
       if (standardData.containsKey('health_conditions') && standardData['health_conditions'] != null) {
         if (standardData['health_conditions'] is List) {
           _healthConditions = List<String>.from(standardData['health_conditions']);
+          debugPrint('📋 Đã tải health_conditions từ Firestore: $_healthConditions');
+        } else if (standardData['health_conditions'] is String) {
+          _healthConditions = [standardData['health_conditions'].toString()];
+          debugPrint('📋 Đã tải health_conditions (string) từ Firestore: $_healthConditions');
         }
       }
       
       // Xử lý diet_preference
-      _dietPreference = standardData['diet_preference'] ?? _dietPreference;
+      if (standardData.containsKey('diet_preference') && standardData['diet_preference'] != null) {
+        _dietPreference = standardData['diet_preference'].toString();
+        debugPrint('📋 Đã tải diet_preference từ Firestore: $_dietPreference');
+      } else {
+        debugPrint('⚠️ Không tìm thấy diet_preference trong dữ liệu Firestore, giữ nguyên giá trị hiện tại: $_dietPreference');
+      }
       
       // QUAN TRỌNG: Xử lý TDEE từ Firestore
       double firebaseTdee = _safeParseDouble(standardData['tdee_calories'], 0);
@@ -3323,7 +3440,7 @@ class UserDataProvider with ChangeNotifier {
   // Phương thức đánh dấu dữ liệu đã thay đổi và cần được đồng bộ
 
   // Khai báo biến Timer cho debounce
-  Timer? _debounceTimer;
+
 
   @override
   
@@ -3938,6 +4055,12 @@ class UserDataProvider with ChangeNotifier {
       if (user != null) {
         final userData = _prepareUserDataForSync(); // Phương thức này đã trả về snake_case keys
 
+        // Ghi log debug để kiểm tra dữ liệu chế độ ăn được đồng bộ
+        debugPrint('📋 Dữ liệu chế độ ăn sẽ được đồng bộ lên Firebase:');
+        debugPrint('📋 diet_restrictions: ${userData['diet_restrictions']}');
+        debugPrint('📋 health_conditions: ${userData['health_conditions']}');
+        debugPrint('📋 diet_preference: ${userData['diet_preference']}');
+
         if (userData.isNotEmpty) {
           // THAY ĐỔI QUAN TRỌNG: Bỏ SetOptions(merge: true) để ghi đè toàn bộ
           await FirebaseFirestore.instance
@@ -3951,6 +4074,11 @@ class UserDataProvider with ChangeNotifier {
           // Lưu thời gian đồng bộ
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_lastSyncTimeKey, _lastSyncTime!.toIso8601String());
+          
+          // Cập nhật lại SharedPreferences với dữ liệu đã đồng bộ
+          await prefs.setString(_dietRestrictionKey, jsonEncode(_dietRestrictions));
+          await prefs.setString(_healthConditionsKey, jsonEncode(_healthConditions));
+          await prefs.setString(_dietPreferenceKey, _dietPreference);
         }
       }
     } catch (e) {
@@ -4162,7 +4290,11 @@ class UserDataProvider with ChangeNotifier {
       _heightCm = userData['height_cm'] != null ? double.tryParse(userData['height_cm'].toString()) ?? _heightCm : _heightCm;
       _weightKg = userData['weight_kg'] != null ? double.tryParse(userData['weight_kg'].toString()) ?? _weightKg : _weightKg;
       _activityLevel = userData['activity_level'] ?? _activityLevel;
+      debugPrint('📋 Tải activity_level: $_activityLevel');
+      
       _goal = userData['goal'] ?? _goal;
+      debugPrint('📋 Tải goal: $_goal');
+      
       _pace = userData['pace'] != null ? double.tryParse(userData['pace'].toString()) ?? _pace : _pace;
       
       // Tải các thông số bổ sung
@@ -4183,21 +4315,40 @@ class UserDataProvider with ChangeNotifier {
       
       // Tải các thông tin về chế độ ăn và sức khỏe
       if (userData['diet_restrictions'] != null) {
+        debugPrint('📋 diet_restrictions raw data: ${userData['diet_restrictions']}');
+        debugPrint('📋 diet_restrictions type: ${userData['diet_restrictions'].runtimeType}');
+        
         if (userData['diet_restrictions'] is List) {
           _dietRestrictions = List<String>.from(userData['diet_restrictions']);
+          debugPrint('📋 Đã tải diet_restrictions list: $_dietRestrictions');
         } else if (userData['diet_restrictions'] is String) {
           _dietRestrictions = [userData['diet_restrictions']];
+          debugPrint('📋 Đã tải diet_restrictions string: $_dietRestrictions');
         }
+      } else {
+        debugPrint('⚠️ Không tìm thấy trường diet_restrictions trong dữ liệu');
       }
       
-      _dietPreference = userData['diet_preference'] ?? _dietPreference;
+      if (userData['diet_preference'] != null) {
+        _dietPreference = userData['diet_preference'];
+        debugPrint('📋 Đã tải diet_preference: $_dietPreference');
+      } else {
+        debugPrint('⚠️ Không tìm thấy trường diet_preference trong dữ liệu');
+      }
       
       if (userData['health_conditions'] != null) {
+        debugPrint('📋 health_conditions raw data: ${userData['health_conditions']}');
+        debugPrint('📋 health_conditions type: ${userData['health_conditions'].runtimeType}');
+        
         if (userData['health_conditions'] is List) {
           _healthConditions = List<String>.from(userData['health_conditions']);
+          debugPrint('📋 Đã tải health_conditions list: $_healthConditions');
         } else if (userData['health_conditions'] is String) {
           _healthConditions = [userData['health_conditions']];
+          debugPrint('📋 Đã tải health_conditions string: $_healthConditions');
         }
+      } else {
+        debugPrint('⚠️ Không tìm thấy trường health_conditions trong dữ liệu');
       }
       
       // Tải các thông số về dinh dưỡng
@@ -4214,11 +4365,37 @@ class UserDataProvider with ChangeNotifier {
       // Cập nhật nutrition goals
       if (userData['nutrition_goals'] != null && userData['nutrition_goals'] is Map) {
         Map<String, dynamic> goalsData = Map<String, dynamic>.from(userData['nutrition_goals']);
-        goalsData.forEach((key, value) {
-
-        });
+        
+        // Bổ sung thiết lập trực tiếp cho các thuộc tính của _nutritionGoals
+        if (goalsData.containsKey('calories')) {
+          _nutritionGoals['calories'] = double.tryParse(goalsData['calories'].toString()) ?? _nutritionGoals['calories'] ?? 0.0;
+        }
+        if (goalsData.containsKey('protein')) {
+          _nutritionGoals['protein'] = double.tryParse(goalsData['protein'].toString()) ?? _nutritionGoals['protein'] ?? 0.0;
+        }
+        if (goalsData.containsKey('carbs')) {
+          _nutritionGoals['carbs'] = double.tryParse(goalsData['carbs'].toString()) ?? _nutritionGoals['carbs'] ?? 0.0;
+        }
+        if (goalsData.containsKey('fat')) {
+          _nutritionGoals['fat'] = double.tryParse(goalsData['fat'].toString()) ?? _nutritionGoals['fat'] ?? 0.0;
+        }
+        if (goalsData.containsKey('fiber')) {
+          _nutritionGoals['fiber'] = double.tryParse(goalsData['fiber'].toString()) ?? _nutritionGoals['fiber'] ?? 0.0;
+        }
+        if (goalsData.containsKey('sugar')) {
+          _nutritionGoals['sugar'] = double.tryParse(goalsData['sugar'].toString()) ?? _nutritionGoals['sugar'] ?? 0.0;
+        }
+        if (goalsData.containsKey('water')) {
+          _nutritionGoals['water'] = double.tryParse(goalsData['water'].toString()) ?? _nutritionGoals['water'] ?? 0.0;
+        }
+        if (goalsData.containsKey('cholesterol')) {
+          _nutritionGoals['cholesterol'] = double.tryParse(goalsData['cholesterol'].toString()) ?? _nutritionGoals['cholesterol'] ?? 0.0;
+        }
+        
+        debugPrint('📋 Đã tải nutrition_goals: calories=${_nutritionGoals['calories']}, protein=${_nutritionGoals['protein']}, carbs=${_nutritionGoals['carbs']}, fat=${_nutritionGoals['fat']}');
       } else {
         // Nếu không có nutrition_goals, cập nhật từ các giá trị riêng lẻ
+        debugPrint('⚠️ Không tìm thấy trường nutrition_goals trong dữ liệu, sẽ tính toán lại từ TDEE');
         updateNutritionGoalsByTDEE();
       }
       

@@ -81,23 +81,36 @@ class _DietGoalPageState extends State<DietGoalPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            'DietAI',
-                            style: OnboardingStyles.appTitleStyle,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Diet',
+                                style: OnboardingStyles.appTitleStyle.copyWith(
+                                  color: OnboardingStyles.titleColor,
+                                ),
+                              ),
+                              Text(
+                                'AI',
+                                style: OnboardingStyles.appTitleStyle.copyWith(
+                                  color: OnboardingStyles.primaryColor,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 24),
                           
                           // Biểu tượng mục tiêu
                           SizedBox(
-                            width: OnboardingStyles.iconSize,
-                            height: OnboardingStyles.iconSize,
+                            width: 80,
+                            height: 80,
                             child: Image.asset(
                               'assets/images/target_icon.png',
                               errorBuilder: (context, error, stackTrace) {
                                 return Icon(
                                   Icons.track_changes,
-                                  size: 100,
-                                  color: OnboardingStyles.accentColor,
+                                  size: 80,
+                                  color: Colors.black54,
                                 );
                               },
                             ),
@@ -180,6 +193,7 @@ class _DietGoalPageState extends State<DietGoalPage> {
                         ),
                       ),
                     ),
+                  ] else ...[
                   ],
                 ],
               ),
@@ -187,6 +201,74 @@ class _DietGoalPageState extends State<DietGoalPage> {
           ),
         );
       }
+    );
+  }
+  
+  // Phương thức xây dựng một tùy chọn mục tiêu
+  Widget _buildGoalOption({
+    required IconData icon,
+    required String emoji,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
+            width: 2,
+          ),
+          boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: OnboardingStyles.primaryColor.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: isSelected ? OnboardingStyles.primaryColor.withOpacity(0.1) : Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  emoji,
+                  style: TextStyle(fontSize: 24),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
+                ),
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: OnboardingStyles.primaryColor,
+                size: 28,
+              ),
+          ],
+        ),
+      ),
     );
   }
   
@@ -207,73 +289,5 @@ class _DietGoalPageState extends State<DietGoalPage> {
         ),
       );
     }
-  }
-  
-  Widget _buildGoalOption({
-    required IconData icon,
-    required String emoji,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-        decoration: BoxDecoration(
-          color: isSelected ? OnboardingStyles.primaryColorLight : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? OnboardingStyles.primaryColor : Colors.grey.shade300,
-            width: 2,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Emoji hoặc Icon
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 24),
-              ),
-            ),
-            const SizedBox(width: 12),
-            
-            // Nhãn - Sử dụng Expanded để tránh tràn
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? OnboardingStyles.primaryColor : Colors.black87,
-                ),
-              ),
-            ),
-            
-            // Nút chọn
-            if (isSelected)
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: OnboardingStyles.primaryColor,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 16,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 } 

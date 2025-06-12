@@ -34,12 +34,9 @@ class SyncService extends ChangeNotifier {
         _lastSyncError = status['error'];
         notifyListeners();
       }
-    } catch (e) {
-      // Xóa debugPrint
+    } catch (e) {
     }
-  }
-  
-  // Sync local data to Firestore (when user logs in)
+  }
   Future<bool> syncLocalDataToFirestore() async {
     if (_auth.currentUser == null) {
       _lastSyncError = 'Không thể đồng bộ: Người dùng chưa đăng nhập';
@@ -63,8 +60,7 @@ class SyncService extends ChangeNotifier {
       final userData = await _localStorage.getUserData();
       if (userData != null) {
         // Save to Firestore
-        await _firestoreService.saveUserProfile(userData);
-        // Xóa debugPrint
+        await _firestoreService.saveUserProfile(userData);
       }
       
       // Sync food entries
@@ -79,8 +75,7 @@ class SyncService extends ChangeNotifier {
           // Update the entry in local storage with the new ID
           await _localStorage.saveFoodEntry(entry);
         }
-      }
-      // Xóa debugPrint
+      }
       
       // Sync exercise entries
       final exerciseEntries = await _localStorage.getExerciseEntries();
@@ -96,8 +91,7 @@ class SyncService extends ChangeNotifier {
           // Cập nhật lại trong local storage
           await _localStorage.saveExerciseEntry(updatedEntry);
         }
-      }
-      // Xóa debugPrint
+      }
       
       // Sync water entries
       final waterEntries = await _localStorage.getWaterEntries();
@@ -108,8 +102,7 @@ class SyncService extends ChangeNotifier {
         // Cập nhật ID mới và lưu lại vào local storage
         final updatedEntry = entry.updateId(newId);
         await _localStorage.saveWaterEntry(updatedEntry);
-      }
-      // Xóa debugPrint
+      }
       
       _lastSyncTime = DateTime.now();
       await _localStorage.saveSyncStatus(isSuccess: true);
@@ -120,13 +113,10 @@ class SyncService extends ChangeNotifier {
       _lastSyncError = 'Lỗi đồng bộ: $e';
       await _localStorage.saveSyncStatus(isSuccess: false, error: _lastSyncError);
       _isSyncing = false;
-      notifyListeners();
-      // Xóa debugPrint
+      notifyListeners();
       return false;
     }
-  }
-  
-  // Fetch data from Firestore to local (when app starts or user logs in)
+  }
   Future<bool> fetchDataFromFirestore() async {
     if (_auth.currentUser == null || _auth.currentUser!.isAnonymous) {
       _lastSyncError = 'Không thể đồng bộ: Người dùng chưa đăng nhập hoặc đang trong chế độ khách';
@@ -153,8 +143,7 @@ class SyncService extends ChangeNotifier {
         }
         
         // Save merged data locally
-        await _localStorage.saveUserData(mergedData);
-        // Xóa debugPrint
+        await _localStorage.saveUserData(mergedData);
       }
       
       // Fetch food entries for the last 30 days
@@ -172,8 +161,7 @@ class SyncService extends ChangeNotifier {
       
       if (foodEntries.isNotEmpty) {
         // Save to local storage
-        await _localStorage.saveFoodEntries(foodEntries);
-        // Xóa debugPrint
+        await _localStorage.saveFoodEntries(foodEntries);
       }
       
       // Fetch exercise entries (implementation depends on your API design)
@@ -188,13 +176,10 @@ class SyncService extends ChangeNotifier {
       _lastSyncError = 'Lỗi đồng bộ: $e';
       await _localStorage.saveSyncStatus(isSuccess: false, error: _lastSyncError);
       _isSyncing = false;
-      notifyListeners();
-      // Xóa debugPrint
+      notifyListeners();
       return false;
     }
-  }
-  
-  // Handle sync when auth status changes (login, logout, etc.)
+  }
   Future<void> handleAuthStatusChange({
     required bool wasAuthenticated, 
     required bool wasGuest,
@@ -202,19 +187,15 @@ class SyncService extends ChangeNotifier {
     required bool isGuest
   }) async {
     // If user converted from guest to registered user
-    if (wasGuest && isAuthenticated && !isGuest) {
-      // Xóa debugPrint
+    if (wasGuest && isAuthenticated && !isGuest) {
       await syncLocalDataToFirestore();
     } 
     // If user just signed in (not as guest)
-    else if (!wasAuthenticated && isAuthenticated && !isGuest) {
-      // Xóa debugPrint
+    else if (!wasAuthenticated && isAuthenticated && !isGuest) {
       await fetchDataFromFirestore();
-    }
-    // If user logged out
+    }
     else if (wasAuthenticated && !isAuthenticated) {
-      // Do nothing here, as we want to keep local data
-      // Xóa debugPrint
+      // Do nothing here, as we want to keep local data
     }
   }
   

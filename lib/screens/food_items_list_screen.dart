@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/food_item.dart';
-import '../providers/food_provider.dart';
-import 'package:provider/provider.dart';
-
 class FoodItemsListScreen extends StatefulWidget {
   final Function(FoodItem) onFoodItemSelected;
 

@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/food_entry.dart';
 import '../models/food_item.dart';
 import '../providers/food_provider.dart';
-import '../utils/food_data_adapter.dart';
+import '../adapters/food_data_adapter.dart';
 
 /// Dịch vụ đồng bộ dữ liệu dinh dưỡng
 class NutritionSyncService {
@@ -50,7 +50,6 @@ class NutritionSyncService {
       
       return tempEntry;
     } catch (e) {
-      print('Lỗi khi đồng bộ dữ liệu dinh dưỡng: $e');
       return foodEntry;
     }
   }
@@ -92,7 +91,6 @@ class NutritionSyncService {
         return updatedEntry;
       }
     } catch (e) {
-      print('Lỗi khi fetch dữ liệu dinh dưỡng: $e');
     }
     
     return foodEntry;
@@ -134,7 +132,6 @@ class NutritionSyncService {
         return updatedEntry;
       }
     } catch (e) {
-      print('Lỗi khi đồng bộ tất cả dữ liệu: $e');
     }
     
     return foodEntry;
@@ -251,7 +248,6 @@ class NutritionSyncService {
       
       return updatedEntry;
     } catch (e) {
-      print('Lỗi khi cập nhật kích thước khẩu phần: $e');
       return foodEntry;
     }
   }
@@ -316,13 +312,8 @@ class NutritionSyncService {
       
       // Xóa cache để đảm bảo dữ liệu được tính toán lại và lưu thay đổi
       foodProvider.refreshNutrition();
-      
-      print('NutritionSyncService.handleSaveAndExit: Đã lưu thay đổi với dữ liệu dinh dưỡng: calories=${nutritionValues['calories']}, protein=${nutritionValues['protein']}, totalWeight=${nutritionValues['totalWeight']}');
-      print('NutritionSyncService.handleSaveAndExit: Đã cập nhật selectedDate trong provider: $dateStr');
-      
       return updatedEntry;
     } catch (e) {
-      print('Lỗi khi lưu và thoát: $e');
       return foodEntry;
     }
   }
@@ -410,7 +401,6 @@ class NutritionSyncService {
       
       return updatedEntry;
     } catch (e) {
-      print('Lỗi khi thay đổi khối lượng: $e');
       return foodEntry;
     }
   }
@@ -476,5 +466,20 @@ class NutritionSyncService {
           nutritionInfo[snakeKey] : 0.0;
       }
     });
+  }
+}
+
+// Extension để lấy servingSize từ FoodEntry
+extension FoodEntryExtension on FoodEntry {
+  double getServingSize() {
+    if (nutritionInfo != null && nutritionInfo!.containsKey('servingSize')) {
+      return (nutritionInfo!['servingSize'] as num).toDouble();
+    }
+    
+    if (items.isNotEmpty) {
+      return items.first.servingSize;
+    }
+    
+    return 1.0;
   }
 } 

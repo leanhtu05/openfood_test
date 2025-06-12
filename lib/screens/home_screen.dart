@@ -38,7 +38,6 @@ import '../widgets/home/exercise_section.dart';
 import '../widgets/home/water_section.dart';
 import 'package:flutter/services.dart';
 
-
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -83,8 +82,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     
     // Đặt trạng thái onboarding là "đã hoàn thành" để tránh quay lại màn hình onboarding
     OnboardingService.setOnboardingComplete();
-    
-    print('🏠 HomeScreen đang được khởi tạo...');
+
+    // Xóa các món ăn trùng lặp khi khởi động
+    _cleanupDuplicateFoodEntries();
     
     // Khởi tạo animation controller
     _animationController = AnimationController(
@@ -155,8 +155,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Đồng bộ hóa giá trị mục tiêu calo trên tất cả các màn hình
         _synchronizeCalorieGoals();
       });
-      
-      print('HomeScreen: Đã tải dữ liệu ban đầu cho ngày $_selectedDate');
+
     });
   }
   
@@ -190,19 +189,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         });
       }
     } catch (e) {
-      print('Lỗi khi tải dữ liệu bài tập: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể tải dữ liệu bài tập: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.fixed,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+
+      // Silent error handling - removed snackbar for better UX
     }
   }
   
@@ -233,6 +221,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // Phương thức để tải lại tất cả dữ liệu cho ngày đã chọn
+  // Xóa các món ăn trùng lặp
+  Future<void> _cleanupDuplicateFoodEntries() async {
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      await foodProvider.removeDuplicateFoodEntries();
+    } catch (e) {
+      // Silent error handling
+    }
+  }
+  
   Future<void> _loadDataForSelectedDate() async {
     if (_isLoadingData) return;
     _isLoadingData = true;
@@ -245,6 +243,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       waterProvider.setSelectedDate(_selectedDate);
       foodProvider.clearNutritionCache();
       foodProvider.setSelectedDate(_selectedDate);
+      
+      // Xóa các món ăn trùng lặp
+      await foodProvider.removeDuplicateFoodEntries();
+      
       await Future.wait([
         _loadExercisesForSelectedDate(),
         waterProvider.loadData(),
@@ -265,7 +267,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         });
       }
     } catch (e) {
-      print('Lỗi tải dữ liệu: $e');
     } finally {
       _isLoadingData = false;
     }
@@ -281,7 +282,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       setState(() {
         _consumedCalories = 0;
       });
-      print('Đã reset lượng calo tiêu thụ về 0 cho ngày $_selectedDate vì không có thực phẩm');
       return;
     }
     
@@ -302,7 +302,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _consumedCalories = totalCalories;
     });
     
-    print('Đã cập nhật lượng calo tiêu thụ: $_consumedCalories cho ngày $_selectedDate');
   }
 
   // Phương thức để cập nhật trạng thái hiển thị gợi ý bữa ăn
@@ -321,7 +320,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _showMealSuggestion = isSameDay && !hasReachedCalorieGoal;
     
     if (hasReachedCalorieGoal && isSameDay) {
-      print('Đã đạt đủ mục tiêu calo cho ngày hôm nay ($_consumedCalories/$_caloriesGoal) - Ẩn gợi ý bữa ăn');
     }
   }
 
@@ -362,66 +360,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
-      centerTitle: true,
-      actions: [
-        PopupMenuButton<String>(
-          icon: Icon(Icons.more_vert, color: AppColors.primary),
-          onSelected: (value) {
-            switch (value) {
-              case 'settings':
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => SettingsScreen()),
-                );
-                break;
-              case 'profile':
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ProfileScreen()),
-                );
-                break;
-              case 'sync_fix':
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => SyncResetScreen()),
-                );
-                break;
-            }
-          },
-          itemBuilder: (BuildContext context) => [
-            PopupMenuItem<String>(
-              value: 'profile',
-              child: Row(
-                children: [
-                  Icon(Icons.person, color: AppColors.primary, size: 20),
-                  SizedBox(width: 10),
-                  Text('Hồ sơ cá nhân'),
-                ],
-              ),
-            ),
-            PopupMenuItem<String>(
-              value: 'settings',
-              child: Row(
-                children: [
-                  Icon(Icons.settings, color: AppColors.primary, size: 20),
-                  SizedBox(width: 10),
-                  Text('Cài đặt'),
-                ],
-              ),
-            ),
-            PopupMenuItem<String>(
-              value: 'sync_fix',
-              child: Row(
-                children: [
-                  Icon(Icons.build_circle, color: Colors.orange, size: 20),
-                  SizedBox(width: 10),
-                  Text('Khắc phục lỗi đồng bộ'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
@@ -664,6 +602,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 style: AppTextStyles.heading2.copyWith(fontSize: 20),
               ),
               SizedBox(height: 24),
+              // First row of quick actions
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -680,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           builder: (context) => FoodLoggingScreen(initialDate: _selectedDate),
                         ),
                       );
-                      
+
                       // Handle result and reload data
                       if (result != null) {
                         await _loadDataForSelectedDate();
@@ -711,6 +650,43 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         '/exercise_log',
                         arguments: _selectedDate,
                       ).then((_) => _loadExercisesForSelectedDate());
+                    },
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              // Second row of quick actions
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildQuickActionButton(
+                    icon: Icons.shopping_cart_outlined,
+                    label: 'Mua sắm',
+                    color: Colors.green.shade600,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, '/grocery-list');
+                    },
+                  ),
+                  _buildQuickActionButton(
+                    icon: Icons.restaurant_menu,
+                    label: 'Kế hoạch',
+                    color: Colors.orange.shade600,
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, '/diet-plan');
+                    },
+                  ),
+                  _buildQuickActionButton(
+                    icon: Icons.chat_bubble_outline,
+                    label: 'AI Chat',
+                    color: Colors.purple.shade600,
+                    onTap: () {
+                      Navigator.pop(context);
+                      // Switch to AI Chat tab
+                      setState(() {
+                        _selectedNavIndex = 0;
+                      });
                     },
                   ),
                 ],
@@ -782,20 +758,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 // Reset user data to defaults
                 final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
                 await userDataProvider.resetData();
-                
-                print('Đã reset toàn bộ dữ liệu người dùng và trạng thái onboarding');
-                
+
                 if (!context.mounted) return;
                 Navigator.of(context).pop();
                 
-                // Hiển thị thông báo xác nhận reset
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Đã reset dữ liệu thành công. Chuyển đến màn hình onboarding...'),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 1),
-                  ),
-                );
+                // Silent reset - removed snackbar for better UX
                 
                 // Chuyển đến màn hình onboarding ngay lập tức thay vì
                 // chỉ hiển thị SnackBar và yêu cầu khởi động lại ứng dụng
@@ -1044,133 +1011,138 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _handleFoodItemTap(FoodEntry foodEntry) {
-                      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    
-    // Prepare data
-                            foodProvider.clearNutritionCache();
-                            foodProvider.refreshNutrition();
-                            final updatedFoodEntry = foodProvider.getFoodEntryById(foodEntry.id) ?? foodEntry;
-                            foodProvider.clearNutritionCache();
-    
-    // Show loading snackbar
-                            ScaffoldMessenger.of(context).clearSnackBars();
-    _showLoadingSnackBar('Đang tải thông tin dinh dưỡng...');
-    
-    // Navigate to nutrition detail screen
-    _navigateToFoodNutritionDetail(updatedFoodEntry);
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      
+      // Prepare data - cố gắng lấy thông tin đầy đủ nhất có thể
+      foodProvider.clearNutritionCache();
+      
+      // Refreshing nutrition synchronously can cause issues - making it async
+      Future.microtask(() async {
+        try {
+          await foodProvider.refreshNutrition();
+          
+          // Lấy phiên bản cập nhật của food entry
+          final updatedFoodEntry = foodProvider.getFoodEntryById(foodEntry.id);
+          if (updatedFoodEntry == null) {
+          }
+          
+          final entryToUse = updatedFoodEntry ?? foodEntry;
+          
+          // Đảm bảo có dữ liệu cơ bản
+          
+          // Show loading snackbar
+          if (context.mounted) {
+            // Removed clearSnackBars for better UX
+            // Removed loading snackbar for better UX
+            
+            // Navigate to nutrition detail screen
+            _navigateToFoodNutritionDetail(entryToUse);
+          }
+        } catch (e) {
+          // Silent error handling - removed snackbar for better UX
+        }
+      });
+    } catch (e) {
+      // Silent error handling - removed snackbar for better UX
+    }
   }
   
-  void _showLoadingSnackBar(String message) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 20, 
-                                      height: 20, 
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2, 
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      )
-                                    ),
-                                    SizedBox(width: 10),
-            Text(message),
-                                  ],
-                                ),
-                                duration: Duration(seconds: 1),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.fixed,
-                              ),
-                            );
-  }
+  // Removed _showLoadingSnackBar method for better UX
 
   void _navigateToFoodNutritionDetail(FoodEntry entry) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => FoodNutritionDetailScreen(
+    try {
+      final route = MaterialPageRoute(
+        builder: (context) => FoodNutritionDetailScreen(
           foodEntry: entry,
           onSave: _handleFoodEntrySave,
+          heroTag: "food_entry_${entry.id}", // Thêm heroTag để tránh xung đột nếu có
         ),
-      ),
-    ).then((result) => _handleFoodNutritionDetailResult(result));
+      );
+      
+      Navigator.push(context, route).then((result) {
+        _handleFoodNutritionDetailResult(result);
+      }).catchError((error) {
+        // Silent error handling - removed snackbar for better UX
+      });
+      
+    } catch (e) {
+      // Silent error handling - removed snackbar for better UX
+    }
   }
   
   void _handleFoodEntrySave(FoodEntry updatedEntry) {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 16, 
-              height: 16, 
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white)
-              )
-            ),
-            SizedBox(width: 8),
-            Text('Đang cập nhật thông tin bữa ăn...'),
-          ],
-        ),
-        duration: Duration(seconds: 1),
-        backgroundColor: Colors.blue,
-      ),
-    );
+    
+    // Silent processing - removed snackbar for better UX
+    
     Future.microtask(() async {
+      // Chỉ cập nhật entry trong provider, không thêm mới
       foodProvider.updateFoodEntry(updatedEntry);
-      if (updatedEntry.items.isNotEmpty) {
-        for (var item in updatedEntry.items) {
-          foodProvider.synchronizeNutritionData(
-            item.id, 
-            item.servingSize
-          );
-        }
-        foodProvider.synchronizeNutrition(
-          entryId: updatedEntry.id,
-          servingSize: updatedEntry.items.first.servingSize,
-          notifyChange: true,
-        );
-      }
+      
+      // Xóa cache để đảm bảo dữ liệu được tính toán lại
       foodProvider.clearNutritionCache();
+      
+      // Làm mới nutrition để cập nhật UI
       await foodProvider.refreshNutrition();
+      
+      // Đặt ngày được chọn trong provider
       String dateStr = updatedEntry.dateTime.toIso8601String().split('T')[0];
       foodProvider.setSelectedDate(dateStr);
+      
+      // Tải lại dữ liệu để cập nhật UI
       await _loadDataForSelectedDate();
-      // Đảm bảo cập nhật lại calo và mục tiêu sau khi thêm/xóa món ăn
+      
+      // Đảm bảo cập nhật lại calo và mục tiêu sau khi cập nhật món ăn
       _updateConsumedCalories(foodProvider);
       _updateNutritionGoals(userDataProvider);
     });
   }
   
   void _handleFoodNutritionDetailResult(dynamic result) {
+    
     if (result != null && result is Map<String, dynamic>) {
       // Nếu có kết quả trả về, cập nhật UI và dữ liệu
       if (result.containsKey('foodEntriesUpdated') && result['foodEntriesUpdated'] == true) {
+        
         // Cập nhật đồng bộ dữ liệu
         Future.microtask(() async {
-          final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-          
-          // Buộc làm mới dữ liệu để cập nhật loại bữa ăn mới
-          await foodProvider.loadData();
-          await foodProvider.refreshNutrition();
-          
-          // Cập nhật date nếu cần
-          if (result.containsKey('selectedDate')) {
-            setState(() {
-              _selectedDate = result['selectedDate'];
-              // Update _selectedDay from _selectedDate
-              final selectedDateTime = DateTime.parse(_selectedDate);
-              _selectedDay = selectedDateTime.day;
-            });
+          try {
+            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+            
+            // Buộc làm mới dữ liệu để cập nhật loại bữa ăn mới
+            await foodProvider.loadData();
+            await foodProvider.refreshNutrition();
+            
+            // Cập nhật date nếu cần
+            if (result.containsKey('selectedDate')) {
+              setState(() {
+                _selectedDate = result['selectedDate'];
+                // Update _selectedDay from _selectedDate
+                final selectedDateTime = DateTime.parse(_selectedDate);
+                _selectedDay = selectedDateTime.day;
+              });
+            }
+            
+            // Kiểm tra xem có món ăn được cập nhật không
+            if (result.containsKey('updatedEntry')) {
+            }
+            
+            // Cập nhật tất cả dữ liệu
+            await _loadDataForSelectedDate();
+            
+            // Silent success - removed snackbar for better UX
+          } catch (e) {
+            // Vẫn tải lại dữ liệu để đảm bảo UI cập nhật
+            if (context.mounted) {
+              _loadDataForSelectedDate();
+            }
           }
-          
-          // Cập nhật tất cả dữ liệu
-          _loadDataForSelectedDate();
         });
+      } else {
       }
+    } else {
     }
   }
 
@@ -1180,26 +1152,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       
       // Cập nhật ngày đã chọn trong FoodProvider
-      print('HomeScreen: Cập nhật ngày được chọn trong FoodProvider: $selectedDate');
       foodProvider.setSelectedDate(selectedDate);
       
       // Xóa cache và tải lại dữ liệu
       foodProvider.clearNutritionCache();
       await foodProvider.loadData();
       await foodProvider.refreshNutrition();
-      
-      print('HomeScreen: Đã tải lại dữ liệu món ăn cho ngày: $selectedDate');
-      
+
       // In log để xác minh các món ăn cho ngày đã chọn
       final entryCount = foodProvider.todayEntries.length;
-      print('HomeScreen: Số lượng món ăn cho ngày $selectedDate: $entryCount');
       for (var entry in foodProvider.todayEntries) {
         final entryDate = entry.dateTime.toIso8601String().split('T')[0];
-        print('HomeScreen: - ${entry.description} (${entry.mealType}) - ngày: $entryDate');
       }
       
     } catch (e) {
-      print('Lỗi khi cập nhật dữ liệu món ăn cho ngày: $e');
     }
   }
 
@@ -1252,17 +1218,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     } else {
       source = "default_value";
     }
-    
-    print('Đã cập nhật mục tiêu calo: $_caloriesGoal (nguồn: $source)');
-    
+
     // Add a debug log to check if values from TDEE calculator are received
     if (userDataProvider.tdeeCalories > 0) {
-      print('TDEE values synchronized from calculator: ${userDataProvider.tdeeCalories} calories, ' +
-            'Protein: ${userDataProvider.tdeeProtein}g, ' +
-            'Carbs: ${userDataProvider.tdeeCarbs}g, ' +
-            'Fat: ${userDataProvider.tdeeFat}g');
+      // TDEE values are available
     } else {
-      print('Warning: No TDEE values received from calculator. Using fallback values.');
+      // No TDEE values received from calculator
     }
   }
   
@@ -1278,7 +1239,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _lastWaterTime = lastWaterTime;
     });
     
-    print('Đã cập nhật thông tin nước: $_consumedWater / $_waterGoal ml');
   }
 
   void _checkFirebaseDataStatus() {
@@ -1299,23 +1259,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Kiểm tra Firebase đã khởi tạo chưa
         final app = Firebase.app();
         isFirebaseInitialized = true;
-        print('Firebase app name: ${app.name}');
         
         // Kiểm tra trạng thái đăng nhập
         currentUser = FirebaseAuth.instance.currentUser;
         isAuthenticated = currentUser != null;
         userId = currentUser?.uid;
         
-        print('Firebase authenticated: $isAuthenticated');
         if (isAuthenticated) {
-          print('User ID: $userId');
-          print('Email: ${currentUser?.email}');
-          print('Display name: ${currentUser?.displayName}');
-          print('Email verified: ${currentUser?.emailVerified}');
-          print('Authentication providers: ${currentUser?.providerData.map((p) => p.providerId).join(', ')}');
         }
       } catch (e) {
-        print('Error checking Firebase: $e');
       }
       
       // Đồng bộ với UserDataProvider
@@ -1371,35 +1323,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                 ],
-                
+
                 Divider(),
-                
+
                 Text('Provider Firebase khả dụng: ${providerFirebaseAvailable ? "✅" : "❌"}'),
                 Text('Provider đã đăng nhập: ${providerAuthenticated ? "✅" : "❌"}'),
                 Text('Provider user ID: $providerUserId'),
                 Text('Đồng bộ lần cuối: ${lastSync?.toString() ?? "Chưa đồng bộ"}'),
-                
+
                 Divider(),
-                
+
                 Text('Thông tin người dùng:', style: TextStyle(fontWeight: FontWeight.bold)),
                 if (name.isNotEmpty) Text('Tên: $name'),
                 Text('Giới tính: $gender'),
                 Text('Tuổi: $age'),
                 Text('Chiều cao: $heightCm cm'),
                 Text('Cân nặng: $weightKg kg'),
-                
+
                 Divider(),
                 Text('Thông tin dinh dưỡng:', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text('Mục tiêu calo: ${_caloriesGoal} kcal'),
                 Text('Đã tiêu thụ: ${_consumedCalories} kcal'),
                 Text('Mục tiêu nước: ${waterProvider.waterGoal} ml'),
                 Text('Đã uống: ${waterProvider.totalWaterToday} ml'),
-                
+
                 Divider(),
                 Text('Thông tin bài tập:', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text('Số bài tập hôm nay: ${exerciseProvider.selectedDateExercises.length}'),
                 Text('Tổng calo đốt: ${totalExerciseCalories} kcal'),
-                
+
                 Divider(),
                 Text('Thông tin món ăn:', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text('Số món ăn hôm nay: ${foodProvider.todayEntries.length}'),
@@ -1417,21 +1369,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 userDataProvider.loadFromFirestore().then((_) {
                   // Đồng bộ dữ liệu lên Firebase
                   userDataProvider.sendToApi();
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Đã đồng bộ dữ liệu với Firebase'),
-                      backgroundColor: Colors.green,
-                    )
-                  );
+
+                  // Silent sync - removed snackbar for better UX
                   Navigator.of(context).pop();
                 }).catchError((error) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Lỗi đồng bộ: $error'),
-                      backgroundColor: Colors.red,
-                    )
-                  );
+                  // Silent error handling - removed snackbar for better UX
                   Navigator.of(context).pop();
                 });
               },
@@ -1441,14 +1383,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
       );
     } catch (e) {
-      // Hiển thị lỗi nếu có
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi khi kiểm tra Firebase: $e'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      // Silent error handling - removed snackbar for better UX
     }
   }
 
@@ -1466,10 +1401,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     setState(() {
       _caloriesGoal = consistentCalorieGoal;
     });
-    
-    // Log để xác nhận đồng bộ hóa
-    print('HomeScreen: Đã đồng bộ hóa mục tiêu calo = $consistentCalorieGoal');
-    
     // Gửi dữ liệu lên API/Firestore nếu có thể
     if (userDataProvider.isFirebaseAvailable() && userDataProvider.syncEnabled) {
       await userDataProvider.sendToApi();

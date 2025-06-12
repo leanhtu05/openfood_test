@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../models/food_entry.dart';
 import '../../providers/food_provider.dart';
 import 'food_nutrition_dialogs.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 /// Lớp chứa các hành động với thực phẩm
 class FoodNutritionActions {
@@ -34,18 +35,68 @@ class FoodNutritionActions {
   static Future<bool> deleteFood(BuildContext context, FoodEntry foodEntry) async {
     final isConfirmed = await FoodNutritionDialogs.showDeleteConfirmation(context);
     if (isConfirmed == true) {
-      // Xóa entry trong provider
-      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-      foodProvider.deleteFoodEntry(foodEntry.id);
-      
-      // Hiển thị thông báo
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã xóa món ăn'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return true;
+      try {
+        // Xóa ảnh từ Firebase Storage nếu có
+        if (foodEntry.imageUrl != null && foodEntry.imageUrl!.isNotEmpty) {
+          if (foodEntry.imageUrl!.startsWith('https://firebasestorage.googleapis.com')) {
+            try {
+              // Tạo reference từ URL
+              final storage = FirebaseStorage.instance;
+              final ref = storage.refFromURL(foodEntry.imageUrl!);
+              
+              // Xóa file
+              await ref.delete();
+              print('Đã xóa ảnh từ Firebase Storage: ${foodEntry.imageUrl}');
+            } catch (e) {
+              print('Lỗi khi xóa ảnh từ Firebase Storage: $e');
+            }
+          }
+        }
+        
+        // Kiểm tra nếu có gs:// URL trong imagePath
+        if (foodEntry.imagePath != null && foodEntry.imagePath!.isNotEmpty) {
+          if (foodEntry.imagePath!.startsWith('gs://')) {
+            try {
+              // Tạo reference từ gs:// URL
+              final storage = FirebaseStorage.instance;
+              final ref = storage.refFromURL(foodEntry.imagePath!);
+              
+              // Xóa file
+              await ref.delete();
+              print('Đã xóa ảnh từ Firebase Storage (gs:// URL): ${foodEntry.imagePath}');
+            } catch (e) {
+              print('Lỗi khi xóa ảnh từ Firebase Storage (gs:// URL): $e');
+            }
+          }
+        }
+        
+        // Xóa entry trong provider
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        foodProvider.deleteFoodEntry(foodEntry.id);
+        
+        // Đồng bộ dữ liệu với Firestore
+        await foodProvider.synchronizeWithFirebase();
+        
+        // Hiển thị thông báo
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã xóa món ăn'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return true;
+      } catch (e) {
+        print('Lỗi khi xóa món ăn: $e');
+        // Hiển thị thông báo lỗi
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa món ăn: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return false;
+      }
     }
     return false;
   }

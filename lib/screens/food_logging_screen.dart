@@ -2,44 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
-import 'dart:math';
 import '../models/food_entry.dart';
 import '../models/food_item.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:app_settings/app_settings.dart';
-import 'package:intl/intl.dart';
 import 'package:openfood/providers/food_provider.dart';
 import '../widgets/food_logging/food_description_input.dart';
-import '../widgets/food_logging/food_image_preview.dart';
-import '../widgets/food_logging/action_buttons.dart';
-import '../widgets/food_logging/barcode_scanner_button.dart';
-import '../widgets/food_logging/empty_food_button.dart';
-import '../widgets/food_analysis/food_analysis_result.dart';
-import '../widgets/food_analysis/nutrient_progress_indicator.dart';
 import '../screens/food_history_screen.dart';
-import '../screens/food_recognition_screen.dart';
 import '../screens/food_search_screen.dart';
 import '../screens/food_nutrition_detail_screen.dart';
-import '../widgets/food_logging/food_logging_header.dart';
-import '../widgets/food_logging/image_section.dart';
-import '../widgets/custom_loading_indicator.dart';
 import '../widgets/food_logging/food_logging_app_bar.dart';
 import '../widgets/food_logging/ai_processing_dialog.dart';
-
+import 'package:image_picker/image_picker.dart';
+import '../providers/user_data_provider.dart';
+import '../screens/food_selection_confirmation_screen.dart';
 // Import services
 import '../services/image_handler_service.dart';
 import '../services/voice_recording_service.dart';
 import '../services/barcode_scanner_service.dart';
 import '../services/food_entry_service.dart';
 import '../services/food_ai_service.dart';
-import '../providers/user_data_provider.dart';
 
 // Enum cho trạng thái nhận diện thực phẩm
 enum RecognitionStatus {
   idle,
   processing,
   success,
-  failed
+  failed, none
 }
 
 class FoodLoggingScreen extends StatefulWidget {
@@ -70,7 +57,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   late final BarcodeScannerService _barcodeScannerService;
   late final FoodEntryService _foodEntryService;
   late final FoodAIService _foodAIService;
-  
+
   // State variables
   File? _foodImage;
   bool _isProcessing = false;
@@ -81,10 +68,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   late FoodProvider _foodProvider;
   
   // AI recognition state
+  List<FoodItem> _recognizedFoods = [];
+  List<FoodItem> _selectedFoods = [];
+  String? _foodImagePath;
   bool _isRecognizing = false;
-  RecognitionStatus _recognitionStatus = RecognitionStatus.idle;
+  RecognitionStatus _recognitionStatus = RecognitionStatus.none;
+  String _currentAIStep = '0';
   String _successMessage = '';
-  int _currentAIStep = 0;
 
   @override
   void initState() {
@@ -100,6 +90,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     _barcodeScannerService = BarcodeScannerService();
     _foodEntryService = FoodEntryService();
     _foodAIService = FoodAIService();
+
   }
 
   void _initializeComponents() {
@@ -146,13 +137,35 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
 
   // IMAGE HANDLING
   Future<void> _takeFoodPhoto() async {
-    final image = await _imageService.takeFoodPhoto();
-    _handleImageCapture(image);
+    final imagePicker = ImagePicker();
+    final XFile? image = await imagePicker.pickImage(source: ImageSource.camera);
+    
+    if (image != null) {
+      final File imageFile = File(image.path);
+      
+      setState(() {
+        _foodImage = imageFile;
+      });
+      
+      // Xử lý ảnh với phương thức mới để nhận diện thức ăn
+      await _processImage(imageFile);
+    }
   }
-
+  
   Future<void> _pickFoodPhoto() async {
-    final image = await _imageService.pickFoodPhoto();
-    _handleImageCapture(image);
+    final imagePicker = ImagePicker();
+    final XFile? image = await imagePicker.pickImage(source: ImageSource.gallery);
+    
+    if (image != null) {
+      final File imageFile = File(image.path);
+      
+      setState(() {
+        _foodImage = imageFile;
+      });
+      
+      // Xử lý ảnh với phương thức mới để nhận diện thức ăn
+      await _processImage(imageFile);
+    }
   }
   
   void _handleImageCapture(File? image) {
@@ -176,14 +189,28 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       ),
     );
     
+    // Xử lý kết quả nếu có 
     if (result != null) {
       _processNutritionAnalysisResult(result);
+      
+      // Nếu cập nhật thành công và người dùng có thể đã chọn "Lưu", 
+      // không cần thực hiện thêm hành động nào vì FoodNutritionDetailScreen
+      // đã xử lý việc chuyển hướng về Home
     }
   }
   
   void _handleFoodEntryUpdate(FoodEntry updatedEntry) {
+    // Chỉ cập nhật, không thêm mới entry vào provider
     Provider.of<FoodProvider>(context, listen: false)
         .updateFoodEntry(updatedEntry);
+    
+    // Xóa cache dinh dưỡng để đảm bảo dữ liệu được cập nhật đúng
+    Provider.of<FoodProvider>(context, listen: false).clearNutritionCache();
+    
+    // Thông báo dữ liệu đã thay đổi nếu có callback
+    if (widget.onDataChanged != null) {
+      widget.onDataChanged!();
+    }
   }
   
   void _processNutritionAnalysisResult(dynamic result) {
@@ -193,18 +220,23 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
         result.containsKey('updatedEntry') && 
         result['updatedEntry'] is FoodEntry) {
       
-        final updatedEntry = result['updatedEntry'] as FoodEntry;
-        foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
-        
-        if (result.containsKey('selectedDate')) {
+      final updatedEntry = result['updatedEntry'] as FoodEntry;
+      
+      // Chỉ cập nhật entry trong provider, không thêm mới
+      foodProvider.updateFoodEntry(updatedEntry);
+      
+      // Cập nhật ngày đã chọn nếu có
+      if (result.containsKey('selectedDate')) {
         final selectedDate = result['selectedDate'] as String;
-          foodProvider.setSelectedDate(selectedDate);
+        foodProvider.setSelectedDate(selectedDate);
         setState(() => _selectedDate = selectedDate);
-        }
-        
-        _updateSuccessState(updatedEntry);
-    } else if (result is FoodEntry) {
-      foodProvider.updateHomeScreenWithNewEntry(context, result);
+      }
+      
+      _updateSuccessState(updatedEntry);
+    } 
+    else if (result is FoodEntry) {
+      // Chỉ cập nhật entry trong provider, không thêm mới
+      foodProvider.updateFoodEntry(result);
       _updateSuccessState(result);
     }
   }
@@ -226,7 +258,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     setState(() {
       _isRecognizing = true;
       _recognitionStatus = RecognitionStatus.processing;
-      _currentAIStep = 0;
+      _currentAIStep = '0';
     });
     
     try {
@@ -315,15 +347,53 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AIProcessingDialog(currentStep: _currentAIStep),
+      builder: (context) => AIProcessingDialog(
+        currentStep: _currentAIStep,
+        onCancel: () {
+          setState(() {
+            _isRecognizing = false;
+            _recognitionStatus = RecognitionStatus.none;
+          });
+          Navigator.pop(context);
+        },
+      ),
     );
   }
   
   Future<void> _simulateAIProcessing() async {
-    await _foodAIService.simulateAIProcessing((step) {
-    if (!mounted) return;
-      setState(() => _currentAIStep = step);
+    // Bước 1: Phân tích hình ảnh
+    await _updateAIStep('1', 'Đang phân tích hình ảnh...');
+    await Future.delayed(Duration(seconds: 1));
+    
+    // Bước 2: Nhận diện món ăn
+    await _updateAIStep('2', 'Đang nhận diện các món ăn...');
+    await Future.delayed(Duration(seconds: 2));
+    
+    // Bước 3: Trích xuất thông tin dinh dưỡng
+    await _updateAIStep('3', 'Đang phân tích thông tin dinh dưỡng...');
+    await Future.delayed(Duration(seconds: 2));
+    
+    // Bước 4: Hoàn thành
+    await _updateAIStep('4', 'Hoàn thành!');
+    await Future.delayed(Duration(milliseconds: 500));
+  }
+  
+  // Cập nhật bước trong quá trình xử lý AI
+  Future<void> _updateAIStep(String step, String message) async {
+    setState(() {
+      _currentAIStep = step;
     });
+    
+    // Cập nhật dialog nếu đang hiển thị
+    if (Navigator.canPop(context)) {
+      // Dialog đang mở, cập nhật trạng thái
+      if (mounted) {
+        setState(() {});
+      }
+    }
+    
+    // Chờ một chút để tạo hiệu ứng chuyển động
+    await Future.delayed(Duration(milliseconds: 200));
   }
   
   void _closeProcessingDialog() {
@@ -332,54 +402,58 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     }
   }
   
-  void _handleSuccessfulAIAnalysis(FoodEntry entry) {
-    // Update UI with success message
-    _successMessage = _foodAIService.generateSuccessMessage(entry);
-    _showSnackbar(_successMessage);
+  void _handleSuccessfulAIAnalysis(List<FoodItem> recognizedItems) {
+    // Cập nhật danh sách món ăn được nhận diện
+    setState(() {
+      _recognizedFoods = recognizedItems;
+      _isRecognizing = false;
+      _recognitionStatus = RecognitionStatus.success;
+    });
     
-    // Update description if empty
-    if (_descriptionController.text.isEmpty) {
-      setState(() => _descriptionController.text = entry.description);
+    // Đóng dialog xử lý nếu đang hiển thị
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
     }
     
-    // Show nutrition details
-    _showEnhancedNutritionAnalysis(entry);
+    // Hiển thị màn hình xác nhận chọn món ăn
+    if (recognizedItems.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FoodSelectionConfirmationScreen(
+            recognizedFoods: recognizedItems,
+            imagePath: _foodImagePath ?? '',
+            onConfirm: (selectedFoods) {
+              // Xử lý khi người dùng xác nhận lựa chọn và lưu từ màn hình chi tiết
+              setState(() {
+                _selectedFoods = selectedFoods;
+              });
+              
+              // Silent save - removed snackbar for better UX
+              
+              // Đồng bộ thông tin calo và mục tiêu
+              syncCaloriesAndGoalsAfterAdd(context);
+            },
+          ),
+        ),
+      );
+    } else {
+      _showNoFoodDetectedMessage();
+    }
   }
   
-  void _showSnackbar(String message, {int seconds = 3, SnackBarAction? action}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: Duration(seconds: seconds),
-        action: action,
-      )
-    );
-  }
+  // Removed _showSnackbar method for better UX
   
   void _showNoFoodDetectedMessage() {
-    _showSnackbar(
-      'Không thể nhận diện thực phẩm. Vui lòng thử lại hoặc nhập thủ công.',
-      seconds: 4,
-        action: SnackBarAction(
-          label: 'TÌM KIẾM',
-          onPressed: _openFoodDatabase,
-        ),
-    );
+    // Silent handling - removed snackbar for better UX
   }
   
   void _showAnalysisErrorMessage(dynamic error) {
-    _showSnackbar(
-      'Lỗi khi phân tích ảnh: $error',
-      seconds: 5,
-        action: SnackBarAction(
-          label: 'NHẬP THỦ CÔNG',
-          onPressed: _openFoodDatabase,
-        ),
-    );
+    // Silent error handling - removed snackbar for better UX
   }
     
   void _showErrorMessage(String message) {
-    _showSnackbar(message);
+    // Silent error handling - removed snackbar for better UX
   }
   
   // FOOD ENTRY MANAGEMENT
@@ -497,13 +571,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }
   
   void _handleBarcodeProductNotFound() {
-    _showSnackbar(
-      'Không tìm thấy thông tin từ mã vạch. Thử tìm kiếm thủ công?',
-            action: SnackBarAction(
-              label: 'TÌM KIẾM',
-              onPressed: _openFoodDatabase,
-            ),
-    );
+    // Silent handling - removed snackbar for better UX
   }
 
   // NAVIGATION AND DATABASE
@@ -571,11 +639,34 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
       ),
     );
     
+    // Chỉ cập nhật UI nếu có kết quả trả về từ màn hình chi tiết dinh dưỡng
     if (updateResult != null) {
-      foodProvider.updateHomeScreenWithNewEntry(
-        context, 
-        updateResult is FoodEntry ? updateResult : entry
-      );
+      if (updateResult is Map<String, dynamic> && updateResult.containsKey('updatedEntry')) {
+        // Nếu kết quả là Map và có key 'updatedEntry', trích xuất entry đã cập nhật
+        final updatedEntry = updateResult['updatedEntry'] as FoodEntry;
+        
+        // Cập nhật UI với entry đã cập nhật
+        foodProvider.updateHomeScreenWithNewEntry(context, updatedEntry);
+        
+        // Đồng bộ mục tiêu calories và các giá trị khác
+        syncCaloriesAndGoalsAfterAdd(context);
+        
+        // Thông báo dữ liệu đã thay đổi nếu có callback
+        if (widget.onDataChanged != null) {
+          widget.onDataChanged!();
+        }
+      } else if (updateResult is FoodEntry) {
+        // Nếu kết quả trực tiếp là FoodEntry, cập nhật UI
+        foodProvider.updateHomeScreenWithNewEntry(context, updateResult);
+        
+        // Đồng bộ mục tiêu calories và các giá trị khác
+        syncCaloriesAndGoalsAfterAdd(context);
+        
+        // Thông báo dữ liệu đã thay đổi nếu có callback
+        if (widget.onDataChanged != null) {
+          widget.onDataChanged!();
+        }
+      }
     }
   }
   
@@ -811,5 +902,186 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
     } catch (e) {
       print('Lỗi khi đồng bộ calo và mục tiêu: $e');
     }
+  }
+
+  // Phương thức xử lý nhận diện ảnh
+  Future<void> _processImage(File imageFile) async {
+    // Lưu đường dẫn ảnh
+    _foodImagePath = imageFile.path;
+    
+    setState(() {
+      _isRecognizing = true;
+      _recognitionStatus = RecognitionStatus.processing;
+      _currentAIStep = '0';
+    });
+    
+    // Hiển thị dialog xử lý
+    _showAIProcessingDialog();
+    
+    try {
+      // Cập nhật bước 1: Phân tích hình ảnh
+      await _updateAIStep('1', 'Đang phân tích hình ảnh...');
+      await Future.delayed(Duration(milliseconds: 500));
+      
+      // Cập nhật bước 2: Nhận diện món ăn
+      await _updateAIStep('2', 'Đang nhận diện các món ăn...');
+      
+      // Sử dụng FoodAIService để gọi API nhận diện thức ăn thực tế
+      final result = await _foodAIService.recognizeFoodFromImage(
+        imageFile, 
+        _selectedMealType
+      );
+      
+      // Cập nhật bước 3: Trích xuất thông tin dinh dưỡng
+      await _updateAIStep('3', 'Đang phân tích thông tin dinh dưỡng...');
+      
+      if (result['success']) {
+        // Chuyển đổi kết quả từ API thành FoodEntry
+        final entry = _foodAIService.convertRecognitionResponseToFoodEntry(
+          result['data'],
+          _selectedMealType
+        );
+        
+        // Chuyển đổi FoodEntry thành danh sách FoodItem để hiển thị xác nhận
+        List<FoodItem> recognizedItems = entry?.items ?? [];
+        
+        // Cập nhật bước 4: Hoàn thành
+        await _updateAIStep('4', 'Hoàn thành!');
+        await Future.delayed(Duration(milliseconds: 500));
+        
+        // Xử lý kết quả thành công
+        if (recognizedItems.isNotEmpty) {
+          _handleSuccessfulAIAnalysis(recognizedItems);
+        } else {
+          // Nếu không có kết quả, hiển thị thông báo và sử dụng fallback
+          _showNoFoodDetectedMessage();
+          
+          // Sử dụng phương thức demo để cung cấp kết quả fallback
+
+        }
+      } else {
+        // Xử lý lỗi từ API
+        setState(() {
+          _isRecognizing = false;
+          _recognitionStatus = RecognitionStatus.failed;
+        });
+        _showErrorMessage(result['message'] ?? 'Lỗi khi nhận diện thực phẩm');
+        
+        // Sử dụng phương thức demo làm fallback
+
+      }
+    } catch (error) {
+      setState(() {
+        _isRecognizing = false;
+        _recognitionStatus = RecognitionStatus.failed;
+      });
+      _showAnalysisErrorMessage(error);
+      
+      // Sử dụng phương thức demo làm fallback khi có lỗi
+
+    }
+  }
+  
+  // Sử dụng nhận diện fallback khi API thất bại
+
+  // Chuyển đổi tên món ăn thành FoodItem với thông tin dinh dưỡng
+  Future<List<FoodItem>> _convertFoodNamesToItems(List<String> foodNames) async {
+    // Trong thực tế, bạn sẽ lấy thông tin dinh dưỡng từ cơ sở dữ liệu hoặc API
+    // Dưới đây là ví dụ với dữ liệu mẫu
+    
+    final Map<String, Map<String, dynamic>> foodDatabase = {
+      'Phở bò': {
+        'calories': 420.0,
+        'protein': 25.0,
+        'fat': 10.0,
+        'carbs': 60.0,
+      },
+      'Phở gà': {
+        'calories': 380.0,
+        'protein': 22.0,
+        'fat': 8.0,
+        'carbs': 58.0,
+      },
+      'Bánh mì thịt': {
+        'calories': 350.0,
+        'protein': 15.0,
+        'fat': 12.0,
+        'carbs': 48.0,
+      },
+      'Cơm tấm sườn': {
+        'calories': 520.0,
+        'protein': 28.0,
+        'fat': 18.0,
+        'carbs': 65.0,
+      },
+      'Bún chả': {
+        'calories': 450.0,
+        'protein': 20.0,
+        'fat': 15.0,
+        'carbs': 55.0,
+      },
+      'Bún bò Huế': {
+        'calories': 480.0,
+        'protein': 24.0,
+        'fat': 16.0,
+        'carbs': 58.0,
+      },
+      'Bánh xèo': {
+        'calories': 400.0,
+        'protein': 10.0,
+        'fat': 22.0,
+        'carbs': 42.0,
+      },
+      'Gỏi cuốn': {
+        'calories': 220.0,
+        'protein': 12.0,
+        'fat': 5.0,
+        'carbs': 35.0,
+      },
+      'Chả giò': {
+        'calories': 300.0,
+        'protein': 8.0,
+        'fat': 18.0,
+        'carbs': 28.0,
+      },
+      'Cơm rang': {
+        'calories': 380.0,
+        'protein': 12.0,
+        'fat': 10.0,
+        'carbs': 60.0,
+      },
+      'Bún riêu': {
+        'calories': 420.0,
+        'protein': 18.0,
+        'fat': 12.0,
+        'carbs': 55.0,
+      },
+    };
+    
+    // Dữ liệu mặc định cho món không có trong cơ sở dữ liệu
+    final defaultNutrition = {
+      'calories': 350.0,
+      'protein': 15.0,
+      'fat': 12.0,
+      'carbs': 45.0,
+    };
+    
+    List<FoodItem> foodItems = [];
+    
+    for (int i = 0; i < foodNames.length; i++) {
+      final foodName = foodNames[i];
+      final nutritionData = foodDatabase[foodName] ?? defaultNutrition;
+      
+      foodItems.add(FoodItem(
+        id: 'item_${DateTime.now().millisecondsSinceEpoch}_$i',
+        name: foodName,
+        calories: nutritionData['calories'] as double,
+        protein: nutritionData['protein'] as double,
+        fat: nutritionData['fat'] as double,
+        carbs: nutritionData['carbs'] as double,
+      ));
+    }
+    
+    return foodItems;
   }
 } 

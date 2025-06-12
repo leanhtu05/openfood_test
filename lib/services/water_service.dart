@@ -31,7 +31,6 @@ class WaterService {
         _saveToPrefs();
       }
     } catch (e) {
-      print('Lỗi khi khởi tạo dữ liệu nước: $e');
       _entries = [];
     }
   }
@@ -43,7 +42,6 @@ class WaterService {
       final List<Map<String, dynamic>> entriesMaps = _entries.map((e) => e.toMap()).toList();
       await prefs.setString('water_entries', jsonEncode(entriesMaps));
     } catch (e) {
-      print('Lỗi khi lưu dữ liệu nước: $e');
     }
   }
 

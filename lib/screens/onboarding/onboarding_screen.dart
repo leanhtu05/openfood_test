@@ -13,6 +13,7 @@ import 'weight_gain_pace_page.dart';
 import 'diet_restriction_page.dart';
 import 'diet_preference_page.dart';
 import 'health_condition_page.dart';
+import 'name_input_page.dart';
 import '../../services/onboarding_service.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_data_provider.dart';
@@ -57,24 +58,30 @@ class MaterialOnboardingPage extends StatelessWidget {
 // Định nghĩa các hằng số cho UI
 class OnboardingStyles {
   // Colors
-  static const Color primaryColor = Colors.green;
-  static const Color primaryColorLight = Color(0xFFE8F5E9);
-  static const Color accentColor = Color(0xFF4CAF50);
-  static const Color titleColor = Color(0xFF24204F);
-  static const Color textColor = Colors.black87;
-  static const Color textSecondaryColor = Colors.grey;
+  static const Color primaryColor = Color(0xFF4CAF50); // Xanh lá đậm
+  static const Color primaryColorLight = Color(0xFFE8F5E9); // Xanh lá nhạt
+  static const Color accentColor = Color(0xFF4CAF50); // Xanh lá đậm
+  static const Color titleColor = Color(0xFF1A1A45); // Tím đậm gần như đen
+  static const Color textColor = Color(0xFF1A1A45); // Tím đậm gần như đen
+  static const Color textSecondaryColor = Color(0xFF757575); // Xám đậm
+  static const Color backgroundColor = Colors.white;
+  static const Color cardColor = Color(0xFFF5F5F5); // Màu xám nhạt cho card
+  static const Color selectedCardBorder = Color(0xFF4CAF50); // Viền xanh lá khi chọn
+  static const Color buttonTextColor = Colors.white; // Màu chữ nút
   
   // Text styles
   static const TextStyle appTitleStyle = TextStyle(
     fontSize: 40,
     fontWeight: FontWeight.bold,
     color: titleColor,
+    letterSpacing: -0.5,
   );
   
   static const TextStyle pageTitleStyle = TextStyle(
     fontSize: 28,
     fontWeight: FontWeight.bold,
     color: textColor,
+    letterSpacing: -0.5,
   );
   
   static const TextStyle bodyTextStyle = TextStyle(
@@ -92,18 +99,39 @@ class OnboardingStyles {
   // Button styles
   static ButtonStyle primaryButtonStyle = ElevatedButton.styleFrom(
     backgroundColor: primaryColor,
-    foregroundColor: Colors.white,
+    foregroundColor: buttonTextColor,
     padding: const EdgeInsets.symmetric(vertical: 16),
+    elevation: 0,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(30),
     ),
+  );
+  
+  // Selection styles
+  static BoxDecoration selectedItemDecoration = BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(16),
+    border: Border.all(color: selectedCardBorder, width: 2),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withOpacity(0.05),
+        blurRadius: 10,
+        offset: const Offset(0, 4),
+      ),
+    ],
+  );
+  
+  static BoxDecoration unselectedItemDecoration = BoxDecoration(
+    color: cardColor,
+    borderRadius: BorderRadius.circular(16),
+    border: Border.all(color: Colors.transparent),
   );
   
   // Padding
   static const EdgeInsets screenPadding = EdgeInsets.all(24.0);
   
   // Sizes
-  static const double iconSize = 150.0;
+  static const double iconSize = 120.0;
   static const double progressHeight = 6.0;
 }
 
@@ -111,10 +139,10 @@ class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({Key? key}) : super(key: key);
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  State<OnboardingScreen> createState() => OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   
@@ -133,6 +161,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     const DietRestrictionPage(),
     const DietPreferencePage(),
     const HealthConditionPage(),
+    const NameInputPage(),
   ];
   
   @override
@@ -148,7 +177,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     
     // Đảm bảo dữ liệu người dùng đã được lưu
     final userData = Provider.of<UserDataProvider>(context, listen: false);
+    
+    // Kiểm tra xem tên đã được nhập chưa
+    if (userData.name.isEmpty) {
+      // Hiển thị thông báo nếu chưa nhập tên
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Vui lòng nhập tên của bạn để hoàn thành'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return; // Không tiếp tục nếu chưa nhập tên
+    }
+    
+    // Lưu tất cả dữ liệu người dùng
     await userData.saveUserData();
+    
+    // In ra thông tin xác nhận
+    print('✅ Onboarding hoàn tất! Tên người dùng: ${userData.name}');
     
     // Chuyển đến màn hình chính
     if (mounted) {
@@ -159,7 +205,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _goToNextPage() {
+  // Public methods for navigation that can be accessed by other pages
+  void goToNextPage() {
     if (_currentPage < _pages.length - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
@@ -171,7 +218,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _goToPreviousPage() {
+  void goToPreviousPage() {
     if (_currentPage > 0) {
       _pageController.previousPage(
         duration: const Duration(milliseconds: 300),
@@ -204,7 +251,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return shouldExit;
     } else {
       // Nếu không phải trang đầu tiên, quay lại trang trước đó
-      _goToPreviousPage();
+      goToPreviousPage();
       return false;
     }
   }
@@ -222,7 +269,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ? IconButton(
                   icon: const Icon(Icons.arrow_back),
                   color: Colors.black54,
-                  onPressed: _goToPreviousPage,
+                  onPressed: goToPreviousPage,
                 )
               : null,
         ),
@@ -260,7 +307,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16.0),
                 child: ElevatedButton(
-                  onPressed: _goToNextPage,
+                  onPressed: goToNextPage,
                   style: OnboardingStyles.primaryButtonStyle,
                   child: Text(
                     _currentPage < _pages.length - 1 ? 'Tiếp tục' : 'Hoàn thành',

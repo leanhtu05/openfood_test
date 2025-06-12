@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/food_entry.dart';
+import '../../models/food_item.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import '../../providers/food_provider.dart';
@@ -163,26 +164,51 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
                       height: 40,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(20),
-                        child: _currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty
-                          ? Image.file(
-                              File(_currentFoodEntry.imagePath!),
+                        child: _currentFoodEntry.imageUrl != null && _currentFoodEntry.imageUrl!.isNotEmpty
+                          ? Image.network(
+                              _currentFoodEntry.imageUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Center(
-                                child: Text(
-                                  _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
-                                ),
-                              ),
+                              errorBuilder: (_, __, ___) {
+                                // Fallback to local image if network image fails
+                                return _currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty
+                                  ? Image.file(
+                                      File(_currentFoodEntry.imagePath!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Center(
+                                        child: Text(
+                                          _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                                        ),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(
+                                        _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                                      ),
+                                    );
+                              },
                             )
-                          : Container(
-                              color: Colors.green.shade100,
-                              child: Center(
-                                child: Text(
-                                  _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                          : _currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty
+                            ? Image.file(
+                                File(_currentFoodEntry.imagePath!),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Center(
+                                  child: Text(
+                                    _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                color: Colors.green.shade100,
+                                child: Center(
+                                  child: Text(
+                                    _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
+                                  ),
                                 ),
                               ),
-                            ),
                       ),
                     ),
                     
@@ -193,21 +219,25 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Tên thực phẩm
-                          Text(
-                            _currentFoodEntry.description,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+                          // Hiển thị các món ăn dưới dạng chips thay vì text
+                          if (_currentFoodEntry.items.isNotEmpty)
+                            _buildFoodItemChips(_currentFoodEntry.items)
+                          else
+                            // Fallback hiển thị description nếu không có items
+                            Text(
+                              _currentFoodEntry.description,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          
+
                           SizedBox(height: 4),
-                          
-                          // Hiển thị chi tiết dinh dưỡng 
+
+                          // Hiển thị chi tiết dinh dưỡng
                           // Thông tin dinh dưỡng chi tiết hơn
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,9 +257,9 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
                                   ),
                                 ],
                               ),
-                              
+
                               SizedBox(height: 2),
-                              
+
                               // Macros trên một hàng
                               Row(
                                 children: [
@@ -360,66 +390,7 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
                 SizedBox(height: 12),
                 
                 // Action buttons row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Edit button
-                    InkWell(
-                      onTap: widget.onEditFood,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.edit, color: Colors.blue, size: 16),
-                            SizedBox(width: 4),
-                            Text(
-                              "Sửa",
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    SizedBox(width: 8),
-                    
-                    // Delete button
-                    InkWell(
-                      onTap: widget.onDelete,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.delete_outline, color: Colors.red, size: 16),
-                            SizedBox(width: 4),
-                            Text(
-                              "Xóa",
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                
               ],
             ),
           ),
@@ -443,17 +414,21 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Food name
-              Text(
-                _currentFoodEntry.description,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+              // Hiển thị các món ăn dưới dạng chips thay vì text
+              if (_currentFoodEntry.items.isNotEmpty)
+                _buildFoodItemChips(_currentFoodEntry.items)
+              else
+                // Fallback hiển thị description nếu không có items
+                Text(
+                  _currentFoodEntry.description,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
               
               SizedBox(height: 8),
               
@@ -636,6 +611,53 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
     );
   }
 
+  // Widget hiển thị các món ăn dưới dạng chips
+  Widget _buildFoodItemChips(List<FoodItem> items) {
+    // Lấy tối đa 4 món đầu tiên để tránh quá dài
+    final displayItems = items.take(4).toList();
+    final hasMore = items.length > 4;
+
+    return Wrap(
+      spacing: 4,
+      runSpacing: 2,
+      children: [
+        ...displayItems.map((item) => Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300, width: 0.5),
+          ),
+          child: Text(
+            item.name,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        )),
+        if (hasMore)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200, width: 0.5),
+            ),
+            child: Text(
+              '+${items.length - 4}',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.blue.shade600,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildFoodIcon() {
     return Container(
       width: 56,
@@ -648,53 +670,79 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
         borderRadius: BorderRadius.circular(28),
         child: Stack(
           children: [
-            // Image if available
-            if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty)
+            // Image from Firebase Storage URL if available
+            if (_currentFoodEntry.imageUrl != null && _currentFoodEntry.imageUrl!.isNotEmpty)
+              Image.network(
+                _currentFoodEntry.imageUrl!,
+                fit: BoxFit.cover,
+                width: 56,
+                height: 56,
+                errorBuilder: (context, error, stackTrace) {
+                  print('Lỗi tải ảnh từ URL: $error');
+                  // Fallback to local image if network image fails
+                  if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty) {
+                    return Image.file(
+                      File(_currentFoodEntry.imagePath!),
+                      fit: BoxFit.cover,
+                      width: 56,
+                      height: 56,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildAvatarPlaceholder();
+                      },
+                    );
+                  } else {
+                    return _buildAvatarPlaceholder();
+                  }
+                },
+              )
+            // Local image if no URL
+            else if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty)
               Image.file(
                 File(_currentFoodEntry.imagePath!),
                 fit: BoxFit.cover,
                 width: 56,
                 height: 56,
                 errorBuilder: (context, error, stackTrace) {
-                  // Fallback if image loading fails
-                  return Center(
-                    child: Icon(Icons.image_not_supported, color: Colors.green, size: 24),
-                  );
+                  return _buildAvatarPlaceholder();
                 },
-              ),
-            
-            // First letter of food name or T if not available
-            if (_currentFoodEntry.imagePath == null || _currentFoodEntry.imagePath!.isEmpty)
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                      _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-                  Container(
-                    height: 12, // Đặt chiều cao cố định
-                    child: Text(
-                      "scan",
-                      style: TextStyle(
-                        fontSize: 8,
-                        color: Colors.green,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+              )
+            // Show placeholder if no images
+            else
+              _buildAvatarPlaceholder(),
           ],
         ),
+      ),
+    );
+  }
+
+  // Widget hiển thị placeholder chữ đầu khi không có ảnh
+  Widget _buildAvatarPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            _currentFoodEntry.description.isNotEmpty ? _currentFoodEntry.description[0].toUpperCase() : "T",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+          Container(
+            height: 12, // Đặt chiều cao cố định
+            child: Text(
+              "scan",
+              style: TextStyle(
+                fontSize: 8,
+                color: Colors.green,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

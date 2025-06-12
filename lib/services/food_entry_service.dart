@@ -64,7 +64,6 @@ class FoodEntryService {
         onNotFound();
       }
     } catch (e) {
-      print('Error searching barcode: $e');
       onNotFound();
     }
   }

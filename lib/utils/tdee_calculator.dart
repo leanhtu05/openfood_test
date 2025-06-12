@@ -155,7 +155,12 @@ class TDEECalculator {
   }) {
     // Tính BMR (Basal Metabolic Rate) theo công thức Mifflin-St Jeor
     double bmr;
-    if (gender == 'Nam') {
+    // Chuẩn hóa giới tính để hỗ trợ cả 'male/female' và 'Nam/Nữ'
+    bool isMale = gender.toLowerCase() == 'male' || gender == 'Nam';
+    
+    print('[TDEE calculateTDEE] Giới tính: $gender, Đã chuẩn hóa thành isMale=$isMale');
+    
+    if (isMale) {
       bmr = 10 * weight + 6.25 * height - 5 * age + 5;
     } else {
       bmr = 10 * weight + 6.25 * height - 5 * age - 161;
@@ -164,6 +169,8 @@ class TDEECalculator {
     // Nhân hệ số hoạt động để tính TDEE
     double activityMultiplier = getActivityMultiplier(activityLevel);
     double tdee = bmr * activityMultiplier;
+    
+    print('[TDEE calculateTDEE] BMR: $bmr, Hệ số hoạt động: $activityMultiplier, TDEE: $tdee');
 
     // Làm tròn TDEE
     tdee = double.parse(tdee.toStringAsFixed(1));

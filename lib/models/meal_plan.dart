@@ -1,6 +1,39 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+// Class để đại diện cho nguyên liệu chi tiết với số lượng
+class DetailedIngredient {
+  final String name;
+  final String amount;
+  final String? unit;
+  final String? category; // Phân loại nguyên liệu (rau củ, thịt, gia vị...)
+
+  DetailedIngredient({
+    required this.name,
+    required this.amount,
+    this.unit,
+    this.category,
+  });
+
+  factory DetailedIngredient.fromJson(Map<String, dynamic> json) {
+    return DetailedIngredient(
+      name: json['name'] ?? '',
+      amount: json['amount'] ?? '',
+      unit: json['unit'],
+      category: json['category'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'amount': amount,
+      'unit': unit,
+      'category': category,
+    };
+  }
+}
+
 class MealPlan {
   final String id;
   final String userId;
@@ -150,7 +183,7 @@ class MealPlan {
           'ingredients': meal.ingredients,
           'nutrition': meal.nutrition,
           'image_url': meal.imageUrl,
-          'preparation': meal.instructions,
+          'preparation': meal.instructions.isNotEmpty ? meal.instructions.join('\n') : '',
         }).toList();
       });
     });
@@ -247,7 +280,7 @@ class MealPlan {
   }
   
   // Thay thế một ngày trong kế hoạch bữa ăn
-  static Future<DayMealPlan?> replaceDay({
+  static Future<bool> replaceDay({
     required String dayOfWeek,
     required int caloriesTarget,
     required int proteinTarget,
@@ -261,17 +294,24 @@ class MealPlan {
     String baseUrl = 'https://backend-openfood.onrender.com',
   }) async {
     try {
+      // Tạo dữ liệu chính cho body API
       final body = {
+        'user_id': userId,
         'day_of_week': dayOfWeek,
         'calories_target': caloriesTarget,
         'protein_target': proteinTarget,
         'fat_target': fatTarget,
         'carbs_target': carbsTarget,
+        'diet_restrictions': preferences,
+        'health_conditions': allergies,
+        'diet_preference': cuisineStyle ?? '',
+        // Không đưa use_ai vào body
       };
       
+      // Tạo query parameters cho URL
       final queryParams = {
         'user_id': userId,
-        'use_ai': useAi.toString(),
+        'use_ai': useAi.toString(), // Đưa use_ai vào query parameter
       };
       
       // Thêm preferences nếu có
@@ -293,28 +333,36 @@ class MealPlan {
         queryParams['cuisine_style'] = cuisineStyle;
       }
       
+      // Tạo URI với query parameters
       final uri = Uri.parse('$baseUrl/api/replace-day').replace(queryParameters: queryParams);
+      
+      print('🔄 Đang thay thế kế hoạch ngày với AI=${useAi}');
+      print('🔄 Đang thay thế kế hoạch ngày từ API: $uri');
+      print('📦 Dữ liệu gửi đi: $body');
+      
+      // Sử dụng jsonEncode để chuyển đổi đúng các giá trị boolean
+      final jsonBody = jsonEncode(body);
+      print('📦 JSON được gửi đi: $jsonBody');
       
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
+        body: jsonBody,
       );
       
+      print('📨 Phản hồi HTTP: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['day_meal_plan'] != null) {
-          return DayMealPlan.fromJson(data['day_meal_plan']);
-        }
-        return null;
+        print('✅ Thay thế kế hoạch ngày thành công. Dữ liệu mới sẽ được cập nhật tự động qua Firebase.');
+        return true;
       } else {
-        print('Lỗi khi thay thế ngày trong kế hoạch: ${response.statusCode}');
-        print('Response body: ${response.body}');
-        return null;
+        print('❌ Lỗi khi thay thế ngày trong kế hoạch: ${response.statusCode}');
+        print('📃 Nội dung phản hồi: ${response.body}');
+        throw Exception('Lỗi khi thay thế kế hoạch ngày: HTTP ${response.statusCode}');
       }
     } catch (e) {
-      print('Lỗi khi gọi API thay thế ngày: $e');
-      return null;
+      print('❌ Lỗi khi gọi API thay thế ngày: $e');
+      throw Exception('Lỗi khi thay thế kế hoạch ngày: $e');
     }
   }
   
@@ -459,9 +507,55 @@ class DayMealPlan {
           
           // Xử lý dishes array
           if (json[mealType]['dishes'] != null && json[mealType]['dishes'] is List) {
-            mealsList = (json[mealType]['dishes'] as List)
-                .map((dish) => Meal.fromJson(dish))
-                .toList();
+            // Tạo một Meal từ thông tin tổng hợp và chứa danh sách dishes
+            Map<String, dynamic> mealData = {
+              'name': '${mealTypeVietnamese}',
+              'description': 'Tổng hợp các món ăn cho ${mealTypeVietnamese.toLowerCase()}',
+              'nutrition': json[mealType]['nutrition'] ?? {},
+              'ingredients': [],
+              'instructions': [],
+              'dishes': json[mealType]['dishes'],
+            };
+            
+            // Tạo một Meal chứa nhiều món ăn
+            Meal combinedMeal = Meal.fromJson(mealData);
+            mealsList.add(combinedMeal);
+          }
+          
+          // Nếu không tìm thấy dishes, thử xử lý dạng cũ (bữa ăn = một món)
+          if (mealsList.isEmpty) {
+            print('⚠️ Không tìm thấy dishes, đang thử xử lý đối tượng bữa ăn dạng cũ...');
+            
+            // Tạo một món giả (dish) từ bữa ăn
+            Map<String, dynamic> dishData = {
+              'name': json[mealType]['name'] ?? mealTypeVietnamese,
+              'description': json[mealType]['description'] ?? '',
+              'nutrition': json[mealType]['nutrition'] ?? {},
+              'ingredients': [],
+              'preparation': json[mealType]['preparation'] ?? '',
+            };
+            
+            // Lấy ingredients nếu có
+            if (json[mealType]['ingredients'] != null) {
+              dishData['ingredients'] = json[mealType]['ingredients'];
+            }
+            
+            // Tạo danh sách dishes chỉ với một món
+            List<Map<String, dynamic>> dishes = [dishData];
+            
+            // Tạo một Meal từ thông tin tổng hợp và chứa dish
+            Map<String, dynamic> mealData = {
+              'name': mealTypeVietnamese,
+              'description': 'Tổng hợp các món ăn cho ${mealTypeVietnamese.toLowerCase()}',
+              'nutrition': json[mealType]['nutrition'] ?? {},
+              'ingredients': [],
+              'instructions': [],
+              'dishes': dishes,
+            };
+            
+            // Tạo một Meal chứa một món ăn
+            Meal singleDishMeal = Meal.fromJson(mealData);
+            mealsList.add(singleDishMeal);
           }
           
           mealsMap[mealTypeVietnamese] = mealsList;
@@ -477,9 +571,37 @@ class DayMealPlan {
             // Đảm bảo mealsList là List và mealType là String
             if (mealsList is List && mealType is String) {
               try {
-                mealsMap[mealType] = mealsList
-                    .map((mealJson) => Meal.fromJson(Map<String, dynamic>.from(mealJson)))
-                    .toList();
+                List<Meal> meals = [];
+                
+                // Chuyển đổi danh sách món ăn thành danh sách Meal, mỗi Meal sẽ chứa một Dish
+                for (var mealJson in mealsList) {
+                  if (mealJson is Map) {
+                    Map<String, dynamic> cleanMealJson = Map<String, dynamic>.from(mealJson);
+                    
+                    // Tạo một món ăn từ thông tin hiện tại
+                    Map<String, dynamic> dishData = {
+                      'name': cleanMealJson['name'] ?? 'Món ăn',
+                      'description': cleanMealJson['description'] ?? '',
+                      'nutrition': cleanMealJson['nutrition'] ?? {},
+                      'ingredients': cleanMealJson['ingredients'] ?? [],
+                      'preparation': cleanMealJson['preparation'] ?? cleanMealJson['instructions'] ?? '',
+                    };
+                    
+                    // Tạo một Meal với một dish
+                    Map<String, dynamic> mealWithDishData = {
+                      'name': mealType,
+                      'description': 'Tổng hợp các món ăn cho ${mealType.toLowerCase()}',
+                      'nutrition': cleanMealJson['nutrition'] ?? {},
+                      'ingredients': [],
+                      'dishes': [dishData],
+                    };
+                    
+                    meals.add(Meal.fromJson(mealWithDishData));
+                  }
+                }
+                
+                mealsMap[mealType] = meals;
+                
               } catch (e) {
                 print('Lỗi xử lý bữa ăn $mealType: $e');
                 mealsMap[mealType] = []; // Gán list rỗng nếu lỗi
@@ -535,7 +657,22 @@ class DayMealPlan {
       nutritionSummary: nutritionSummary,
     );
   }
-  
+
+  // Chuyển đối tượng DayMealPlan thành Map<String, dynamic> để serialize
+  Map<String, dynamic> toJson() {
+    Map<String, dynamic> mealsJson = {};
+
+    // Chuyển đổi meals map
+    meals.forEach((mealType, mealsList) {
+      mealsJson[mealType] = mealsList.map((meal) => meal.toJson()).toList();
+    });
+
+    return {
+      'meals': mealsJson,
+      'nutrition_summary': nutritionSummary,
+    };
+  }
+
   // Hàm chuyển đổi tên bữa ăn sang tiếng Việt
   static String _convertMealTypeToVietnamese(String englishMealType) {
     switch (englishMealType) {
@@ -555,6 +692,7 @@ class Meal {
   final List<String> ingredients;
   final String? imageUrl;
   final List<String> instructions;
+  final List<Dish> dishes;
 
   Meal({
     required this.name,
@@ -563,7 +701,28 @@ class Meal {
     required this.ingredients,
     this.imageUrl,
     this.instructions = const [],
+    this.dishes = const [],
   });
+
+  // Chuyển đối tượng Meal thành Map<String, dynamic> để serialize
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = {
+      'name': name,
+      'description': description,
+      'nutrition': nutrition,
+      'ingredients': ingredients,
+      'image_url': imageUrl,
+      // Luôn gửi preparation dưới dạng List, không chuyển thành chuỗi
+      'preparation': instructions,
+    };
+
+    // Chuyển đổi danh sách dishes nếu có
+    if (dishes.isNotEmpty) {
+      data['dishes'] = dishes.map((dish) => dish.toJson()).toList();
+    }
+
+    return data;
+  }
 
   factory Meal.fromJson(Map<String, dynamic> json) {
     // Chuyển đổi nutrition từ Map<String, dynamic> sang Map<String, double>
@@ -737,6 +896,21 @@ class Meal {
           .toList();
     }
     
+    // Đọc trường dishes nếu có (cho nhiều món trong một bữa ăn)
+    List<Dish> dishesList = [];
+    if (json['dishes'] != null && json['dishes'] is List) {
+      try {
+        dishesList = (json['dishes'] as List)
+            .map((dishJson) => Dish.fromJson(dishJson))
+            .toList();
+        
+        // Nếu tìm thấy dishes, đây là một bữa ăn có nhiều món
+        print('📝 Đã tìm thấy ${dishesList.length} món ăn trong bữa ăn');
+      } catch (e) {
+        print('❌ Lỗi khi xử lý danh sách dishes: $e');
+      }
+    }
+    
     return Meal(
       name: json['name'] ?? '',
       description: description,
@@ -744,6 +918,211 @@ class Meal {
       ingredients: ingredientsList,
       imageUrl: json['image_url'],
       instructions: instructionsList,
+      dishes: dishesList,
+    );
+  }
+}
+
+// Thêm class Dish để đại diện cho một món ăn trong bữa ăn
+class Dish {
+  final String name;
+  final String description;
+  final Map<String, double> nutrition;
+  final List<String> ingredients;
+  final String? imageUrl;
+  final List<String> instructions;
+  final String? dishType; // Thêm thuộc tính loại món
+  final String? region; // Thêm thuộc tính vùng miền
+  final String? preparationTime; // Thêm thuộc tính thời gian nấu
+  final List<String>? healthBenefits; // Thêm thuộc tính lợi ích sức khỏe
+
+  final int? prepTimeInMinutes; // Thời gian chuẩn bị tính bằng phút
+  final List<DetailedIngredient> detailedIngredients; // Nguyên liệu chi tiết với số lượng
+
+  Dish({
+    required this.name,
+    required this.description,
+    required this.nutrition,
+    required this.ingredients,
+    this.imageUrl,
+    this.instructions = const [],
+    this.dishType = 'main', // Mặc định là món chính
+    this.region = 'north', // Mặc định là miền Bắc
+    this.preparationTime, // Thời gian nấu ăn
+    this.healthBenefits, // Lợi ích sức khỏe
+
+    this.prepTimeInMinutes, // Thời gian chuẩn bị tính bằng phút
+    this.detailedIngredients = const [], // Nguyên liệu chi tiết
+  });
+
+  // Chuyển đối tượng Dish thành Map<String, dynamic> để serialize
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'description': description,
+      'nutrition': nutrition,
+      'ingredients': ingredients,
+      'image_url': imageUrl,
+      // Luôn đảm bảo preparation là List<String> khi chuyển đổi
+      'preparation': instructions.isEmpty ? [] : instructions,
+      'dish_type': dishType,
+      'region': region,
+      'preparation_time': preparationTime,
+      'health_benefits': healthBenefits,
+      'prep_time_minutes': prepTimeInMinutes,
+      'detailed_ingredients': detailedIngredients.map((ing) => ing.toJson()).toList(),
+    };
+  }
+
+  factory Dish.fromJson(Map<String, dynamic> json) {
+    // Chuyển đổi nutrition từ Map<String, dynamic> sang Map<String, double>
+    Map<String, double> nutritionMap = {};
+    if (json['nutrition'] != null) {
+      try {
+        final dynamic nutritionData = json['nutrition'];
+        if (nutritionData is Map) {
+          nutritionData.forEach((key, value) {
+            if (value is num) {
+              nutritionMap[key.toString()] = value.toDouble();
+            } else if (value is String) {
+              try {
+                nutritionMap[key.toString()] = double.parse(value);
+              } catch (parseError) {
+                print('Không thể chuyển đổi "$value" sang double: $parseError');
+              }
+            }
+          });
+        }
+      } catch (e) {
+        print('Lỗi khi xử lý nutrition của món ăn: $e');
+      }
+    }
+    
+    // Xử lý ingredients tương tự như trong Meal
+    List<String> ingredientsList = [];
+    if (json['ingredients'] != null && json['ingredients'] is List) {
+      ingredientsList = (json['ingredients'] as List).map((item) {
+        if (item is Map) {
+          String text = '';
+          if (item['name'] != null) {
+            text = item['name'].toString();
+            if (item['amount'] != null) {
+              text += ' - ${item['amount']}';
+            }
+          } else {
+            text = item.toString();
+          }
+          return text;
+        }
+        return item.toString();
+      }).toList();
+    }
+    
+    // Xử lý description
+    String description = '';
+    if (json['description'] != null) {
+      description = json['description'].toString();
+    }
+    
+    // Xử lý instructions/preparation một cách linh hoạt hơn
+    List<String> instructionsList = [];
+    
+    // Ưu tiên trường preparation
+    if (json['preparation'] != null) {
+      if (json['preparation'] is List) {
+        // Nếu preparation là danh sách, chuyển đổi mỗi phần tử thành chuỗi
+        instructionsList = (json['preparation'] as List)
+            .map((item) => item.toString())
+            .toList();
+      } else if (json['preparation'] is String) {
+        // Nếu preparation là chuỗi, tách nó theo dấu xuống dòng
+        String prepStr = json['preparation'].toString();
+        if (prepStr.contains('\n')) {
+          instructionsList = prepStr.split('\n')
+              .map((line) => line.trim())
+              .where((line) => line.isNotEmpty)
+              .toList();
+        } else {
+          instructionsList = [prepStr];
+        }
+      }
+    } 
+    // Nếu không có preparation, thử dùng instructions
+    else if (json['instructions'] != null) {
+      if (json['instructions'] is List) {
+        instructionsList = (json['instructions'] as List)
+            .map((item) => item.toString())
+            .toList();
+      } else if (json['instructions'] is String) {
+        String instrStr = json['instructions'].toString();
+        if (instrStr.contains('\n')) {
+          instructionsList = instrStr.split('\n')
+              .map((line) => line.trim())
+              .where((line) => line.isNotEmpty)
+              .toList();
+        } else {
+          instructionsList = [instrStr];
+        }
+      }
+    }
+    
+    // Xử lý loại món và vùng miền
+    String? dishType = json['dish_type'] as String?;
+    String? region = json['region'] as String?;
+    
+    // Xử lý thời gian nấu
+    String? preparationTime = json['preparation_time'] as String?;
+    
+    // Xử lý lợi ích sức khỏe
+    List<String>? healthBenefits;
+    if (json['health_benefits'] != null) {
+      if (json['health_benefits'] is List) {
+        healthBenefits = (json['health_benefits'] as List)
+            .map((item) => item.toString())
+            .toList();
+      } else if (json['health_benefits'] is String) {
+        // Nếu health_benefits là chuỗi, tách nó thành danh sách
+        healthBenefits = json['health_benefits'].toString().split(',')
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
+      }
+    }
+
+    // Xử lý video URL
+
+
+    // Xử lý thời gian chuẩn bị
+    int? prepTimeInMinutes;
+    if (json['prep_time_minutes'] != null) {
+      if (json['prep_time_minutes'] is int) {
+        prepTimeInMinutes = json['prep_time_minutes'];
+      } else if (json['prep_time_minutes'] is String) {
+        prepTimeInMinutes = int.tryParse(json['prep_time_minutes']);
+      }
+    }
+
+    // Xử lý nguyên liệu chi tiết
+    List<DetailedIngredient> detailedIngredients = [];
+    if (json['detailed_ingredients'] != null && json['detailed_ingredients'] is List) {
+      detailedIngredients = (json['detailed_ingredients'] as List)
+          .map((item) => DetailedIngredient.fromJson(item))
+          .toList();
+    }
+    
+    return Dish(
+      name: json['name'] ?? '',
+      description: description,
+      nutrition: nutritionMap,
+      ingredients: ingredientsList,
+      imageUrl: json['image_url'],
+      instructions: instructionsList,
+      dishType: dishType ?? 'main', // Mặc định là món chính
+      region: region ?? 'north', // Mặc định là miền Bắc
+      preparationTime: preparationTime,
+      healthBenefits: healthBenefits,
+      prepTimeInMinutes: prepTimeInMinutes,
+      detailedIngredients: detailedIngredients,
     );
   }
 }

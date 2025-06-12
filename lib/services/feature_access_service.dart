@@ -30,8 +30,7 @@ class FeatureAccessService {
 
   /// Handle a feature access attempt
   /// 
-  /// Returns true if access is granted, false if access is denied.
-  /// If access is denied and [showDialog] is true, displays a dialog to the user.
+  /// Returns true if access is granted, false if access is denied.
   bool handleFeatureAccess(
     FeatureType featureType, {
     bool showDialog = true,

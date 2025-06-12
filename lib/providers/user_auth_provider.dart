@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/user_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserAuthProvider with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -231,5 +233,117 @@ class UserAuthProvider with ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  // Đăng nhập bằng Google
+  Future<bool> signInWithGoogle() async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      // Khởi tạo GoogleSignIn
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      
+      // Đăng xuất Google trước để hiển thị dialog chọn tài khoản
+      try {
+        await googleSignIn.signOut();
+      } catch (e) {
+        debugPrint('⚠️ Lỗi khi đăng xuất Google trước khi đăng nhập: $e');
+        // Bỏ qua lỗi này, tiếp tục quy trình
+      }
+      
+      // Hiển thị giao diện chọn tài khoản Google
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      
+      // Nếu người dùng hủy đăng nhập
+      if (googleUser == null) {
+        _error = 'Đã hủy đăng nhập bằng Google.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+      
+      // Lấy thông tin xác thực Google
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      // Tạo credential từ thông tin xác thực
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      
+      try {
+        // Đăng nhập Firebase với credential từ Google
+        final UserCredential result = await _auth.signInWithCredential(credential);
+        _user = result.user;
+        
+        debugPrint("✅ Đăng nhập Google thành công cho: ${_user?.email}");
+        
+        // Tạo dữ liệu người dùng cơ bản để tránh lỗi chuyển đổi kiểu
+        if (_user != null) {
+          try {
+            // Lưu thông tin người dùng cơ bản vào Firestore
+            final userData = {
+              'user_id': _user!.uid,
+              'email': _user!.email,
+              'display_name': _user!.displayName,
+              'photo_url': _user!.photoURL,
+              'updated_at': DateTime.now().toIso8601String(),
+              'last_login': DateTime.now().toIso8601String(),
+            };
+            
+            // Cập nhật vào Firestore
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(_user!.uid)
+                .set(userData, SetOptions(merge: true));
+            
+            debugPrint("✅ Đã lưu thông tin người dùng Google vào Firestore");
+          } catch (firestoreError) {
+            debugPrint("⚠️ Lỗi khi lưu dữ liệu người dùng Google: $firestoreError");
+            // Tiếp tục xử lý đăng nhập ngay cả khi cập nhật Firestore thất bại
+          }
+          
+          // Đồng bộ dữ liệu từ Firebase sau khi đăng nhập thành công
+          if (_userService != null) {
+            try {
+              await _userService!.syncUserDataFromFirebase();
+              debugPrint("✅ Đã đồng bộ dữ liệu người dùng từ Firebase");
+            } catch (syncError) {
+              debugPrint("⚠️ Lỗi khi đồng bộ dữ liệu: $syncError");
+              // Tiếp tục xử lý đăng nhập ngay cả khi đồng bộ thất bại
+            }
+          }
+        }
+        
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } catch (authError) {
+        // Xử lý lỗi chuyển đổi kiểu đặc biệt
+        if (authError.toString().contains('PigeonUserDetails') || 
+            authError.toString().contains('type cast') ||
+            authError.toString().contains('subtype')) {
+          debugPrint("⚠️ Gặp lỗi ép kiểu khi đăng nhập Google: $authError");
+          
+          // Kiểm tra xem người dùng đã đăng nhập hay chưa
+          _user = _auth.currentUser;
+          if (_user != null) {
+            debugPrint("✅ Xác nhận người dùng đã đăng nhập thành công dù có lỗi ép kiểu");
+            _isLoading = false;
+            notifyListeners();
+            return true;
+          }
+        }
+        throw authError; // Ném lỗi nếu không xử lý được
+      }
+    } catch (e) {
+      _error = _getReadableAuthError(e);
+      debugPrint("❌ Lỗi đăng nhập với Google: $_error");
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
   }
 } 

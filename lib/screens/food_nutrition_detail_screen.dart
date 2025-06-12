@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 import '../models/food_entry.dart';
+import '../models/food_item.dart';
 import '../providers/food_provider.dart';
 import '../providers/user_data_provider.dart';
 import '../services/nutrition_sync_service.dart';
+import '../utils/constants.dart';
 import '../widgets/food_nutrition/nutrition_illustration.dart';
 import '../widgets/food_nutrition/header_food_info_card.dart';
 import '../widgets/food_nutrition/food_nutrition_dialogs.dart';
 import '../widgets/food_nutrition/food_nutrition_actions.dart';
 import '../widgets/food_nutrition/nutrition_footer.dart';
+import 'package:image_picker/image_picker.dart';
 
 class FoodNutritionDetailScreen extends StatefulWidget {
   final FoodEntry foodEntry;
@@ -32,6 +37,9 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   late String _mealName;
   double _servingSize = 1.0;
   bool _isLoading = false;
+  bool _isLoadingImage = false;
+  String? _imageUrl;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   @override
   void initState() {
@@ -49,10 +57,13 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       if (mounted) {
         // Đồng bộ ngày từ provider
         _syncDateWithProvider();
-        
+
         // Cập nhật servingSize mặc định
         _updateDefaultServingSize();
-        
+
+        // Tải hình ảnh từ Firebase Storage nếu có
+        _loadImageFromFirebase();
+
         // Đợi một chút trước khi đồng bộ dữ liệu dinh dưỡng
         Future.delayed(Duration(milliseconds: 50), () {
           if (mounted) {
@@ -72,31 +83,31 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Sử dụng Future.microtask để trì hoãn cập nhật state
     Future.microtask(() {
       // Lấy FoodEntry từ provider để đảm bảo dữ liệu luôn cập nhật
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       final updatedEntry = foodProvider.getFoodEntryById(_foodEntry.id);
-      
+
       if (updatedEntry != null && mounted) {
         setState(() {
           _foodEntry = updatedEntry;
-          
+
           // Đồng bộ _servingSize từ item đầu tiên nếu có
           if (_foodEntry.items.isNotEmpty) {
             _servingSize = _foodEntry.items.first.servingSize;
-            
+
             // Đảm bảo nutritionInfo có totalWeight đồng bộ với servingSize
             if (_foodEntry.nutritionInfo != null) {
               final updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
-              
+
               // Đảm bảo totalWeight = servingSize * 100
               updatedNutritionInfo['totalWeight'] = _servingSize * 100;
               updatedNutritionInfo['servingSize'] = _servingSize;
-              
+
               _foodEntry = _foodEntry.copyWith(nutritionInfo: updatedNutritionInfo);
-              
+
               // Cập nhật lại FoodProvider
               Future.microtask(() {
                 foodProvider.updateFoodEntry(_foodEntry);
@@ -113,27 +124,27 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     // Lấy dữ liệu user từ provider
     final userDataProvider = Provider.of<UserDataProvider>(context);
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    
+
     // Mục tiêu dinh dưỡng từ FoodProvider thay vì trực tiếp từ UserDataProvider
     final nutritionGoals = foodProvider.getNutritionGoals(context);
     final caloriesGoal = nutritionGoals['calories'] ?? 2000.0;
     final proteinGoal = nutritionGoals['protein'] ?? 50.0;
     final fatGoal = nutritionGoals['fat'] ?? 70.0;
     final carbsGoal = nutritionGoals['carbs'] ?? 310.0;
-    
+
     // Tính toán các giá trị dinh dưỡng
     Map<String, double> nutritionValues = _calculateNutritionValues();
-    
+
     return WillPopScope(
       onWillPop: () async {
-        // Không lưu dữ liệu khi nhấn nút back
-        return true;
+        // Chỉ quay về màn hình trước, không lưu dữ liệu
+        Navigator.of(context).pop();
+        return false;
       },
       child: Scaffold(
         appBar: _buildAppBar(),
         body: Column(
           children: [
-            // Main content area - takes available space minus bottom sheet
             Expanded(
               child: CustomScrollView(
                 physics: ClampingScrollPhysics(),
@@ -147,55 +158,88 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                           _buildLoadingIndicator(),
 
                         // Data source notification
-                        if (!_isLoading && _foodEntry.nutritionInfo != null && 
+                        if (!_isLoading && _foodEntry.nutritionInfo != null &&
                             _foodEntry.nutritionInfo!.containsKey('dataSource'))
-                          _buildDataSourceNotification(),
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                            margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle, color: Colors.green, size: 18),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Dữ liệu dinh dưỡng được cập nhật từ cơ sở dữ liệu chính thức',
+                                    style: TextStyle(
+                                      color: Colors.green.shade800,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         // Food information header
-                        HeaderFoodInfoCard(
-                          foodEntry: _foodEntry,
-                          servingSize: _servingSize,
-                          onEditTime: () {
-                            setState(() {
-                              // Lấy dữ liệu mới từ provider để đảm bảo đồng bộ
-                              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-                              _foodEntry = foodProvider.getFoodEntryById(_foodEntry.id) ?? _foodEntry;
-                            });
-                          },
-                          caloriesGoal: caloriesGoal,
-                          proteinGoal: proteinGoal,
-                          fatGoal: fatGoal,
-                          carbsGoal: carbsGoal,
-                          onEditFood: _editFoodDetails,
-                          onServingSizeChanged: _updateServingSize,
-                          onAddMore: _addMoreFood,
-                          onDelete: _deleteFood,
-                          onEdit: _editFoodDetails,
-                          onReplace: _replaceFood,
-                          onWeightChanged: _onWeightChanged,
+                        Column(
+                          children: [
+                            // Hiển thị ảnh món ăn nếu có
+                            if (_imageUrl != null || _foodEntry.imagePath != null)
+                              _buildFoodImage(),
+
+                            HeaderFoodInfoCard(
+                              foodEntry: _foodEntry,
+                              servingSize: _servingSize,
+                              onEditTime: () {
+                                setState(() {
+                                  // Lấy dữ liệu mới từ provider để đảm bảo đồng bộ
+                                  final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+                                  _foodEntry = foodProvider.getFoodEntryById(_foodEntry.id) ?? _foodEntry;
+                                });
+                              },
+                              caloriesGoal: caloriesGoal,
+                              proteinGoal: proteinGoal,
+                              fatGoal: fatGoal,
+                              carbsGoal: carbsGoal,
+                              onEditFood: _editFoodDetails,
+                              onServingSizeChanged: _updateServingSize,
+                              onAddMore: _addMoreFood,
+                              onDelete: _deleteFood,
+                              onEdit: _editFoodDetails,
+                              onReplace: _replaceFood,
+                              onWeightChanged: _onWeightChanged,
+                            ),
+
+
+                          ],
                         ),
-                        
+
                         SizedBox(height: 6),
-                        
+
                         // Barcode information (if available)
                         if (_foodEntry.barcode != null && _foodEntry.barcode!.isNotEmpty)
                           _buildBarcodeInfo(),
                       ],
                     ),
                   ),
-                  
+
                   // Nutrition illustration as a separate sliver
                   SliverToBoxAdapter(
                     child: _buildNutritionIllustration(
-                      nutritionValues, 
-                      caloriesGoal, 
-                      proteinGoal, 
-                      fatGoal, 
-                      carbsGoal,
-                      userDataProvider
+                        nutritionValues,
+                        caloriesGoal,
+                        proteinGoal,
+                        fatGoal,
+                        carbsGoal,
+                        userDataProvider
                     ),
                   ),
-                  
+
                   // Space for bottom sheet
                   SliverToBoxAdapter(
                     child: SizedBox(height: 16),
@@ -203,7 +247,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                 ],
               ),
             ),
-            
+
             // Bottom nutrition summary and save button
             NutritionFooter(
               foodEntry: _foodEntry,
@@ -215,9 +259,6 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       ),
     );
   }
-
-  // SECTION: UI Components
-  
   // AppBar với các chức năng quản lý
   PreferredSizeWidget _buildAppBar() {
     return PreferredSize(
@@ -265,7 +306,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                             _mealName,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Color(0xFF212121), 
+                              color: Color(0xFF212121),
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
@@ -361,33 +402,198 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     );
   }
 
-  // Widget thông báo nguồn dữ liệu
-  Widget _buildDataSourceNotification() {
+  // Widget hiển thị avatar hình tròn với chữ B scan
+  Widget _buildFoodImage() {
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      margin: EdgeInsets.symmetric(vertical: 16),
       child: Row(
         children: [
-          Icon(Icons.check_circle, color: Colors.green, size: 18),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Dữ liệu dinh dưỡng được cập nhật từ cơ sở dữ liệu chính thức',
-              style: TextStyle(
-                color: Colors.green.shade800,
-                fontSize: 12,
-              ),
+          Container(
+            margin: EdgeInsets.only(left: 16),
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _selectImage,
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: _isLoadingImage
+                              ? CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                                  strokeWidth: 2,
+                                )
+                              : _buildAvatarImage(),
+                        ),
+                        // Thêm biểu tượng camera ở góc dưới phải
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade600,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.camera_alt,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'scan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
             ),
           ),
+          // Thêm khoảng trống để tạo layout cân đối
+          Expanded(child: SizedBox()),
         ],
       ),
     );
   }
+
+  // Phương thức mới để xác định và hiển thị ảnh từ nhiều nguồn
+  Widget _buildAvatarImage() {
+    // Kiểm tra đường dẫn URL
+    if (_imageUrl != null && _imageUrl!.isNotEmpty) {
+      // Kiểm tra xem có phải là URL web không
+      if (_imageUrl!.startsWith('http://') || _imageUrl!.startsWith('https://')) {
+        // URL web, sử dụng Image.network
+        print('Hiển thị ảnh từ URL web: $_imageUrl');
+        return ClipOval(
+          child: Image.network(
+            _imageUrl!,
+            width: 64,
+            height: 64,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              print('Lỗi tải ảnh từ URL web: $error');
+              return _buildLocalAvatar();
+            },
+          ),
+        );
+      } else if (_imageUrl!.startsWith('file://')) {
+        // URL file local, cần chuyển đổi thành đường dẫn file
+        print('Hiển thị ảnh từ URL file: $_imageUrl');
+        String filePath = _imageUrl!.replaceFirst('file://', '');
+        return ClipOval(
+          child: Image.file(
+            File(filePath),
+            width: 64,
+            height: 64,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              print('Lỗi tải ảnh từ file URL: $error');
+              return _buildAvatarPlaceholder();
+            },
+          ),
+        );
+      } else if (_imageUrl!.startsWith('gs://')) {
+        print('DEBUG: Phát hiện URL Firebase Storage (gs://): $_imageUrl');
+        // Chuyển đổi gs:// URL thành HTTP URL và hiển thị ảnh
+        return FutureBuilder<String>(
+          future: _getDownloadUrlFromGs(_imageUrl!),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                    strokeWidth: 2,
+                  ),
+                ),
+              );
+            } else if (snapshot.hasError) {
+              print('Lỗi chuyển đổi gs:// URL: ${snapshot.error}');
+              return _buildAvatarPlaceholder();
+            } else if (snapshot.hasData) {
+              return ClipOval(
+                child: Image.network(
+                  snapshot.data!,
+                  width: 64,
+                  height: 64,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    print('Lỗi tải ảnh từ Firebase URL: $error');
+                    return _buildAvatarPlaceholder();
+                  },
+                ),
+              );
+            } else {
+              return _buildAvatarPlaceholder();
+            }
+          },
+        );
+      }
+    }
+    
+    // Nếu không có URL hoặc URL không hợp lệ, thử dùng imagePath
+    return _buildLocalAvatar();
+  }
+
+  // Widget để hiển thị ảnh từ đường dẫn local với dạng avatar
+  Widget _buildLocalAvatar() {
+    if (_foodEntry.imagePath != null && _foodEntry.imagePath!.isNotEmpty) {
+      final file = File(_foodEntry.imagePath!);
+      try {
+        return ClipOval(
+          child: Image.file(
+            file,
+            width: 64,
+            height: 64,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              print('Lỗi tải ảnh local: $error');
+              return _buildAvatarPlaceholder();
+            },
+          ),
+        );
+      } catch (e) {
+        print('Lỗi khi hiển thị ảnh local: $e');
+        return _buildAvatarPlaceholder();
+      }
+    } else {
+      return _buildAvatarPlaceholder();
+    }
+  }
+
+  // Widget hiển thị placeholder chữ B khi không có ảnh
+  Widget _buildAvatarPlaceholder() {
+    return Text(
+      'B',
+      style: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.bold,
+        color: Colors.green.shade700,
+      ),
+    );
+  }
+
+
 
   // Widget hiển thị thông tin mã vạch
   Widget _buildBarcodeInfo() {
@@ -418,8 +624,8 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
               ),
             ],
           ),
-          if (_foodEntry.nutritionInfo != null && 
-              _foodEntry.nutritionInfo!.containsKey('dataSource') && 
+          if (_foodEntry.nutritionInfo != null &&
+              _foodEntry.nutritionInfo!.containsKey('dataSource') &&
               _foodEntry.nutritionInfo!['dataSource'] == 'Open Food Facts')
             Padding(
               padding: EdgeInsets.only(top: 4, left: 24),
@@ -439,17 +645,17 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
 
   // Widget hiển thị minh họa dinh dưỡng
   Widget _buildNutritionIllustration(
-    Map<String, double> nutritionValues,
-    double caloriesGoal,
-    double proteinGoal,
-    double fatGoal,
-    double carbsGoal,
-    UserDataProvider userDataProvider
-  ) {
+      Map<String, double> nutritionValues,
+      double caloriesGoal,
+      double proteinGoal,
+      double fatGoal,
+      double carbsGoal,
+      UserDataProvider userDataProvider
+      ) {
     // Sử dụng các mục tiêu dinh dưỡng từ FoodProvider thay vì UserDataProvider
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final nutritionGoals = foodProvider.getNutritionGoals(context);
-    
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -520,7 +726,52 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   }
 
   // SECTION: Actions & Event Handlers
-  
+
+  // Method để chọn ảnh từ gallery hoặc camera
+  Future<void> _selectImage() async {
+    final ImagePicker picker = ImagePicker();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Chọn từ thư viện'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+                  if (image != null) {
+                    setState(() {
+                      _foodEntry = _foodEntry.copyWith(imagePath: image.path);
+                      _imageUrl = 'file://${image.path}';
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_camera),
+                title: Text('Chụp ảnh'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final XFile? image = await picker.pickImage(source: ImageSource.camera);
+                  if (image != null) {
+                    setState(() {
+                      _foodEntry = _foodEntry.copyWith(imagePath: image.path);
+                      _imageUrl = 'file://${image.path}';
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showMealTypeSelection() {
     showModalBottomSheet(
       context: context,
@@ -540,22 +791,22 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       },
     );
   }
-  
+
   Widget _buildMealTypeOption(String mealType) {
     return ListTile(
       title: Text(mealType),
       onTap: () {
         setState(() {
           _mealName = mealType;
-          
+
           // Cập nhật FoodEntry với loại bữa ăn mới
           _foodEntry = FoodNutritionActions.updateMealType(_foodEntry, mealType);
-          
+
           // Đồng bộ ngay lập tức với Food Provider để cập nhật trong HomeScreen
           final foodProvider = Provider.of<FoodProvider>(context, listen: false);
           foodProvider.updateFoodEntry(_foodEntry);
         });
-        
+
         // Hiển thị thông báo xác nhận đã đổi loại bữa ăn
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -564,7 +815,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        
+
         Navigator.pop(context);
       },
       trailing: _mealName == mealType ? Icon(Icons.check, color: Colors.green) : null,
@@ -574,29 +825,29 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   // Tính toán giá trị dinh dưỡng từ nhiều nguồn
   Map<String, double> _calculateNutritionValues() {
     Map<String, double> values = {};
-    
+
     // Kiểm tra nếu có nutritionInfo
     if (_foodEntry.nutritionInfo != null) {
       // Lấy giá trị từ nutritionInfo với giá trị mặc định từ các items
-      values['calories'] = 
-          _foodEntry.nutritionInfo!['calories'] is num ? 
-          (_foodEntry.nutritionInfo!['calories'] as num).toDouble() : 
-          _foodEntry.totalCalories;
-          
-      values['protein'] = 
-          _foodEntry.nutritionInfo!['protein'] is num ? 
-          (_foodEntry.nutritionInfo!['protein'] as num).toDouble() : 
-          _foodEntry.totalProtein;
-          
-      values['fat'] = 
-          _foodEntry.nutritionInfo!['fat'] is num ? 
-          (_foodEntry.nutritionInfo!['fat'] as num).toDouble() : 
-          _foodEntry.totalFat;
-          
-      values['carbs'] = 
-          _foodEntry.nutritionInfo!['carbs'] is num ? 
-          (_foodEntry.nutritionInfo!['carbs'] as num).toDouble() : 
-          _foodEntry.totalCarbs;
+      values['calories'] =
+      _foodEntry.nutritionInfo!['calories'] is num ?
+      (_foodEntry.nutritionInfo!['calories'] as num).toDouble() :
+      _foodEntry.totalCalories;
+
+      values['protein'] =
+      _foodEntry.nutritionInfo!['protein'] is num ?
+      (_foodEntry.nutritionInfo!['protein'] as num).toDouble() :
+      _foodEntry.totalProtein;
+
+      values['fat'] =
+      _foodEntry.nutritionInfo!['fat'] is num ?
+      (_foodEntry.nutritionInfo!['fat'] as num).toDouble() :
+      _foodEntry.totalFat;
+
+      values['carbs'] =
+      _foodEntry.nutritionInfo!['carbs'] is num ?
+      (_foodEntry.nutritionInfo!['carbs'] as num).toDouble() :
+      _foodEntry.totalCarbs;
     } else {
       // Sử dụng giá trị từ items
       values['calories'] = _foodEntry.totalCalories;
@@ -604,7 +855,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       values['fat'] = _foodEntry.totalFat;
       values['carbs'] = _foodEntry.totalCarbs;
     }
-    
+
     return values;
   }
 
@@ -612,9 +863,9 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   void _syncDateWithProvider() {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final selectedDate = foodProvider.selectedDate;
-    
+
     final entryDateOnly = "${_foodEntry.dateTime.year}-${_foodEntry.dateTime.month.toString().padLeft(2, '0')}-${_foodEntry.dateTime.day.toString().padLeft(2, '0')}";
-    
+
     if (selectedDate != entryDateOnly) {
       // Chuyển đổi ngày từ chuỗi sang DateTime
       try {
@@ -622,7 +873,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
         final year = int.parse(dateParts[0]);
         final month = int.parse(dateParts[1]);
         final day = int.parse(dateParts[2]);
-        
+
         // Tạo DateTime mới với ngày từ provider nhưng giữ nguyên giờ, phút, giây
         final updatedDateTime = DateTime(
           year,
@@ -632,22 +883,23 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           _foodEntry.dateTime.minute,
           _foodEntry.dateTime.second,
         );
-        
-        // Cập nhật _foodEntry với ngày mới
-        setState(() {
-          _foodEntry = FoodEntry(
-            id: _foodEntry.id,
-            description: _foodEntry.description,
-            imagePath: _foodEntry.imagePath,
-            audioPath: _foodEntry.audioPath,
-            dateTime: updatedDateTime,
-            isFavorite: _foodEntry.isFavorite,
-            barcode: _foodEntry.barcode,
-            calories: _foodEntry.calories,
-            nutritionInfo: _foodEntry.nutritionInfo,
-            mealType: _foodEntry.mealType,
-            items: _foodEntry.items,
-          );
+
+              // Cập nhật _foodEntry với ngày mới
+      setState(() {
+        _foodEntry = FoodEntry(
+          id: _foodEntry.id,
+          description: _foodEntry.description,
+          imagePath: _foodEntry.imagePath,
+          imageUrl: _foodEntry.imageUrl,
+          audioPath: _foodEntry.audioPath,
+          dateTime: updatedDateTime,
+          isFavorite: _foodEntry.isFavorite,
+          barcode: _foodEntry.barcode,
+          calories: _foodEntry.calories,
+          nutritionInfo: _foodEntry.nutritionInfo,
+          mealType: _foodEntry.mealType,
+          items: _foodEntry.items,
+        );
         });
       } catch (e) {
         print('Lỗi khi cập nhật ngày từ FoodProvider: $e');
@@ -660,16 +912,16 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     // Đồng bộ nutritionInfo với servingSize
     if (_foodEntry.nutritionInfo != null) {
       final updatedNutritionInfo = Map<String, dynamic>.from(_foodEntry.nutritionInfo!);
-      
+
       // Cập nhật servingSize trong nutritionInfo
       updatedNutritionInfo['servingSize'] = _servingSize;
-      
+
       // Cập nhật totalWeight dựa trên servingSize
       updatedNutritionInfo['totalWeight'] = _servingSize * 100;
-      
+
       // Cập nhật FoodEntry với nutritionInfo mới (không gọi setState)
       _foodEntry = _foodEntry.copyWith(nutritionInfo: updatedNutritionInfo);
-      
+
       // Đồng bộ lại với provider
       Future.microtask(() {
         if (mounted) {
@@ -681,24 +933,24 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   }
 
   // SECTION: Async Operations
-  
+
   // Đồng bộ hóa dữ liệu dinh dưỡng
   Future<void> _synchronizeNutritionData() async {
     bool wasLoading = _isLoading;
-    
+
     if (!wasLoading) {
       setState(() {
         _isLoading = true;
       });
     }
-    
+
     try {
       final updatedEntry = await NutritionSyncService.synchronizeNutritionData(
         context: context,
         foodEntry: _foodEntry,
         servingSize: _servingSize,
       );
-      
+
       if (mounted) {
         setState(() {
           _foodEntry = updatedEntry;
@@ -707,7 +959,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       }
     } catch (e) {
       print('Lỗi khi đồng bộ dữ liệu: $e');
-      
+
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -724,27 +976,27 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       await _synchronizeNutritionData();
       return;
     }
-    
+
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       final updatedEntry = await NutritionSyncService.fetchNutritionDataFromAPI(
         context: context,
         foodEntry: _foodEntry,
         servingSize: _servingSize,
       );
-      
+
       if (mounted) {
         setState(() {
           _foodEntry = updatedEntry;
           _isLoading = false;
         });
-        
+
         // Đảm bảo đồng bộ hóa dữ liệu
         await _synchronizeNutritionData();
-        
+
         // Hiển thị thông báo
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -756,12 +1008,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       }
     } catch (e) {
       print('Lỗi khi fetch dữ liệu dinh dưỡng: $e');
-      
+
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        
+
         // Hiển thị thông báo lỗi
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -778,14 +1030,14 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   Future<void> _synchronizeAllData() async {
     // Hiển thị đang đồng bộ
     FoodNutritionDialogs.showSynchronizingDialog(context);
-    
+
     try {
       final updatedEntry = await NutritionSyncService.synchronizeAllData(
         context: context,
         foodEntry: _foodEntry,
         servingSize: _servingSize,
       );
-      
+
       if (mounted) {
         setState(() {
           _foodEntry = updatedEntry;
@@ -796,7 +1048,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     } finally {
       // Đóng dialog
       Navigator.pop(context);
-      
+
       // Thông báo thành công
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -812,45 +1064,50 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   Future<void> _handleSaveAndExit() async {
     // Hiển thị đang cập nhật
     FoodNutritionDialogs.showSavingDialog(context);
-    
+
     try {
       final updatedEntry = await NutritionSyncService.handleSaveAndExit(
         context: context,
         foodEntry: _foodEntry,
         servingSize: _servingSize,
       );
-      
+
       // Đóng dialog loading
       Navigator.pop(context);
-      
-      // Gọi callback onSave
+
+      // Gọi callback onSave để chỉ cập nhật bữa ăn (không thêm mới)
       widget.onSave(updatedEntry);
-      
+
       // Lấy chuỗi ngày từ DateTime để truyền về
       String dateStr = "${updatedEntry.dateTime.year}-${updatedEntry.dateTime.month.toString().padLeft(2, '0')}-${updatedEntry.dateTime.day.toString().padLeft(2, '0')}";
-      
-      // Quay về màn hình trước với kết quả thành công và truyền chi tiết cập nhật
-      Navigator.of(context).pop({
+
+      // Tạo một kết quả để truyền về
+      final result = {
         'foodEntriesUpdated': true,
         'selectedDate': dateStr,
         'updatedEntry': updatedEntry,
-        'updatedMealType': updatedEntry.mealType, // Thêm thông tin loại bữa ăn đã cập nhật
-      });
-      
+        'updatedMealType': updatedEntry.mealType,
+      };
+
       // Hiển thị thông báo thành công
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Đã lưu thay đổi thành công'),
           backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
+          duration: Duration(seconds: 1),
         ),
       );
+
+      // Chuyển hướng đến màn hình Home và xóa tất cả màn hình trước đó trong stack
+      Future.delayed(Duration(milliseconds: 500), () {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      });
     } catch (e) {
       // Đóng dialog loading
       Navigator.pop(context);
-      
+
       print('Lỗi khi lưu và thoát: $e');
-      
+
       // Hiển thị thông báo lỗi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -863,12 +1120,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   }
 
   // SECTION: Action Handlers
-  
+
   // Thêm thực phẩm mới
   void _addMoreFood() {
     FoodNutritionActions.addMoreFood(context);
   }
-  
+
   // Xóa thực phẩm
   Future<void> _deleteFood() async {
     final result = await FoodNutritionActions.deleteFood(context, _foodEntry);
@@ -876,7 +1133,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       Navigator.of(context).pop();
     }
   }
-  
+
   // Sửa thông tin thực phẩm
   Future<void> _editFoodDetails() async {
     final updatedEntry = await FoodNutritionActions.editFoodDetails(context, _foodEntry);
@@ -886,18 +1143,18 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       });
     }
   }
-  
+
   // Thay thế thực phẩm
   void _replaceFood() {
     FoodNutritionActions.replaceFood(context);
   }
-  
+
   // Cập nhật kích thước khẩu phần
   void _updateServingSize(double newServingSize) {
     if (_servingSize == newServingSize) {
       return; // Tránh cập nhật không cần thiết
     }
-    
+
     try {
       final updatedEntry = NutritionSyncService.updateServingSize(
         context: context,
@@ -905,12 +1162,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
         newServingSize: newServingSize,
         oldServingSize: _servingSize,
       );
-      
+
       setState(() {
         _servingSize = newServingSize;
         _foodEntry = updatedEntry;
       });
-      
+
       // Hiển thị thông báo
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -922,7 +1179,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       print('Lỗi khi cập nhật khẩu phần: $e');
     }
   }
-  
+
   // Xử lý khi thay đổi khối lượng
   void _onWeightChanged(double newWeight) {
     try {
@@ -931,12 +1188,12 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
         foodEntry: _foodEntry,
         newWeight: newWeight,
       );
-      
+
       setState(() {
         _foodEntry = updatedEntry;
         _servingSize = newWeight / 100; // Cập nhật servingSize theo weight mới
       });
-      
+
       // Hiển thị thông báo
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -949,14 +1206,141 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     }
   }
 
+  // Helper method để chuyển đổi gs:// URL thành HTTP URL
+  Future<String> _getDownloadUrlFromGs(String gsUrl) async {
+    try {
+      final storage = FirebaseStorage.instance;
+      final ref = storage.refFromURL(gsUrl);
+      final downloadUrl = await ref.getDownloadURL();
+      print('DEBUG: Đã chuyển đổi gs:// URL thành HTTP URL: $downloadUrl');
+      return downloadUrl;
+    } catch (e) {
+      print('DEBUG: Lỗi chuyển đổi gs:// URL: $e');
+      throw e;
+    }
+  }
+
+  // Tải ảnh từ Firebase Storage
+  Future<void> _loadImageFromFirebase() async {
+    print('DEBUG: Bắt đầu tải ảnh cho món: ${_foodEntry.description}');
+    
+    if (_foodEntry.imageUrl != null && _foodEntry.imageUrl!.isNotEmpty) {
+      // Nếu đã có imageUrl, kiểm tra loại URL
+      print('DEBUG: Đã có imageUrl: ${_foodEntry.imageUrl}');
+      
+      // Kiểm tra loại URL
+      if (_foodEntry.imageUrl!.startsWith('file://')) {
+        print('DEBUG: imageUrl là file:// URL, cần xử lý đặc biệt');
+        // URL file://, cần chuyển đổi thành đường dẫn thông thường
+        // Không cần setState vì _buildAvatarImage() sẽ xử lý URL này
+      }
+      
+      setState(() {
+        _imageUrl = _foodEntry.imageUrl;
+      });
+      return;
+    }
+    
+    if (_foodEntry.imagePath == null || _foodEntry.imagePath!.isEmpty) {
+      // Không có đường dẫn ảnh
+      print('DEBUG: Không có imagePath hoặc imageUrl');
+      return;
+    }
+    
+    setState(() {
+      _isLoadingImage = true;
+    });
+    
+    try {
+      print('DEBUG: Kiểm tra imagePath: ${_foodEntry.imagePath}');
+      // Kiểm tra xem imagePath là đường dẫn local hay đường dẫn Firebase Storage
+      if (_foodEntry.imagePath!.startsWith('gs://') || _foodEntry.imagePath!.startsWith('https://')) {
+        // Đây là đường dẫn Firebase Storage
+        print('DEBUG: imagePath là URL Firebase Storage hoặc web');
+        var ref = _storage.refFromURL(_foodEntry.imagePath!);
+        var downloadUrl = await ref.getDownloadURL();
+        print('DEBUG: Đã lấy được URL tải xuống: $downloadUrl');
+        
+        if (mounted) {
+          setState(() {
+            _imageUrl = downloadUrl;
+            _isLoadingImage = false;
+          });
+          
+          // Cập nhật imageUrl trong foodEntry
+          _foodEntry = _foodEntry.copyWith(imageUrl: downloadUrl);
+          
+          // Cập nhật vào provider
+          final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+          foodProvider.updateFoodEntry(_foodEntry);
+        }
+      } else if (_foodEntry.imagePath!.startsWith('file://')) {
+        // Đường dẫn file://
+        print('DEBUG: imagePath là URL file://: ${_foodEntry.imagePath}');
+        setState(() {
+          _imageUrl = _foodEntry.imagePath;
+          _isLoadingImage = false;
+        });
+      } else {
+        // Đây là đường dẫn local, cần upload lên Firebase Storage và lưu URL
+        print('DEBUG: imagePath là đường dẫn local: ${_foodEntry.imagePath}');
+        final file = File(_foodEntry.imagePath!);
+        if (await file.exists()) {
+          // Tạo đường dẫn trong Firebase Storage
+          final userId = Provider.of<UserDataProvider>(context, listen: false).getCurrentUserId() ?? 'anonymous';
+          final fileName = 'food_images/${userId}/${_foodEntry.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          
+          // Upload file lên Firebase Storage
+          print('DEBUG: Bắt đầu upload file lên Firebase Storage');
+          final uploadTask = _storage.ref(fileName).putFile(file);
+          
+          // Chờ upload hoàn tất
+          final snapshot = await uploadTask;
+          
+          // Lấy URL download
+          final downloadUrl = await snapshot.ref.getDownloadURL();
+          print('DEBUG: Đã upload thành công, URL: $downloadUrl');
+          
+          if (mounted) {
+            setState(() {
+              _imageUrl = downloadUrl;
+              _isLoadingImage = false;
+            });
+            
+            // Cập nhật imageUrl trong foodEntry
+            _foodEntry = _foodEntry.copyWith(imageUrl: downloadUrl);
+            
+            // Cập nhật vào provider
+            final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+            foodProvider.updateFoodEntry(_foodEntry);
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _isLoadingImage = false;
+            });
+            print('DEBUG: Không tìm thấy file ảnh tại đường dẫn: ${_foodEntry.imagePath}');
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingImage = false;
+        });
+        print('DEBUG: Lỗi khi tải ảnh từ Firebase Storage: $e');
+      }
+    }
+  }
+  // Upload ảnh lên Firebase Storage
   @override
   void dispose() {
     // Lưu trữ tham chiếu đến provider trong initState hoặc didChangeDependencies để sử dụng ở đây
     // Không sử dụng Provider.of với context trong dispose() vì widget đã bị deactivated
-  
+
     // Thực hiện các thao tác cần thiết không sử dụng context
     // Nếu cần phải làm mới dữ liệu, hãy gọi trước khi pop() màn hình trong các hàm khác
-  
+
     super.dispose();
   }
 } 

@@ -659,9 +659,8 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
                       Text('Đã xóa bữa ăn', style: AppStyles.body2.copyWith(color: Colors.white)),
                     ],
                   ),
-                  behavior: SnackBarBehavior.floating,
+                  behavior: SnackBarBehavior.fixed,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  margin: EdgeInsets.all(8),
                   backgroundColor: AppStyles.primaryColor,
                   action: SnackBarAction(
                     label: 'OK',
