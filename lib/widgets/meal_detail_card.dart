@@ -82,7 +82,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
         if (!widget.hideTitle)
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.orange.shade50,
+            color: Colors.blue.shade50,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -95,7 +95,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Colors.deepOrange,
+                          color: Colors.blue,
                         ),
                       ),
                       Text(
@@ -117,7 +117,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.deepOrange,
+                        color: Colors.blue,
                       ),
                     ),
                     Text(
@@ -160,7 +160,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                 controller: _pageController,
                 count: widget.meal.dishes.length,
                 effect: WormEffect(
-                  activeDotColor: Colors.deepOrange,
+                  activeDotColor: Colors.blue,
                   dotHeight: 8,
                   dotWidth: 8,
                   type: WormType.thin,
@@ -265,14 +265,14 @@ class _MealDetailCardState extends State<MealDetailCard> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.orange.shade100,
+                    color: Colors.blue.shade100,
                     shape: BoxShape.circle,
                   ),
                   child: Text(
                     '${index + 1}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.deepOrange,
+                      color: Colors.blue,
                     ),
                   ),
                 ),
@@ -380,7 +380,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.fiber_manual_record, size: 12, color: Colors.orange),
+                      const Icon(Icons.fiber_manual_record, size: 12, color: Colors.green),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(ingredient),
@@ -407,36 +407,19 @@ class _MealDetailCardState extends State<MealDetailCard> {
                 List<String> steps = _parseInstructionSteps(dish.instructions);
                 return Column(
                   children: List.generate(steps.length, (i) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8.0),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200, width: 1),
-                      ),
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4.0),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade600,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${i + 1}',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                          Text(
+                            '${i + 1}. ',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade800,
                             ),
                           ),
-                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               steps[i],
@@ -475,7 +458,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
         // Card header
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.orange.shade50,
+          color: Colors.blue.shade50,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -527,7 +510,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.deepOrange,
+                      color: Colors.blue,
                     ),
                   ),
                   Text(
@@ -577,7 +560,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
                       children: [
-                        Icon(Icons.fiber_manual_record, size: 12, color: Colors.orange),
+                        Icon(Icons.fiber_manual_record, size: 12, color: Colors.green),
                         SizedBox(width: 8),
                         Expanded(child: Text(ingredient)),
                       ],
@@ -602,36 +585,19 @@ class _MealDetailCardState extends State<MealDetailCard> {
                   List<String> steps = _parseInstructionSteps(instructions);
                   return Column(
                     children: List.generate(steps.length, (i) {
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.shade200, width: 1),
-                        ),
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade600,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${i + 1}',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                            Text(
+                              '${i + 1}. ',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade800,
                               ),
                             ),
-                            SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 steps[i],
@@ -666,7 +632,7 @@ class _MealDetailCardState extends State<MealDetailCard> {
                     icon: const Icon(Icons.refresh, size: 18),
                     label: const Text('Thay thế bằng AI'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepOrange,
+                      backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -679,8 +645,8 @@ class _MealDetailCardState extends State<MealDetailCard> {
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: const Text('Ghi nhận'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.deepOrange,
-                      side: const BorderSide(color: Colors.deepOrange),
+                      foregroundColor: Colors.blue,
+                      side: const BorderSide(color: Colors.blue),
                     ),
                   ),
                 ),

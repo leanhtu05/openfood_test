@@ -6,6 +6,11 @@ import '../providers/meal_plan_provider.dart';
 import 'package:grouped_list/grouped_list.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/finance_agent_service.dart';
+import '../models/grocery_cost_analysis.dart';
+import '../widgets/grocery/cost_analysis_widget.dart';
+import '../utils/currency_formatter.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class GroceryListScreen extends StatefulWidget {
   @override
@@ -19,6 +24,12 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
   String _searchQuery = '';
   Set<String> _collapsedCategories = {}; // Các category bị thu gọn
   late AnimationController _animationController;
+
+  // AI Finance Agent variables
+  GroceryCostAnalysis? _costAnalysis;
+  bool _isAnalyzing = false;
+  bool _showCostAnalysis = false;
+  double _budgetLimit = 500000; // Mặc định 500k VND
 
   @override
   void initState() {
@@ -63,6 +74,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
 
     // Tạo grocery list
     _generateGroceryList();
+
+    // Phân tích chi phí với AI Finance Agent
+    _analyzeCosts();
   }
 
   void _generateGroceryList() {
@@ -87,6 +101,11 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
 
     // Cập nhật UI
     setState(() {});
+
+    // Phân tích chi phí sau khi tạo grocery list
+    if (_groceryItems.isNotEmpty) {
+      _analyzeCosts();
+    }
   }
 
   Map<String, GroceryItem> _aggregateIngredients(MealPlan mealPlan) {
@@ -306,7 +325,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã tạo danh sách mua sắm test với ${_groceryItems.length} nguyên liệu!'),
-        backgroundColor: Colors.green.shade600,
+        backgroundColor: Colors.blue.shade600,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -385,6 +404,308 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     }
   }
 
+  /// Phân tích chi phí với AI Finance Agent
+  Future<void> _analyzeCosts() async {
+    if (_groceryItems.isEmpty) return;
+
+    setState(() {
+      _isAnalyzing = true;
+    });
+
+    try {
+      final analysis = await FinanceAgentService.analyzeCosts(
+        _groceryItems,
+        budgetLimit: _budgetLimit,
+      );
+
+      setState(() {
+        _costAnalysis = analysis;
+        _isAnalyzing = false;
+      });
+
+      print('✅ Đã phân tích chi phí: ${analysis.totalCost} VND');
+    } catch (e) {
+      print('❌ Lỗi khi phân tích chi phí: $e');
+      setState(() {
+        _isAnalyzing = false;
+      });
+    }
+  }
+
+  /// Hiển thị/ẩn phân tích chi phí
+  void _toggleCostAnalysis() {
+    setState(() {
+      _showCostAnalysis = !_showCostAnalysis;
+    });
+  }
+
+  /// Cập nhật ngân sách
+  void _updateBudget() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final controller = TextEditingController(text: _budgetLimit.toString());
+        return AlertDialog(
+          title: Text('Cập nhật ngân sách'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Ngân sách (VND)',
+              hintText: 'Nhập số tiền...',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final newBudget = double.tryParse(controller.text);
+                if (newBudget != null && newBudget > 0) {
+                  setState(() {
+                    _budgetLimit = newBudget;
+                  });
+                  _analyzeCosts(); // Phân tích lại với ngân sách mới
+                }
+                Navigator.pop(context);
+              },
+              child: Text('Cập nhật'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Xây dựng view khi hiển thị phân tích chi phí
+  Widget _buildCostAnalysisView() {
+    return Column(
+      children: [
+        _buildSearchBar(),
+        _buildProgressHeader(),
+        Expanded(
+          child: SingleChildScrollView(
+            physics: AlwaysScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                CostAnalysisWidget(
+                  analysis: _costAnalysis!,
+                  onBudgetTap: _updateBudget,
+                ),
+                SizedBox(height: 16),
+                Container(
+                  margin: EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '🛒 Danh sách mua sắm chi tiết',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      _buildGroceryListForAnalysis(),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 100), // Space for FAB
+              ],
+            ),
+          ),
+        ),
+        if (_isAnalyzing) _buildAnalyzingIndicator(),
+      ],
+    );
+  }
+
+  /// Xây dựng view bình thường (không có phân tích)
+  Widget _buildNormalView() {
+    return Column(
+      children: [
+        _buildSearchBar(),
+        _buildProgressHeader(),
+        Expanded(
+          child: _buildGroceryList(),
+        ),
+        if (_isAnalyzing) _buildAnalyzingIndicator(),
+      ],
+    );
+  }
+
+  /// Indicator khi đang phân tích
+  Widget _buildAnalyzingIndicator() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 12),
+          Text(
+            'AI đang phân tích chi phí...',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Grocery list cho chế độ phân tích (không scrollable)
+  Widget _buildGroceryListForAnalysis() {
+    final groceryItemsList = _filteredItems;
+
+    if (groceryItemsList.isEmpty && _searchQuery.isNotEmpty) {
+      return _buildNoSearchResults();
+    }
+
+    return _buildExpandableGroceryListForAnalysis(groceryItemsList);
+  }
+
+  /// Grocery list expandable cho chế độ phân tích
+  Widget _buildExpandableGroceryListForAnalysis(List<GroceryItem> groceryItemsList) {
+    // Group items by category
+    final Map<String, List<GroceryItem>> groupedItems = {};
+    for (final item in groceryItemsList) {
+      if (!groupedItems.containsKey(item.category)) {
+        groupedItems[item.category] = [];
+      }
+      groupedItems[item.category]!.add(item);
+    }
+
+    // Sort categories
+    final sortedCategories = groupedItems.keys.toList()..sort();
+
+    return Column(
+      children: sortedCategories.map((category) {
+        final items = groupedItems[category]!;
+        final isCollapsed = _collapsedCategories.contains(category);
+
+        return Column(
+          children: [
+            // Category Header
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (isCollapsed) {
+                    _collapsedCategories.remove(category);
+                  } else {
+                    _collapsedCategories.add(category);
+                  }
+                });
+                HapticFeedback.lightImpact();
+              },
+              child: Container(
+                margin: EdgeInsets.symmetric(vertical: 8),
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    AnimatedRotation(
+                      turns: isCollapsed ? 0 : 0.25,
+                      duration: Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.keyboard_arrow_right,
+                        size: 20,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      category,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    Spacer(),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${items.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Items List (Expandable)
+            if (!isCollapsed)
+              ...items.map((item) => _buildGroceryItem(item)),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  /// Widget khi không có kết quả tìm kiếm
+  Widget _buildNoSearchResults() {
+    return Container(
+      padding: EdgeInsets.all(32),
+      child: Column(
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Không tìm thấy nguyên liệu',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Thử tìm kiếm với từ khóa khác',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Lấy hiển thị giá của item
+  String _getItemCostDisplay(GroceryItem item) {
+    try {
+      final cost = FinanceAgentService.calculateItemCost(item);
+      return CurrencyFormatter.formatVNDCompact(cost);
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
   List<GroceryItem> get _filteredItems {
     var items = _groceryItems.values.toList();
 
@@ -404,15 +725,21 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
         title: Text(
           'Danh sách mua sắm',
           style: TextStyle(
-            color: Colors.green.shade800,
+            color: Colors.blue.shade800,
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        iconTheme: IconThemeData(color: Colors.green.shade800),
+        iconTheme: IconThemeData(color: Colors.blue.shade800),
         actions: [
+          IconButton(
+            icon: Icon(Icons.analytics),
+            onPressed: _toggleCostAnalysis,
+            tooltip: 'Phân tích chi phí AI',
+            color: _showCostAnalysis ? Colors.green.shade600 : null,
+          ),
           IconButton(
             icon: Icon(Icons.filter_list),
             onPressed: _showFilterOptions,
@@ -434,15 +761,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
       ),
       body: _groceryItems.isEmpty
           ? _buildEmptyState()
-          : Column(
-              children: [
-                _buildSearchBar(),
-                _buildProgressHeader(),
-                Expanded(
-                  child: _buildGroceryList(),
-                ),
-              ],
-            ),
+          : _showCostAnalysis && _costAnalysis != null
+              ? _buildCostAnalysisView()
+              : _buildNormalView(),
       floatingActionButton: _buildFloatingActionButton(),
     );
   }
@@ -497,13 +818,13 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
           Container(
             padding: EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.green.shade50,
+              color: Colors.blue.shade50,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.shopping_cart_outlined,
               size: 64,
-              color: Colors.green.shade300,
+              color: Colors.blue.shade300,
             ),
           ),
           SizedBox(height: 24),
@@ -536,7 +857,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             icon: Icon(Icons.restaurant_menu),
             label: Text('Tạo kế hoạch bữa ăn'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade600,
+              backgroundColor: Colors.blue.shade600,
               foregroundColor: Colors.white,
               padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
@@ -552,7 +873,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             icon: Icon(Icons.science),
             label: Text('Test với dữ liệu mẫu'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.green.shade600,
+              foregroundColor: Colors.blue.shade600,
               padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -576,14 +897,14 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.green.shade600, Colors.green.shade500],
+          colors: [Colors.blue.shade600, Colors.blue.shade500],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.3),
+            color: Colors.blue.withOpacity(0.3),
             blurRadius: 12,
             offset: Offset(0, 4),
           ),
@@ -724,9 +1045,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                 margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade200),
+                  border: Border.all(color: Colors.blue.shade200),
                 ),
                 child: Row(
                   children: [
@@ -736,7 +1057,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                       child: Icon(
                         Icons.keyboard_arrow_right,
                         size: 20,
-                        color: Colors.green.shade700,
+                        color: Colors.blue.shade700,
                       ),
                     ),
                     SizedBox(width: 8),
@@ -745,14 +1066,14 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.green.shade700,
+                        color: Colors.blue.shade700,
                       ),
                     ),
                     Spacer(),
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade100,
+                        color: Colors.blue.shade100,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -760,7 +1081,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green.shade700,
+                          color: Colors.blue.shade700,
                         ),
                       ),
                     ),
@@ -803,7 +1124,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
           ),
         ],
         border: isChecked
-            ? Border.all(color: Colors.green.shade200, width: 1)
+            ? Border.all(color: Colors.blue.shade200, width: 1)
             : null,
       ),
       child: CheckboxListTile(
@@ -816,12 +1137,26 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             color: isChecked ? Colors.grey.shade500 : Colors.grey.shade800,
           ),
         ),
-        subtitle: Text(
-          'Số lượng: ${item.amount}${item.unit.isNotEmpty ? ' ${item.unit}' : ''}',
-          style: TextStyle(
-            fontSize: 14,
-            color: isChecked ? Colors.grey.shade400 : Colors.grey.shade600,
-          ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Số lượng: ${item.amount}${item.unit.isNotEmpty ? ' ${item.unit}' : ''}',
+              style: TextStyle(
+                fontSize: 14,
+                color: isChecked ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+            ),
+            if (_showCostAnalysis && _costAnalysis != null)
+              Text(
+                'Ước tính: ${_getItemCostDisplay(item)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isChecked ? Colors.grey.shade400 : Colors.green.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
         ),
         value: isChecked,
         onChanged: (bool? value) {
@@ -830,7 +1165,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
           });
           HapticFeedback.lightImpact();
         },
-        activeColor: Colors.green.shade600,
+        activeColor: Colors.blue.shade600,
         checkColor: Colors.white,
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       ),
@@ -843,6 +1178,27 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
 
     if (totalItems == 0) return SizedBox.shrink();
 
+    // Nếu đang hiển thị phân tích chi phí, hiển thị FAB với thông tin chi phí
+    if (_showCostAnalysis && _costAnalysis != null) {
+      return FloatingActionButton.extended(
+        onPressed: _updateBudget,
+        backgroundColor: _costAnalysis!.budgetComparison.isOverBudget
+            ? Colors.red.shade600
+            : Colors.green.shade600,
+        icon: Icon(
+          Icons.account_balance_wallet,
+          color: Colors.white,
+        ),
+        label: Text(
+          'Tổng: ${CurrencyFormatter.formatVNDCompact(_costAnalysis!.totalCost)}',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
     return FloatingActionButton.extended(
       onPressed: () {
         if (checkedItems == totalItems) {
@@ -853,7 +1209,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
       },
       backgroundColor: checkedItems == totalItems
           ? Colors.orange.shade600
-          : Colors.green.shade600,
+          : Colors.blue.shade600,
       icon: Icon(
         checkedItems == totalItems ? Icons.refresh : Icons.done_all,
         color: Colors.white,
@@ -879,7 +1235,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã đánh dấu tất cả nguyên liệu là hoàn thành!'),
-        backgroundColor: Colors.green.shade600,
+        backgroundColor: Colors.blue.shade600,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -914,7 +1270,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                 _resetAllItems();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
+                backgroundColor: Colors.blue.shade600,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -978,7 +1334,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã sao chép danh sách mua sắm vào clipboard!'),
-        backgroundColor: Colors.green.shade600,
+        backgroundColor: Colors.blue.shade600,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         action: SnackBarAction(
@@ -1039,7 +1395,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                           icon: Icon(Icons.visibility),
                           label: Text('Mở tất cả'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade600,
+                            backgroundColor: Colors.blue.shade600,
                             foregroundColor: Colors.white,
                           ),
                         ),
@@ -1092,10 +1448,10 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                         child: Container(
                           padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isCollapsed ? Colors.grey.shade100 : Colors.green.shade50,
+                            color: isCollapsed ? Colors.grey.shade100 : Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: isCollapsed ? Colors.grey.shade300 : Colors.green.shade200,
+                              color: isCollapsed ? Colors.grey.shade300 : Colors.blue.shade200,
                             ),
                           ),
                           child: Row(
@@ -1104,7 +1460,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                               Icon(
                                 isCollapsed ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_down,
                                 size: 16,
-                                color: isCollapsed ? Colors.grey.shade600 : Colors.green.shade700,
+                                color: isCollapsed ? Colors.grey.shade600 : Colors.blue.shade700,
                               ),
                               SizedBox(width: 6),
                               Text(
@@ -1112,7 +1468,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
-                                  color: isCollapsed ? Colors.grey.shade600 : Colors.green.shade700,
+                                  color: isCollapsed ? Colors.grey.shade600 : Colors.blue.shade700,
                                 ),
                               ),
                             ],

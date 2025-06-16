@@ -29,6 +29,29 @@ import 'dart:math';
 import 'package:intl/intl.dart';
 import '../widgets/meal_detail_card.dart';
 
+// 🎨 Clean & Simple Color Scheme - Inspired by reference image
+class DietPlanColors {
+  // Màu chính - xanh dương nhẹ nhàng như trong ảnh
+  static const Color primary = Color(0xFF2196F3);
+  static const Color primaryLight = Color(0xFFE3F2FD);
+  static const Color primaryDark = Color(0xFF1976D2);
+
+  // Màu phụ - xám trung tính
+  static const Color secondary = Color(0xFF9E9E9E);
+  static const Color secondaryLight = Color(0xFFF5F5F5);
+  static const Color background = Color(0xFFFAFAFA);
+
+  // Màu text - đơn giản và dễ đọc
+  static const Color textPrimary = Color(0xFF212121);
+  static const Color textSecondary = Color(0xFF757575);
+  static const Color textLight = Color(0xFF9E9E9E);
+
+  // Màu accent
+  static const Color accent = Color(0xFF4CAF50);
+  static const Color warning = Color(0xFFFF9800);
+  static const Color error = Color(0xFFF44336);
+}
+
 // Extension to make text smaller
 extension TextScaling on Text {
   Text scaled() {
@@ -561,7 +584,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Đã gửi yêu cầu tạo kế hoạch ăn mới, đang chờ cập nhật từ Firebase...'),
-                  backgroundColor: Colors.green,
+
                   duration: Duration(seconds: 3),
                 ),
               );
@@ -782,12 +805,31 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       ),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            'Kế hoạch dinh dưỡng',
-            style: TextStyle(
-              color: Colors.green.shade800,
-              fontWeight: FontWeight.bold,
-            ),
+          title: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: DietPlanColors.accent,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.restaurant,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'DietAI',
+                style: TextStyle(
+                  color: DietPlanColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+              ),
+            ],
           ),
           backgroundColor: Colors.white,
           elevation: 0,
@@ -796,7 +838,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             IconButton(
               icon: Icon(
                 Icons.shopping_cart_outlined,
-                color: Colors.green.shade700,
+                color: DietPlanColors.textSecondary,
               ),
               onPressed: () {
                 Navigator.pushNamed(context, '/grocery-list');
@@ -806,19 +848,22 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             IconButton(
               icon: Icon(
                 Icons.refresh,
-                color: Colors.green.shade700,
+                color: DietPlanColors.textSecondary,
               ),
               onPressed: _generateNewMealPlan,
               tooltip: 'Tạo kế hoạch mới',
             ),
           ],
         ),
-        body: SafeArea(
-         child: _isLoading
-              ? _buildLoadingState()
-              : _hasError
-                  ? _buildErrorState()
-                  : _buildBody(),
+        body: Container(
+          color: DietPlanColors.background,
+          child: SafeArea(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _hasError
+                    ? _buildErrorState()
+                    : _buildBody(),
+          ),
         ),
 
       ),
@@ -830,12 +875,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, color: Colors.red, size: 60),
+          Icon(Icons.error_outline, color: DietPlanColors.error, size: 60),
           SizedBox(height: 16),
           Text(
             'Lỗi: $_errorMessage',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.red.shade700),
+            style: TextStyle(fontSize: 16, color: DietPlanColors.error),
           ),
           SizedBox(height: 20),
           ElevatedButton.icon(
@@ -850,7 +895,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               _initializeFirebaseServices(); // Hoặc _loadMealPlan() tùy theo logic
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: DietPlanColors.primary,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
             ),
           ),
         ],
@@ -882,8 +932,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             ElevatedButton(
               onPressed: _generateNewMealPlan,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                backgroundColor: DietPlanColors.primary,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
               ),
               child: Text('Tạo kế hoạch ăn mới', style: TextStyle(fontSize: 16)),
             ),
@@ -911,7 +965,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             ElevatedButton(
               onPressed: _generateNewMealPlan,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
+                backgroundColor: DietPlanColors.primary,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
               ),
               child: Text('Tạo kế hoạch ăn mới'),
             ),
@@ -934,35 +993,44 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildDayTabs(),
+                // Subtitle with user goal
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          // Button thay thế ngày
-                          TextButton.icon(
-                            onPressed: _replaceDayMealPlan,
-                            icon: Icon(Icons.repeat, color: Colors.blue, size: 16),
-                            label: Text(
-                              'AI Thay Thế Ngày',
-                              style: TextStyle(
-                                color: Colors.blue,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
+                      Text(
+                        'Kế hoạch ăn kiêng',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: DietPlanColors.textSecondary,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _replaceDayMealPlan,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: DietPlanColors.primary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.refresh, size: 12, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                'AI Thay Thế Ngày',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                            style: TextButton.styleFrom(
-                              backgroundColor: Colors.blue.shade50,
-                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(50),
-                              ),
-                            ),
-                          )
-
-                        ],
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -1029,10 +1097,10 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               width: 50, // Reduced from 70
               margin: EdgeInsets.symmetric(horizontal: 3), // Reduced from 4
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.primaryLight.withOpacity(0.3) : Colors.transparent,
+                color: isSelected ? DietPlanColors.primaryLight : Colors.transparent,
                 borderRadius: BorderRadius.circular(15), // Adjusted for smaller size
-                border: isSelected 
-                    ? Border.all(color: AppColors.primary.withOpacity(0.5), width: 1.5) 
+                border: isSelected
+                    ? Border.all(color: DietPlanColors.primary, width: 1.5)
                     : null,
               ),
               child: Center(
@@ -1040,7 +1108,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                   _daysOfWeek[index],
                   style: TextStyle(
                     fontSize: 13, // Reduced from 14
-                    color: isSelected ? AppColors.primary : Colors.black54,
+                    color: isSelected ? DietPlanColors.primary : DietPlanColors.textSecondary,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
@@ -1060,65 +1128,44 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   }) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      padding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 4,
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
             offset: Offset(0, 2),
           ),
         ],
-        border: Border.all(color: Colors.blue.shade100, width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Row(
-            children: [
-              Icon(Icons.show_chart, size: 16, color: Colors.blue.shade700),
-              SizedBox(width: 6),
-              Text(
-                'Tổng dinh dưỡng trong ngày',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue.shade800,
-                ),
-              ),
-            ],
+          _buildNutrientItem(
+            icon: Icons.local_fire_department,
+            color: Colors.red,
+            value: '${calories}kcal',
+            unit: 'Calo',
           ),
-          SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNutrientItem(
-                icon: Icons.local_fire_department,
-                color: Colors.red.shade600,
-                value: calories.toString(),
-                unit: 'Calo',
-              ),
-              _buildNutrientItem(
-                icon: Icons.fitness_center,
-                color: Colors.blue.shade700,
-                value: '${protein}g',
-                unit: 'Protein',
-              ),
-              _buildNutrientItem(
-                icon: Icons.water_drop_outlined,
-                color: Colors.amber.shade700,
-                value: '${fat}g',
-                unit: 'Chất béo',
-              ),
-              _buildNutrientItem(
-                icon: Icons.grass,
-                color: Colors.green.shade600,
-                value: '${carbs}g',
-                unit: 'Carbs',
-              ),
-            ],
+          _buildNutrientItem(
+            icon: Icons.water_drop,
+            color: Colors.blue,
+            value: '${protein}g',
+            unit: 'Protein',
+          ),
+          _buildNutrientItem(
+            icon: Icons.circle,
+            color: Colors.orange,
+            value: '${fat}g',
+            unit: 'Chất béo',
+          ),
+          _buildNutrientItem(
+            icon: Icons.eco,
+            color: Colors.green,
+            value: '${carbs}g',
+            unit: 'Carbs',
           ),
         ],
       ),
@@ -1133,28 +1180,21 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   }) {
     return Column(
       children: [
-        Container(
-          padding: EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 16),
-        ),
+        Icon(icon, color: color, size: 20),
         SizedBox(height: 4),
         Text(
           value,
           style: TextStyle(
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: FontWeight.bold,
-            color: color,
+            color: DietPlanColors.textPrimary,
           ),
         ),
         Text(
           unit,
           style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade700,
+            fontSize: 11,
+            color: DietPlanColors.textSecondary,
           ),
         ),
       ],
@@ -1162,22 +1202,28 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   }
 
   Widget _buildMealSection(BuildContext context, String title, Meal meal) {
-    final mealColor =
-    _getMealColor(title);
-    
-    return Card(
-      elevation: 0.5,
-      margin: EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+    final mealColor = _getMealColor(title);
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header với icon và tên bữa ăn
           _buildMealHeader(title, mealColor),
-          
-          // Meal detail với PageView cho nhiều món ăn - truyền hideTitle=true để ẩn tên món ăn
+
+          // Meal detail
           MealDetailCard(
             meal: meal,
             mealType: title,
@@ -1188,7 +1234,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             onLog: () {
               _addMealToFoodLog(meal, title);
             },
-            hideTitle: true, // Ẩn tên món ăn vì đã hiển thị ở header
+            hideTitle: true,
           ),
         ],
       ),
@@ -1197,96 +1243,92 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
 
   Widget _buildMealHeader(String title, Color color) {
     Meal? currentMeal = _getCurrentMealByType(title);
-    
+
+    // Get meal icon based on meal type
+    IconData mealIcon;
+    switch (title) {
+      case 'Bữa sáng':
+        mealIcon = Icons.wb_sunny;
+        break;
+      case 'Bữa trưa':
+        mealIcon = Icons.wb_cloudy;
+        break;
+      case 'Bữa tối':
+        mealIcon = Icons.nights_stay;
+        break;
+      default:
+        mealIcon = Icons.restaurant;
+    }
+
     if (currentMeal == null) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-          ),
-        ),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(Icons.restaurant_menu, size: 18, color: color),
+            Icon(mealIcon, size: 20, color: color),
             SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: DietPlanColors.textPrimary,
               ),
             ),
           ],
         ),
       );
     }
-    
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(16),
-          topRight: Radius.circular(16),
-        ),
-      ),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Meal title
+          // Meal type and name
           Row(
             children: [
-              Icon(Icons.restaurant_menu, size: 18, color: color),
+              Icon(mealIcon, size: 20, color: color),
               SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: DietPlanColors.textPrimary,
                 ),
               ),
             ],
           ),
-
-          // Hiển thị tên món ăn ở đây để không bị trùng lặp
-          SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 26),
-            child: Text(
-              currentMeal.name,
-              style: TextStyle(
-                fontSize: 15,
-                fontStyle: FontStyle.italic,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-
-          // Nutrition values in a separate row with Expanded to avoid overflow
           SizedBox(height: 8),
+
+          // Nutrition summary row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              Expanded(
-                child: _buildMealNutrient(Icons.local_fire_department, currentMeal.nutrition['calories'].toString(), 'kcal', Colors.red),
+              _buildMealNutrient(
+                Icons.local_fire_department,
+                '${currentMeal.nutrition['calories']}kcal',
+                '',
+                Colors.red
               ),
-              Expanded(
-                child: _buildMealNutrient(Icons.adjust_rounded, currentMeal.nutrition['protein'].toString(), 'g', Colors.blue),
+              _buildMealNutrient(
+                Icons.water_drop,
+                '${currentMeal.nutrition['protein']}g',
+                '',
+                Colors.blue
               ),
-              Expanded(
-                child: _buildMealNutrient(Icons.water_drop_outlined, currentMeal.nutrition['fat'].toString(), 'g', Colors.orange),
+              _buildMealNutrient(
+                Icons.circle,
+                '${currentMeal.nutrition['fat']}g',
+                '',
+                Colors.orange
               ),
-              Expanded(
-                child: _buildMealNutrient(Icons.grass, currentMeal.nutrition['carbs'].toString(), 'g', Colors.green),
+              _buildMealNutrient(
+                Icons.eco,
+                '${currentMeal.nutrition['carbs']}g',
+                '',
+                Colors.green
               ),
             ],
           ),
@@ -1296,33 +1338,33 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   }
 
   Widget _buildMealNutrient(IconData icon, String value, String unit, Color color) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
           icon,
-          size: 14,
+          size: 12,
           color: color,
         ),
-        SizedBox(height: 2),
+        SizedBox(width: 4),
         Text(
-          '$value',
+          value,
           style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
             color: color,
           ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
         ),
-        Text(
-          unit,
-          style: TextStyle(
-            fontSize: 9,
-            color: color.withOpacity(0.8),
+        if (unit.isNotEmpty) ...[
+          SizedBox(width: 2),
+          Text(
+            unit,
+            style: TextStyle(
+              fontSize: 10,
+              color: color.withOpacity(0.8),
+            ),
           ),
-          textAlign: TextAlign.center,
-        ),
+        ],
       ],
     );
   }
@@ -1371,7 +1413,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Đang gửi yêu cầu thay thế $mealType đến server...'),
-          backgroundColor: Colors.orange,
+          backgroundColor: DietPlanColors.warning,
           duration: Duration(seconds: 5),
         ),
       );
@@ -1451,7 +1493,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Đang kết nối đến máy chủ...'),
-            backgroundColor: Colors.blue,
+            backgroundColor: DietPlanColors.primary,
             duration: Duration(seconds: 2),
           ),
         );
@@ -1779,7 +1821,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       SnackBar(
         content: Text('Mở màn hình ghi nhận món ăn...'),
         duration: Duration(milliseconds: 500),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: DietPlanColors.primary,
         behavior: SnackBarBehavior.fixed,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       )
@@ -1833,7 +1875,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.lightBlueAccent.shade400, Colors.lightBlue.shade600],
+                  colors: [DietPlanColors.primary, DietPlanColors.primaryDark],
                 ),
               ),
               child: Column(
@@ -1918,11 +1960,11 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                               borderRadius: BorderRadius.circular(16),
                               color: Colors.grey.shade50,
                               border: Border.all(
-                                color: selectedDishes[dish]! ? Colors.deepPurple.shade200 : Colors.grey.shade300,
+                                color: selectedDishes[dish]! ? DietPlanColors.primary.withOpacity(0.3) : DietPlanColors.secondaryLight,
                                 width: 1,
                               ),
                               boxShadow: selectedDishes[dish]! 
-                                ? [BoxShadow(color: Colors.deepPurple.shade100.withOpacity(0.3), blurRadius: 8, offset: Offset(0, 2))]
+                                ? [BoxShadow(color: DietPlanColors.primary.withOpacity(0.2), blurRadius: 8, offset: Offset(0, 2))]
                                 : null,
                             ),
                             child: CheckboxListTile(
@@ -1931,28 +1973,28 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
-                                  color: Colors.black87,
+                                  color: DietPlanColors.textPrimary,
                                 ),
                               ),
                               subtitle: Text(
                                 '${dish.nutrition['calories']?.round() ?? 0} kcal',
                                 style: TextStyle(
-                                  color: Colors.grey.shade700,
+                                  color: DietPlanColors.textSecondary,
                                 ),
                               ),
                               secondary: Container(
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: Colors.deepPurple.shade50,
+                                  color: DietPlanColors.primaryLight,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
                                   Icons.restaurant,
-                                  color: Colors.lightBlue,
+                                  color: DietPlanColors.primary,
                                 ),
                               ),
-                              activeColor: Colors.lightBlue,
+                              activeColor: DietPlanColors.primary,
                               checkColor: Colors.white,
                               value: selectedDishes[dish],
                               onChanged: (bool? value) {
@@ -2009,7 +2051,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                               Navigator.of(dialogContext).pop(); // Đóng dialog
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.lightBlue,
+                              backgroundColor: DietPlanColors.primary,
                               foregroundColor: Colors.white,
                               padding: EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
@@ -2047,7 +2089,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Bạn chưa chọn món ăn nào để ghi lại."),
-          backgroundColor: Colors.orange,
+          backgroundColor: DietPlanColors.warning,
           behavior: SnackBarBehavior.fixed,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         )
@@ -2122,7 +2164,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đang chuẩn bị ghi nhận ${foodItems.length} món ăn'),
-        backgroundColor: Colors.green,
+
         duration: Duration(seconds: 1),
         behavior: SnackBarBehavior.fixed,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2137,7 +2179,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã thêm "${finalDescription}" vào nhật ký thực phẩm'),
-        backgroundColor: Colors.green,
+
         duration: Duration(seconds: 2),
         behavior: SnackBarBehavior.fixed,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2213,7 +2255,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Đã phát hiện tuần mới, đang tạo kế hoạch ăn mới...'),
-                backgroundColor: Colors.blue,
+                backgroundColor: DietPlanColors.primary,
                 duration: Duration(seconds: 3),
               ),
             );
@@ -2440,7 +2482,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             onPressed: () => Navigator.of(context).pop(true),
             child: Text('Tạo mới'),
             style: TextButton.styleFrom(
-              backgroundColor: Colors.blue,
+              backgroundColor: DietPlanColors.primary,
               foregroundColor: Colors.white,
             ),
           ),
@@ -2594,7 +2636,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Đã gửi yêu cầu tạo kế hoạch ăn mới, đang chờ cập nhật từ Firebase...'),
-              backgroundColor: Colors.green,
+
               duration: Duration(seconds: 3),
             ),
           );
@@ -2706,7 +2748,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Lỗi dữ liệu: ${errorData['detail']}'),
-              backgroundColor: Colors.red,
+              backgroundColor: DietPlanColors.error,
               duration: Duration(seconds: 5),
             ),
           );
@@ -2739,7 +2781,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Lỗi server: $errorMessage\n\nĐang tải dữ liệu mẫu...'),
-            backgroundColor: Colors.orange,
+            backgroundColor: DietPlanColors.warning,
             duration: Duration(seconds: 5),
           ),
         );
@@ -2804,7 +2846,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Bữa phụ đã tồn tại cho ngày này'),
-            backgroundColor: Colors.orange,
+            backgroundColor: DietPlanColors.warning,
             duration: Duration(seconds: 2)
           )
         );
@@ -2833,26 +2875,26 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi: Không thể thêm bữa phụ - ${e.toString()}'),
-          backgroundColor: Colors.red,
+          backgroundColor: DietPlanColors.error,
           duration: Duration(seconds: 3)
         )
       );
     }
   }
 
-  // Thêm phương thức _getMealColor
+  // Thêm phương thức _getMealColor - sử dụng màu thống nhất
   Color _getMealColor(String mealType) {
     switch (mealType.toLowerCase()) {
       case 'bữa sáng':
-        return Colors.orange;
+        return DietPlanColors.primary;
       case 'bữa trưa':
-        return Colors.lightBlue;
+        return DietPlanColors.primary;
       case 'bữa tối':
-        return Colors.indigo;
+        return DietPlanColors.primary;
       case 'bữa phụ':
-        return Colors.purple;
+        return DietPlanColors.secondary;
       default:
-        return Colors.green;
+        return DietPlanColors.primary;
     }
   }
 
@@ -3073,7 +3115,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Đã thay thế kế hoạch ngày thành công!'),
-            backgroundColor: Colors.green,
+
             duration: Duration(seconds: 2),
           ),
         );
@@ -3089,7 +3131,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi khi thay thế kế hoạch ngày: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: DietPlanColors.error,
         ),
       );
     } finally {
@@ -3200,7 +3242,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Lỗi khi tải dữ liệu kế hoạch ăn: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: DietPlanColors.error,
           ),
         );
       }

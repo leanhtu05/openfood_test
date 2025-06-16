@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
+import '../theme/app_theme.dart';
+import '../widgets/base_screen.dart';
+import '../widgets/app_components.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_data_provider.dart' as udp;
 import '../screens/profile_screen.dart' as profile;
@@ -275,32 +277,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final userDataProvider = Provider.of<udp.UserDataProvider>(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.settings, size: 24),
-            SizedBox(width: 8),
-            Text("Cài đặt"),
-          ],
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black,
-      ),
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+    return BaseScreen(
+      title: 'Cài đặt',
+      isLoading: _isLoading,
+      padding: const EdgeInsets.all(AppTheme.spacing16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
               // Account Section
               _buildSectionTitle("Tài khoản"),
               Card(
@@ -673,9 +656,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
 
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }

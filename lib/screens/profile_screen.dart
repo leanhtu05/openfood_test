@@ -1058,11 +1058,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Row(
                   children: [
                     Icon(Icons.equalizer, color: Colors.black87, size: 20),
-                    SizedBox(width: 8),
+                    SizedBox(width: 4),
                     Text(
-                      "Cân nặng của bạn là bao nhiêu?",
+                      "Cân nặng của bạn ?",
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.black87,
                       ),
@@ -1074,8 +1074,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // Show weight update dialog
                     _showWeightUpdateDialog();
                   },
-                  icon: Icon(Icons.add, size: 14),
-                  label: Text("Cập nhật cân nặng của bạn"),
+                  icon: Icon(Icons.add, size: 12),
+                  label: Text("Cập nhật cân nặng"),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.blue[600],
                     side: BorderSide(color: Colors.blue[300]!),
@@ -2391,7 +2391,7 @@ class ProfileUpdateFlow extends StatelessWidget {
         break;
       case 'target_weight':
         pageTitle = 'Cập nhật cân nặng mục tiêu';
-        pageContent = TargetWeightPage(updateMode: true);
+        pageContent = _buildTargetWeightUpdatePage(context, userDataProvider, _profileScreenState);
         break;
       case 'activity':
         pageTitle = 'Cập nhật mức độ hoạt động';
@@ -2875,6 +2875,111 @@ class ProfileUpdateFlow extends StatelessWidget {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: Text(
+                  'Cập nhật',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Page to update target weight
+  Widget _buildTargetWeightUpdatePage(BuildContext context, udp.UserDataProvider userDataProvider, _ProfileScreenState? profileScreenState) {
+    final TextEditingController targetWeightController = TextEditingController(text: userDataProvider.targetWeightKg.toString());
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cập nhật cân nặng mục tiêu của bạn',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Nhập cân nặng mục tiêu mà bạn muốn đạt được',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 24),
+            TextField(
+              controller: targetWeightController,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Cân nặng mục tiêu (kg)',
+                border: OutlineInputBorder(),
+                suffixText: 'kg',
+              ),
+            ),
+            SizedBox(height: 32),
+            Container(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (targetWeightController.text.isNotEmpty) {
+                    try {
+                      final double newTargetWeight = double.parse(targetWeightController.text);
+
+                      if (newTargetWeight > 20 && newTargetWeight < 300) {
+                        // Cập nhật cân nặng mục tiêu trong UserDataProvider
+                        userDataProvider.targetWeightKg = newTargetWeight;
+
+                        // Cập nhật thông tin người dùng thông qua API
+                        if (profileScreenState != null) {
+                          await profileScreenState._updateFullUserProfile(
+                            targetWeightKg: newTargetWeight,
+                          );
+                        }
+
+                        // Hiển thị thông báo thành công
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Đã cập nhật cân nặng mục tiêu thành công!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+
+                        Navigator.of(context).pop();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Vui lòng nhập cân nặng mục tiêu hợp lệ (20-300 kg)'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Vui lòng nhập số hợp lệ'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[600],
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
