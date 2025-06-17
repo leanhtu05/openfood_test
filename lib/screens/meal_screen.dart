@@ -4,6 +4,7 @@ import '../widgets/meal_item.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../utils/constants.dart';
 import '../screens/food_logging_screen.dart';
+import '../utils/auth_helper.dart';
 
 class MealScreen extends StatefulWidget {
   final String? mealId;
@@ -92,17 +93,6 @@ class _MealScreenState extends State<MealScreen> {
                     );
                   },
                 ),
-                _buildMealHeader('Đồ ăn nhẹ', AppIcons.snack),
-                MealItem(
-                  imageUrl: 'assets/images/snack.png',
-                  calories: 506,
-                  onAddPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
-                    );
-                  },
-                ),
               ],
             ),
           ),
@@ -117,11 +107,25 @@ class _MealScreenState extends State<MealScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          // Kiểm tra đăng nhập trước khi vào food logging
+          final success = await AuthHelper.requireLogin(
             context,
-            MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
+            onAuthenticated: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => FoodLoggingScreen()),
+            ),
+            title: 'Ghi lại bữa ăn',
+            message: 'Mời bạn đăng nhập để trải nghiệm tính năng ghi lại bữa ăn và nhận diện thức ăn bằng AI',
+            feature: 'ghi lại bữa ăn',
           );
+
+          if (!success) {
+            AuthHelper.showLoginRequiredSnackBar(
+              context,
+              feature: 'ghi lại bữa ăn',
+            );
+          }
         },
         backgroundColor: Colors.green.shade100,
         child: Icon(

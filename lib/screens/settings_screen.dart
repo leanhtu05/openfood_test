@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
-import '../widgets/base_screen.dart';
-import '../widgets/app_components.dart';
+import '../utils/constants.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_data_provider.dart' as udp;
 import '../screens/profile_screen.dart' as profile;
@@ -44,27 +42,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Map<String, dynamic>? _apiStatus;
   bool _isCleaningData = false;
   String _cleanupStatus = '';
-  
+
   // Auth service
   late AuthService authService;
-  
+
   // Thêm biến để lưu thông tin đồng bộ
   String? _lastSyncInfo;
-  
+
   @override
   void initState() {
     super.initState();
     authService = Provider.of<AuthService>(context, listen: false);
-    
+
     // Kiểm tra trạng thái đăng nhập và thiết lập ưu tiên dữ liệu
     _setupDataPriority();
   }
-  
+
   // Phương thức thiết lập ưu tiên dữ liệu dựa trên trạng thái đăng nhập
   void _setupDataPriority() {
     // Lấy UserDataProvider từ Provider
     final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-    
+
     // Kiểm tra xem người dùng đã đăng nhập chưa
     if (!authService.isAuthenticated) {
       // Nếu chưa đăng nhập, ưu tiên dữ liệu từ local
@@ -82,7 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       // Gọi phương thức từ AuthService để cập nhật trực tiếp với Firestore
       final success = await authService.updateFullUserProfile(
@@ -98,18 +96,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         activityLevel: userData['activity_level'],
         goal: userData['goal'],
         pace: userData['pace'],
-        dietRestrictions: userData['diet_restrictions'] != null ? 
-          List<String>.from(userData['diet_restrictions']) : null,
-        healthConditions: userData['health_conditions'] != null ? 
-          List<String>.from(userData['health_conditions']) : null,
+        dietRestrictions: userData['diet_restrictions'] != null ?
+        List<String>.from(userData['diet_restrictions']) : null,
+        healthConditions: userData['health_conditions'] != null ?
+        List<String>.from(userData['health_conditions']) : null,
         measurementSystem: userData['measurement_system'],
         nutritionGoals: userData['nutrition_goals'],
       );
-      
+
       setState(() {
         _isLoading = false;
       });
-      
+
       // Hiển thị thông báo kết quả
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,20 +124,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
-      
+
       return success;
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi khi cập nhật thông tin: $e'),
           backgroundColor: Colors.red,
         ),
       );
-      
+
       return false;
     }
   }
@@ -164,7 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
       // Gọi phương thức từ AuthService
       final success = await authService.updateFullUserProfile(
@@ -183,11 +181,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         measurementSystem: measurementSystem,
         nutritionGoals: nutritionGoals,
       );
-      
+
       setState(() {
         _isLoading = false;
       });
-      
+
       // Hiển thị thông báo kết quả
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -204,20 +202,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
-      
+
       return success;
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi khi cập nhật thông tin: $e'),
           backgroundColor: Colors.red,
         ),
       );
-      
+
       return false;
     }
   }
@@ -230,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       final result = await ApiService.checkApiConnectionDetailed();
-      
+
       setState(() {
         _apiStatus = result;
         _isCheckingApi = false;
@@ -252,11 +250,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isCleaningData = true;
       _cleanupStatus = 'Đang làm sạch dữ liệu...';
     });
-    
+
     try {
       final userProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
       final result = await userProvider.cleanupDuplicateFieldsOnFirebase();
-      
+
       setState(() {
         _isCleaningData = false;
         if (result) {
@@ -277,13 +275,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final userDataProvider = Provider.of<udp.UserDataProvider>(context);
 
-    return BaseScreen(
-      title: 'Cài đặt',
-      isLoading: _isLoading,
-      padding: const EdgeInsets.all(AppTheme.spacing16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.settings, size: 24),
+            SizedBox(width: 8),
+            Text("Cài đặt"),
+          ],
+        ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.black,
+      ),
+      body: SingleChildScrollView(
+        controller: _scrollController,
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               // Account Section
               _buildSectionTitle("Tài khoản"),
               Card(
@@ -379,7 +396,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ),
                           );
-                          
+
                           if (selectedUnit != null) {
                             // Cập nhật đơn vị đo lường
                             await updateFullUserProfile(
@@ -420,7 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               builder: (context) => AccountLinkingScreen(authService: authService),
                             ),
                           );
-                          
+
                           // Làm mới UI sau khi quay lại từ màn hình liên kết
                           setState(() {
                             // Cập nhật lại danh sách các phương thức liên kết
@@ -475,10 +492,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           );
                         }
                       },
-                      isLast: !authService.isAuthenticated && !authService.isPremiumUser(),
+                      isLast: !(authService.isAuthenticated && authService.currentUser != null && !authService.currentUser!.isAnonymous),
                     ),
                     // Thêm nút đồng bộ thủ công
-                    
+
+                    // Chỉ hiển thị nút đăng xuất khi người dùng đã đăng nhập thực sự (không phải anonymous)
+                    if (authService.isAuthenticated && authService.currentUser != null && !authService.currentUser!.isAnonymous)
                       _buildSettingItem(
                         leadingIcon: Icons.logout,
                         title: "Đăng xuất",
@@ -488,17 +507,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           if (confirm == true) {
                             // Lấy provider dữ liệu người dùng
                             final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-                            
+
                             // Xóa dữ liệu local của người dùng
                             debugPrint('🔄 Đang xóa dữ liệu local trước khi đăng xuất...');
                             await userDataProvider.clearLocalUserData();
-                            
+
                             // Sau đó đăng xuất khỏi Firebase - truyền context để xử lý nhất quán
                             await authService.logout(context: context);
-                            
+
                             // Thông báo đã xóa dữ liệu thành công
                             debugPrint('✅ Đã đăng xuất và xóa dữ liệu local thành công');
-                            
+
                             // Chuyển đến màn hình đăng nhập
                             Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(builder: (context) => auth.AuthScreen(isLoginMode: true)),
@@ -595,9 +614,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildSettingItem(
                       leadingIcon: Icons.restaurant_menu,
                       title: "Chế độ ăn",
-                      value: userDataProvider.dietPreference.isEmpty 
-                        ? "Chưa đặt" 
-                        : userDataProvider.dietPreference,
+                      value: userDataProvider.dietPreference.isEmpty
+                          ? "Chưa đặt"
+                          : userDataProvider.dietPreference,
                       icon: Icons.arrow_forward_ios,
                       onTap: () {
                         if (!authService.isPremiumUser()) {
@@ -620,7 +639,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _showPremiumFeatureDialog(context);
                           return;
                         }
-                        
+
                         // Navigate to health condition onboarding page
                         _openOnboardingPage(context, HealthConditionPage(updateMode: true));
                       },
@@ -656,7 +675,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
 
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1173,10 +1194,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       // Lấy provider dữ liệu người dùng
       final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-      
+
       // Gọi phương thức đồng bộ toàn diện
       final result = await userDataProvider.synchronizeAllData();
-      
+
       // Đóng dialog tiến trình
       Navigator.of(context).pop();
 
@@ -1206,7 +1227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       // Đóng dialog tiến trình nếu có lỗi
       Navigator.of(context).pop();
-      
+
       // Hiển thị thông báo lỗi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1230,19 +1251,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Phương thức để hiển thị thông tin về các phương thức đã liên kết
   String _getLinkedProvidersText(AuthService authService) {
     final providers = [];
-    
+
     if (authService.isLinkedWithEmail()) {
       providers.add('Email');
     }
-    
+
     if (authService.isLinkedWithPhone()) {
       providers.add('SĐT');
     }
-    
+
     if (authService.isLinkedWithGoogle()) {
       providers.add('Google');
     }
-    
+
     return providers.isEmpty ? 'Chưa liên kết' : providers.join(', ');
   }
 }

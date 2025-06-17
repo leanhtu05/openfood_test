@@ -17,7 +17,7 @@ import '../utils/constants.dart';
 import '../screens/food_nutrition_detail_screen.dart';
 import '../widgets/food_logging/barcode_scanner_button.dart';
 import 'package:uuid/uuid.dart';
-import '../screens/food_history_screen.dart';
+import '../screens/combined_history_screen.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 // Meal plan imports removed
 
@@ -1553,12 +1553,14 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
                                       const EdgeInsets.symmetric(horizontal: 8.0),
                                 child: InkWell(
                                   onTap: () {
-                                    // Navigate to food history screen
+                                    // Navigate to combined history screen with food filter
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (context) =>
-                                            FoodHistoryScreen(),
+                                        builder: (context) => CombinedHistoryScreen(
+                                          initialFilters: {'Thực phẩm'}, // Chỉ hiển thị thực phẩm
+                                          customTitle: 'Lịch sử thực phẩm',
+                                        ),
                                       ),
                                     );
                                   },
@@ -1584,12 +1586,14 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
                                         icon: Icon(Icons.arrow_forward_ios,
                                             size: 14),
                                         onPressed: () {
-                                          // Navigate to food history screen
+                                          // Navigate to combined history screen with food filter
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (context) =>
-                                                  FoodHistoryScreen(),
+                                              builder: (context) => CombinedHistoryScreen(
+                                                initialFilters: {'Thực phẩm'}, // Chỉ hiển thị thực phẩm
+                                                customTitle: 'Lịch sử thực phẩm',
+                                              ),
                                             ),
                                           );
                                         },
@@ -2250,12 +2254,12 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       // Sử dụng NutritionCircle giống các nutrient khác để thống nhất giao diện
       return NutritionCircle(
         size: 65.0, // Giảm kích thước từ 80.0 xuống 65.0 để phù hợp với container nhỏ hơn
-        value: value > 0 ? progress * 100 : 1, // Đảm bảo hiển thị khi = 0
-        max: 100.0,
+        value: value, // Truyền giá trị thực tế để NutritionCircle tự tính phần trăm
+        max: goal, // Truyền mục tiêu thực tế
         color: color,
         label: label,
         // Hiển thị số 0 nếu không có giá trị
-        remainingText: value > 0 ? "${value.toInt()}" : "0",
+        remainingText: "${value.toInt()}",
         backgroundColor: color.withOpacity(0.2),
         useRadialGradient: false,
         showPercentage: true, // Hiển thị phần trăm ở giữa vòng tròn
@@ -2263,18 +2267,19 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
         // Hiển thị giá trị thực tế trong dạng "2002/1827kcal"
         showTotalValue: true,
         totalValueText: "${value.toInt()}/${goal.toInt()}${unit}",
+        hideWhenZero: false, // Luôn hiển thị vòng tròn, kể cả khi 0%
       );
     }
 
     // Sử dụng NutritionCircle cho các nutrient khác để có giao diện giống với nutrition_illustration.dart
     return NutritionCircle(
       size: 65.0, // Giảm kích thước từ 80.0 xuống 65.0 để phù hợp với container nhỏ hơn
-      value: value > 0 ? progress * 100 : 1, // Đảm bảo hiển thị khi = 0
-      max: 100.0,
+      value: value, // Truyền giá trị thực tế để NutritionCircle tự tính phần trăm
+      max: goal, // Truyền mục tiêu thực tế
       color: color,
       label: label,
-      // Hiển thị số 0 nếu không có giá trị
-      remainingText: value > 0 ? "${value.toInt()}" : "0",
+      // Hiển thị số thực tế
+      remainingText: "${value.toInt()}",
       backgroundColor: color.withOpacity(0.2),
       useRadialGradient: false,
       showPercentage: true, // Hiển thị phần trăm ở giữa vòng tròn
@@ -2282,6 +2287,7 @@ class _MealRecordingScreenState extends State<MealRecordingScreen> {
       // Hiển thị tổng giá trị theo định dạng "2002/1827kcal"
       showTotalValue: true,
       totalValueText: "${value.toInt()}/${goal.toInt()}${unit}",
+      hideWhenZero: false, // Luôn hiển thị vòng tròn, kể cả khi 0%
     );
   }
 

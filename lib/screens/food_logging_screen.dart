@@ -6,7 +6,7 @@ import '../models/food_entry.dart';
 import '../models/food_item.dart';
 import 'package:openfood/providers/food_provider.dart';
 import '../widgets/food_logging/food_description_input.dart';
-import '../screens/food_history_screen.dart';
+import '../screens/combined_history_screen.dart';
 import '../screens/food_search_screen.dart';
 import '../screens/food_nutrition_detail_screen.dart';
 import '../widgets/food_logging/food_logging_app_bar.dart';
@@ -20,6 +20,7 @@ import '../services/voice_recording_service.dart';
 import '../services/barcode_scanner_service.dart';
 import '../services/food_entry_service.dart';
 import '../services/food_ai_service.dart';
+import '../utils/auth_helper.dart';
 
 // Enum cho trạng thái nhận diện thực phẩm
 enum RecognitionStatus {
@@ -62,7 +63,7 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   File? _foodImage;
   bool _isProcessing = false;
   String? _barcode;
-  String _selectedMealType = 'Bữa chính';
+  String _selectedMealType = 'Bữa sáng';
   String? _selectedDate;
   late String _mealTypeTitle;
   late FoodProvider _foodProvider;
@@ -137,32 +138,70 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
 
   // IMAGE HANDLING
   Future<void> _takeFoodPhoto() async {
+    // Kiểm tra đăng nhập trước khi chụp ảnh
+    final success = await AuthHelper.requireLogin(
+      context,
+      onAuthenticated: () => _performTakeFoodPhoto(),
+      title: 'Chụp ảnh thức ăn',
+      message: 'Mời bạn đăng nhập để trải nghiệm tính năng chụp ảnh và nhận diện thức ăn bằng AI',
+      feature: 'chụp ảnh thức ăn',
+    );
+
+    if (!success) {
+      // Người dùng không đăng nhập, hiển thị thông báo
+      AuthHelper.showLoginRequiredSnackBar(
+        context,
+        feature: 'chụp ảnh thức ăn',
+      );
+    }
+  }
+
+  Future<void> _performTakeFoodPhoto() async {
     final imagePicker = ImagePicker();
     final XFile? image = await imagePicker.pickImage(source: ImageSource.camera);
-    
+
     if (image != null) {
       final File imageFile = File(image.path);
-      
+
       setState(() {
         _foodImage = imageFile;
       });
-      
+
       // Xử lý ảnh với phương thức mới để nhận diện thức ăn
       await _processImage(imageFile);
     }
   }
   
   Future<void> _pickFoodPhoto() async {
+    // Kiểm tra đăng nhập trước khi chọn ảnh
+    final success = await AuthHelper.requireLogin(
+      context,
+      onAuthenticated: () => _performPickFoodPhoto(),
+      title: 'Chọn ảnh thức ăn',
+      message: 'Mời bạn đăng nhập để trải nghiệm tính năng chọn ảnh và nhận diện thức ăn bằng AI',
+      feature: 'chọn ảnh thức ăn',
+    );
+
+    if (!success) {
+      // Người dùng không đăng nhập, hiển thị thông báo
+      AuthHelper.showLoginRequiredSnackBar(
+        context,
+        feature: 'chọn ảnh thức ăn',
+      );
+    }
+  }
+
+  Future<void> _performPickFoodPhoto() async {
     final imagePicker = ImagePicker();
     final XFile? image = await imagePicker.pickImage(source: ImageSource.gallery);
-    
+
     if (image != null) {
       final File imageFile = File(image.path);
-      
+
       setState(() {
         _foodImage = imageFile;
       });
-      
+
       // Xử lý ảnh với phương thức mới để nhận diện thức ăn
       await _processImage(imageFile);
     }
@@ -673,8 +712,13 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   // UI ACTIONS
   void _showHistory() {
     Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (context) => FoodHistoryScreen())
+      context,
+      MaterialPageRoute(
+        builder: (context) => CombinedHistoryScreen(
+          initialFilters: {'Thực phẩm'}, // Chỉ hiển thị thực phẩm
+          customTitle: 'Lịch sử thực phẩm',
+        ),
+      ),
     );
   }
   

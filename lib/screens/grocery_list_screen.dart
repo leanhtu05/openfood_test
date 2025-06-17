@@ -11,6 +11,7 @@ import '../models/grocery_cost_analysis.dart';
 import '../widgets/grocery/cost_analysis_widget.dart';
 import '../utils/currency_formatter.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'shopping_history_screen.dart';
 
 class GroceryListScreen extends StatefulWidget {
   @override
@@ -439,6 +440,17 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     });
   }
 
+  /// Mở màn hình lịch sử mua sắm
+  void _openShoppingHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ShoppingHistoryScreen(),
+      ),
+    );
+    HapticFeedback.lightImpact();
+  }
+
   /// Cập nhật ngân sách
   void _updateBudget() {
     showDialog(
@@ -486,36 +498,34 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
         _buildSearchBar(),
         _buildProgressHeader(),
         Expanded(
-          child: SingleChildScrollView(
-            physics: AlwaysScrollableScrollPhysics(),
-            child: Column(
-              children: [
-                CostAnalysisWidget(
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: CostAnalysisWidget(
                   analysis: _costAnalysis!,
                   onBudgetTap: _updateBudget,
                 ),
-                SizedBox(height: 16),
-                Container(
-                  margin: EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '🛒 Danh sách mua sắm chi tiết',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      _buildGroceryListForAnalysis(),
-                    ],
+              ),
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: EdgeInsets.all(16),
+                  child: Text(
+                    '🛒 Danh sách mua sắm chi tiết',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
                   ),
                 ),
-                SizedBox(height: 100), // Space for FAB
-              ],
-            ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildGroceryListForAnalysis(),
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(height: 100), // Space for FAB
+              ),
+            ],
           ),
         ),
         if (_isAnalyzing) _buildAnalyzingIndicator(),
@@ -587,79 +597,84 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     // Sort categories
     final sortedCategories = groupedItems.keys.toList()..sort();
 
-    return Column(
-      children: sortedCategories.map((category) {
-        final items = groupedItems[category]!;
-        final isCollapsed = _collapsedCategories.contains(category);
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: sortedCategories.map((category) {
+          final items = groupedItems[category]!;
+          final isCollapsed = _collapsedCategories.contains(category);
 
-        return Column(
-          children: [
-            // Category Header
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isCollapsed) {
-                    _collapsedCategories.remove(category);
-                  } else {
-                    _collapsedCategories.add(category);
-                  }
-                });
-                HapticFeedback.lightImpact();
-              },
-              child: Container(
-                margin: EdgeInsets.symmetric(vertical: 8),
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  children: [
-                    AnimatedRotation(
-                      turns: isCollapsed ? 0 : 0.25,
-                      duration: Duration(milliseconds: 200),
-                      child: Icon(
-                        Icons.keyboard_arrow_right,
-                        size: 20,
-                        color: Colors.blue.shade700,
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Category Header
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isCollapsed) {
+                      _collapsedCategories.remove(category);
+                    } else {
+                      _collapsedCategories.add(category);
+                    }
+                  });
+                  HapticFeedback.lightImpact();
+                },
+                child: Container(
+                  margin: EdgeInsets.symmetric(vertical: 8),
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      AnimatedRotation(
+                        turns: isCollapsed ? 0 : 0.25,
+                        duration: Duration(milliseconds: 200),
+                        child: Icon(
+                          Icons.keyboard_arrow_right,
+                          size: 20,
+                          color: Colors.blue.shade700,
+                        ),
                       ),
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      category,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
-                    Spacer(),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${items.length}',
+                      SizedBox(width: 8),
+                      Text(
+                        category,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue.shade700,
                         ),
                       ),
-                    ),
-                  ],
+                      Spacer(),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${items.length}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            // Items List (Expandable)
-            if (!isCollapsed)
-              ...items.map((item) => _buildGroceryItem(item)),
-          ],
-        );
-      }).toList(),
+              // Items List (Expandable)
+              if (!isCollapsed)
+                ...items.map((item) => _buildGroceryItem(item)),
+            ],
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -739,6 +754,11 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             onPressed: _toggleCostAnalysis,
             tooltip: 'Phân tích chi phí AI',
             color: _showCostAnalysis ? Colors.green.shade600 : null,
+          ),
+          IconButton(
+            icon: Icon(Icons.history),
+            onPressed: _openShoppingHistory,
+            tooltip: 'Lịch sử mua sắm',
           ),
           IconButton(
             icon: Icon(Icons.filter_list),
@@ -1494,12 +1514,14 @@ class GroceryItem {
   final String amount;
   final String unit;
   final String category;
+  final bool isChecked;
 
   GroceryItem({
     required this.name,
     required this.amount,
     required this.unit,
     required this.category,
+    this.isChecked = false,
   });
 
   GroceryItem copyWith({
@@ -1507,12 +1529,14 @@ class GroceryItem {
     String? amount,
     String? unit,
     String? category,
+    bool? isChecked,
   }) {
     return GroceryItem(
       name: name ?? this.name,
       amount: amount ?? this.amount,
       unit: unit ?? this.unit,
       category: category ?? this.category,
+      isChecked: isChecked ?? this.isChecked,
     );
   }
 }

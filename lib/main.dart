@@ -32,7 +32,7 @@ import 'package:openfood/services/api_service.dart';
 import 'screens/admin/firestore_admin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/user_service.dart';
-import 'theme/app_theme.dart';
+
 
 bool isFirebaseInitialized = false;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -307,7 +307,6 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'DietAI',
-      theme: AppTheme.lightTheme,
       navigatorKey: navigatorKey,
       routes: routes,
       onGenerateRoute: generateRoute,

@@ -314,15 +314,13 @@ class FoodDataAdapter {
   /// Lấy bữa ăn dựa trên thời gian hiện tại
   static String getMealTypeBasedOnTime(DateTime time) {
     final hour = time.hour;
-    
+
     if (hour >= 5 && hour < 10) {
       return 'Bữa sáng';
-    } else if (hour >= 10 && hour < 14) {
+    } else if (hour >= 10 && hour < 16) {
       return 'Bữa trưa';
-    } else if (hour >= 17 && hour < 21) {
-      return 'Bữa tối';
     } else {
-      return 'Bữa phụ';
+      return 'Bữa tối';
     }
   }
   

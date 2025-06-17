@@ -322,60 +322,6 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
             ],
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.sync),
-            onPressed: _synchronizeAllData,
-            tooltip: 'Đồng bộ dữ liệu dinh dưỡng',
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'edit':
-                  _editFoodDetails();
-                  break;
-                case 'delete':
-                  _deleteFood();
-                  break;
-                case 'add':
-                  _addMoreFood();
-                  break;
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              PopupMenuItem<String>(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, color: Colors.blue, size: 20),
-                    SizedBox(width: 8),
-                    Text('Sửa tên'),
-                  ],
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'add',
-                child: Row(
-                  children: [
-                    Icon(Icons.add_circle, color: Colors.green, size: 20),
-                    SizedBox(width: 8),
-                    Text('Thêm thực phẩm'),
-                  ],
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, color: Colors.red, size: 20),
-                    SizedBox(width: 8),
-                    Text('Xóa'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -784,7 +730,6 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
               _buildMealTypeOption('Bữa sáng'),
               _buildMealTypeOption('Bữa trưa'),
               _buildMealTypeOption('Bữa tối'),
-              _buildMealTypeOption('Bữa phụ'),
             ],
           ),
         );

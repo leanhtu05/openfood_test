@@ -5,7 +5,11 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../models/food_entry.dart';
+import '../models/water_entry.dart';
+import '../models/exercise.dart';
 import '../providers/food_provider.dart';
+import '../providers/water_provider.dart';
+import '../providers/exercise_provider.dart';
 import '../utils/constants.dart';
 import '../screens/food_nutrition_detail_screen.dart';
 
@@ -81,6 +85,16 @@ class FoodHistoryScreen extends StatefulWidget {
 class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProviderStateMixin {
   bool _isLoading = true;
   late AnimationController _fadeController;
+
+  // Filter options - đồng bộ với combined_history_screen
+  DateTime _startDate = DateTime(2020, 1, 1);
+  DateTime _endDate = DateTime.now();
+  bool _isFilteringByDate = false;
+  Set<String> _selectedFilters = {'Nước', 'Bài tập', 'Thực phẩm'};
+  bool _showWaterItems = true;
+  bool _showExerciseItems = true;
+  bool _showFoodItems = true;
+  Map<String, List<dynamic>> _combinedEntriesByDate = {};
   
   @override
   void initState() {
@@ -105,20 +119,120 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
   }
   
   Future<void> _loadData() async {
+    await _loadAllData();
+  }
+
+  Future<void> _loadAllData() async {
     setState(() {
       _isLoading = true;
     });
-    
-    final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-    // Sử dụng loadData() thay vì loadFoodEntries() không tồn tại
-    await foodProvider.loadData();
-    
-    setState(() {
-      _isLoading = false;
+
+    try {
+      // Load water data
+      final waterProvider = Provider.of<WaterProvider>(context, listen: false);
+      await waterProvider.loadData();
+
+      // Load exercise data
+      final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
+      await exerciseProvider.loadAllExercises();
+
+      // Load food data
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      await foodProvider.loadData();
+
+      // Combine data
+      _combineData(waterProvider, exerciseProvider, foodProvider);
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Start animation after data is loaded
+      _fadeController.forward();
+    } catch (e) {
+      print('Error loading data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể tải dữ liệu: $e'))
+      );
+    }
+  }
+
+  void _combineData(WaterProvider waterProvider, ExerciseProvider exerciseProvider, FoodProvider foodProvider) {
+    Map<String, List<dynamic>> combined = {};
+
+    final startDateFormatted = DateFormat('yyyy-MM-dd').format(_startDate);
+    final endDateFormatted = DateFormat('yyyy-MM-dd').format(_endDate.add(Duration(days: 1)));
+
+    // Process water entries
+    if (_showWaterItems) {
+      for (var entry in waterProvider.entries) {
+        final date = DateFormat('yyyy-MM-dd').format(entry.timestamp);
+        if (!_isFilteringByDate || (date.compareTo(startDateFormatted) >= 0 && date.compareTo(endDateFormatted) < 0)) {
+          if (!combined.containsKey(date)) {
+            combined[date] = [];
+          }
+          combined[date]!.add({
+            'type': 'water',
+            'data': entry,
+            'timestamp': entry.timestamp,
+          });
+        }
+      }
+    }
+
+    // Process exercise entries
+    if (_showExerciseItems) {
+      exerciseProvider.allExercises.forEach((date, exercises) {
+        for (var exercise in exercises) {
+          final formattedDate = exercise.date.split('T')[0];
+          if (!_isFilteringByDate || (formattedDate.compareTo(startDateFormatted) >= 0 && formattedDate.compareTo(endDateFormatted) < 0)) {
+            if (!combined.containsKey(formattedDate)) {
+              combined[formattedDate] = [];
+            }
+            combined[formattedDate]!.add({
+              'type': 'exercise',
+              'data': exercise,
+              'timestamp': DateTime.parse(exercise.date),
+            });
+          }
+        }
+      });
+    }
+
+    // Process food entries
+    if (_showFoodItems) {
+      for (var entry in foodProvider.allFoodEntries) {
+        final date = DateFormat('yyyy-MM-dd').format(entry.dateTime);
+        if (!_isFilteringByDate || (date.compareTo(startDateFormatted) >= 0 && date.compareTo(endDateFormatted) < 0)) {
+          if (!combined.containsKey(date)) {
+            combined[date] = [];
+          }
+          combined[date]!.add({
+            'type': 'food',
+            'data': entry,
+            'timestamp': entry.dateTime,
+          });
+        }
+      }
+    }
+
+    // Sort entries by timestamp for each date
+    combined.forEach((date, entries) {
+      entries.sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
     });
-    
-    // Start animation after data is loaded
-    _fadeController.forward();
+
+    // Sort dates by most recent first
+    final sortedCombined = Map.fromEntries(
+      combined.entries.toList()
+        ..sort((a, b) => DateTime.parse(b.key).compareTo(DateTime.parse(a.key)))
+    );
+
+    setState(() {
+      _combinedEntriesByDate = sortedCombined;
+    });
   }
   
   @override
@@ -134,15 +248,29 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
             icon: Icon(Icons.arrow_back, color: Colors.black87, size: 20),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: Row(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.access_time, color: AppStyles.primaryColor, size: 22),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Thực phẩm đã ghi nhận', 
-                  style: AppStyles.heading2.copyWith(color: Colors.black87),
-                  overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Icon(Icons.access_time, color: AppStyles.primaryColor, size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _getAppBarTitle(),
+                      style: AppStyles.heading2.copyWith(color: Colors.black87),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                _getDateRangeText(),
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal
                 ),
               ),
             ],
@@ -154,8 +282,15 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
             IconButton(
               icon: Icon(Icons.filter_list, color: AppStyles.secondaryColor, size: 20),
               onPressed: () {
-                // Add haptic feedback
                 HapticFeedback.lightImpact();
+                _showFilterOptions();
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.date_range, color: AppStyles.secondaryColor, size: 20),
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                _showDateRangePicker();
               },
             ),
           ],
@@ -174,132 +309,208 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
     );
   }
   
+  // Filter options methods - đồng bộ với combined_history_screen
+  void _showFilterOptions() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        contentPadding: EdgeInsets.symmetric(vertical: 20),
+        title: Text('Chọn loại hiển thị', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildFilterOption('Nước'),
+            _buildFilterOption('Bài tập'),
+            _buildFilterOption('Thực phẩm'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterOption(String title) {
+    bool isSelected = _selectedFilters.contains(title);
+
+    return CheckboxListTile(
+      title: Text(title),
+      value: isSelected,
+      checkColor: Colors.white,
+      activeColor: AppStyles.primaryColor,
+      onChanged: (value) {
+        if (value == true && !isSelected) {
+          setState(() {
+            _selectedFilters.add(title);
+
+            if (title == 'Nước') _showWaterItems = true;
+            if (title == 'Bài tập') _showExerciseItems = true;
+            if (title == 'Thực phẩm') _showFoodItems = true;
+          });
+        } else if (value == false && isSelected) {
+          if (_selectedFilters.length > 1) {
+            setState(() {
+              _selectedFilters.remove(title);
+
+              if (title == 'Nước') _showWaterItems = false;
+              if (title == 'Bài tập') _showExerciseItems = false;
+              if (title == 'Thực phẩm') _showFoodItems = false;
+            });
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Cần chọn ít nhất một loại dữ liệu'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+
+        Navigator.of(context).pop();
+
+        // Reload data with new filters
+        _loadAllData();
+      },
+      controlAffinity: ListTileControlAffinity.leading,
+    );
+  }
+
+  void _showDateRangePicker() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: DateTimeRange(
+        start: _isFilteringByDate ? _startDate : DateTime.now().subtract(Duration(days: 30)),
+        end: _endDate,
+      ),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: ColorScheme.light(
+              primary: AppStyles.primaryColor,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+        _isFilteringByDate = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Hiển thị dữ liệu từ ${DateFormat('dd/MM/yyyy').format(picked.start)} đến ${DateFormat('dd/MM/yyyy').format(picked.end)}'
+          ),
+          duration: Duration(seconds: 2),
+          backgroundColor: AppStyles.primaryColor,
+        ),
+      );
+    }
+  }
+
+  String _getAppBarTitle() {
+    if (_selectedFilters.length == 3) {
+      return 'Lịch sử hoạt động';
+    } else if (_selectedFilters.length == 1) {
+      if (_selectedFilters.contains('Nước')) return 'Lịch sử uống nước';
+      if (_selectedFilters.contains('Bài tập')) return 'Lịch sử bài tập';
+      if (_selectedFilters.contains('Thực phẩm')) return 'Lịch sử thực phẩm';
+    }
+    return 'Lịch sử đã chọn';
+  }
+
+  String _getDateRangeText() {
+    return _isFilteringByDate
+        ? DateFormat('dd/MM').format(_startDate) + ' - ' + DateFormat('dd/MM').format(_endDate)
+        : 'Tất cả';
+  }
+
   Widget _buildFoodEntriesList() {
-    final foodProvider = Provider.of<FoodProvider>(context);
-    final entries = foodProvider.entries;
-    
-    if (entries.isEmpty) {
+    return _buildCombinedList();
+  }
+
+  Widget _buildCombinedList() {
+    if (_combinedEntriesByDate.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.no_food,
-              size: 64,
-              color: Colors.grey.shade300,
-            ),
+            Icon(Icons.history, size: 72, color: Colors.grey),
             SizedBox(height: 16),
             Text(
-              'Chưa có bữa ăn nào được ghi lại',
-              style: AppStyles.body1.copyWith(color: Colors.grey),
+              'Không có dữ liệu để hiển thị',
+              style: TextStyle(fontSize: 18, color: Colors.grey[700]),
+            ),
+            SizedBox(height: 8),
+            Text(
+              _isFilteringByDate
+                ? 'Không có hoạt động nào từ ${DateFormat('dd/MM/yyyy').format(_startDate)} đến ${DateFormat('dd/MM/yyyy').format(_endDate)}'
+                : 'Chưa có hoạt động nào được ghi nhận',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
       );
     }
-    
-    // Nhóm các bữa ăn theo ngày
-    final groupedEntries = <String, List<FoodEntry>>{};
-    for (var entry in entries) {
-      final dateStr = DateFormat('yyyy-MM-dd').format(entry.dateTime);
-      if (!groupedEntries.containsKey(dateStr)) {
-        groupedEntries[dateStr] = [];
-      }
-      groupedEntries[dateStr]!.add(entry);
-    }
-    
-    return AnimationLimiter(
-      child: ListView.builder(
-        physics: BouncingScrollPhysics(),
-        itemCount: groupedEntries.length,
-        padding: EdgeInsets.only(bottom: 24, top: 8),
-        itemBuilder: (context, index) {
-          final dateStr = groupedEntries.keys.elementAt(index);
-          final entriesForDate = groupedEntries[dateStr]!;
-          final date = DateTime.parse(dateStr);
-          
-          // Tính tổng dinh dưỡng cho ngày này
-          double totalCalories = 0;
-          double totalProtein = 0;
-          double totalFat = 0; 
-          double totalCarbs = 0;
-          
-          for (var entry in entriesForDate) {
-            totalCalories += entry.calculateNutritionFromAPI()['calories'] ?? 0;
-            totalProtein += entry.calculateNutritionFromAPI()['protein'] ?? 0;
-            totalFat += entry.calculateNutritionFromAPI()['fat'] ?? 0;
-            totalCarbs += entry.calculateNutritionFromAPI()['carbs'] ?? 0;
-          }
-          
-          return AnimationConfiguration.staggeredList(
-            position: index,
-            duration: AppStyles.mediumAnimationDuration,
-            child: SlideAnimation(
-              verticalOffset: 50.0,
-              child: FadeInAnimation(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+
+    return ListView.builder(
+      padding: EdgeInsets.all(16),
+      itemCount: _combinedEntriesByDate.length,
+      itemBuilder: (context, index) {
+        final date = _combinedEntriesByDate.keys.elementAt(index);
+        final entries = _combinedEntriesByDate[date]!;
+
+        return Card(
+          elevation: 2,
+          margin: EdgeInsets.only(bottom: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with date
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
                   children: [
-                    SizedBox(height: 12),
-                    // Tiêu đề ngày và tổng lượng dinh dưỡng
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _formatDate(date),
-                            style: AppStyles.heading1,
-                          ),
-                          SizedBox(height: 8),
-                          // Tổng lượng dinh dưỡng theo ngày
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade200),
-                            ),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  _buildNutrientSummary(Icons.local_fire_department, '${totalCalories.round()}kcal', Colors.orange),
-                                  SizedBox(width: 16),
-                                  _buildNutrientSummary(Icons.circle, '${totalProtein.round()}g', Colors.blue),
-                                  SizedBox(width: 16),
-                                  _buildNutrientSummary(Icons.circle, '${totalFat.round()}g', Colors.amber),
-                                  SizedBox(width: 16),
-                                  _buildNutrientSummary(Icons.circle, '${totalCarbs.round()}g', Colors.green),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
+                    Icon(Icons.calendar_today, color: Colors.blue.shade700, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      _formatDateHeader(date),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
                       ),
                     ),
-                    SizedBox(height: 12),
-                    ...entriesForDate.asMap().map((i, entry) => MapEntry(
-                      i,
-                      AnimationConfiguration.staggeredList(
-                        position: i,
-                        duration: Duration(milliseconds: 300),
-                        child: SlideAnimation(
-                          horizontalOffset: 50.0,
-                          child: FadeInAnimation(
-                            child: _buildFoodEntryItem(entry),
-                          ),
-                        ),
-                      ),
-                    )).values.toList(),
                   ],
                 ),
               ),
-            ),
-          );
-        },
-      ),
+              // Entries for this date
+              ...entries.map((entry) => _buildEntryItem(entry)).toList(),
+            ],
+          ),
+        );
+      },
     );
+    
+
   }
 
   Widget _buildNutrientSummary(IconData icon, String text, Color color) {
@@ -714,4 +925,166 @@ class _FoodHistoryScreenState extends State<FoodHistoryScreen> with TickerProvid
     String timeStr = DateFormat('HH:mm').format(dateTime);
     return timeStr;
   }
-} 
+
+  // Combined history methods
+  Widget _buildEntryItem(Map<String, dynamic> entry) {
+    final type = entry['type'] as String;
+    final data = entry['data'];
+
+    switch (type) {
+      case 'water':
+        return _buildWaterItem(data as WaterEntry);
+      case 'exercise':
+        return _buildExerciseItem(data as Exercise);
+      case 'food':
+        return _buildFoodItem(data as FoodEntry);
+      default:
+        return SizedBox.shrink();
+    }
+  }
+
+  Widget _buildWaterItem(WaterEntry entry) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Colors.blue.shade100,
+        child: Icon(Icons.water_drop, color: Colors.blue.shade700),
+      ),
+      title: Text('Uống nước'),
+      subtitle: Text('${entry.amount} ml • ${DateFormat('HH:mm').format(entry.timestamp)}'),
+      trailing: Icon(Icons.chevron_right),
+    );
+  }
+
+  Widget _buildExerciseItem(Exercise exercise) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Colors.orange.shade100,
+        child: Icon(Icons.fitness_center, color: Colors.orange.shade700),
+      ),
+      title: Text(exercise.name),
+      subtitle: Text('${exercise.minutes} phút • ${exercise.calories} kcal • ${DateFormat('HH:mm').format(DateTime.parse(exercise.date))}'),
+      trailing: Icon(Icons.chevron_right),
+    );
+  }
+
+  Widget _buildFoodItem(FoodEntry entry) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Colors.green.shade100,
+        child: Icon(Icons.restaurant, color: Colors.green.shade700),
+      ),
+      title: Text(entry.description),
+      subtitle: Text('${entry.mealType} • ${DateFormat('HH:mm').format(entry.dateTime)}'),
+      trailing: PopupMenuButton<String>(
+        icon: Icon(Icons.more_vert, color: Colors.grey.shade700),
+        onSelected: (value) {
+          if (value == 'edit') {
+            _editFoodEntryFromCombined(entry);
+          } else if (value == 'delete') {
+            _deleteFoodEntryFromCombined(entry);
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'edit',
+            child: Row(
+              children: [
+                Icon(Icons.edit_outlined, color: Colors.blue, size: 18),
+                SizedBox(width: 8),
+                Text('Chỉnh sửa'),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                SizedBox(width: 8),
+                Text('Xóa'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDateHeader(String dateStr) {
+    final date = DateTime.parse(dateStr);
+    final now = DateTime.now();
+    final yesterday = now.subtract(Duration(days: 1));
+
+    if (DateFormat('yyyy-MM-dd').format(date) == DateFormat('yyyy-MM-dd').format(now)) {
+      return 'Hôm nay';
+    } else if (DateFormat('yyyy-MM-dd').format(date) == DateFormat('yyyy-MM-dd').format(yesterday)) {
+      return 'Hôm qua';
+    } else {
+      return DateFormat('dd/MM/yyyy').format(date);
+    }
+  }
+
+  // Edit and delete methods for combined view
+  Future<void> _editFoodEntryFromCombined(FoodEntry foodEntry) async {
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FoodNutritionDetailScreen(
+            foodEntry: foodEntry,
+            onSave: (updatedEntry) {
+              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+              foodProvider.updateFoodEntry(updatedEntry);
+            },
+          ),
+        ),
+      );
+
+      if (result != null) {
+        _loadAllData();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể mở màn hình chỉnh sửa: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteFoodEntryFromCombined(FoodEntry foodEntry) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Xóa bữa ăn'),
+        content: Text('Bạn có chắc chắn muốn xóa ${foodEntry.description}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Xóa', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        await foodProvider.deleteFoodEntry(foodEntry.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đã xóa bữa ăn')),
+        );
+        _loadAllData();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể xóa bữa ăn: $e')),
+        );
+      }
+    }
+  }
+}

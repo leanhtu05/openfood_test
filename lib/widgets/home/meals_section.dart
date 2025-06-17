@@ -124,18 +124,6 @@ class MealsSection extends StatelessWidget {
           suggestion: 'Soup, cá hồi, salad',
           calories: '811',
         ),
-        
-        // Bữa phụ
-        _buildMealSection(
-          context: context,
-          mealType: 'Bữa phụ',
-          mealExists: mealsByType.containsKey('Bữa phụ'),
-          entries: mealsByType['Bữa phụ'],
-          icon: Icons.access_time,
-          color: Colors.purple,
-          suggestion: 'Hoa quả, sữa chua, hạt',
-          calories: '506',
-        ),
       ],
     );
   }

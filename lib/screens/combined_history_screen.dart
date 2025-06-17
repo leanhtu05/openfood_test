@@ -3,11 +3,23 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/water_provider.dart';
 import '../providers/exercise_provider.dart';
+import '../providers/food_provider.dart';
 import '../models/water_entry.dart';
 import '../models/exercise.dart';
+import '../models/food_entry.dart';
+import '../screens/food_nutrition_detail_screen.dart';
 
 class CombinedHistoryScreen extends StatefulWidget {
   static const routeName = '/combined_history';
+
+  final Set<String>? initialFilters;
+  final String? customTitle;
+
+  const CombinedHistoryScreen({
+    Key? key,
+    this.initialFilters,
+    this.customTitle,
+  }) : super(key: key);
 
   @override
   _CombinedHistoryScreenState createState() => _CombinedHistoryScreenState();
@@ -29,11 +41,19 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    
-    // Apply route arguments if available (for filtering)
+
+    // Apply initial filters if provided
+    if (widget.initialFilters != null) {
+      _selectedFilters = Set.from(widget.initialFilters!);
+      _showWaterItems = _selectedFilters.contains('Nước');
+      _showExerciseItems = _selectedFilters.contains('Bài tập');
+      _showFoodItems = _selectedFilters.contains('Thực phẩm');
+    }
+
+    // Apply route arguments if available (for filtering) - fallback
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
-      if (args is Map<String, dynamic>) {
+      if (args is Map<String, dynamic> && widget.initialFilters == null) {
         final filterType = args['filter'] as String?;
         if (filterType != null) {
           setState(() {
@@ -42,7 +62,7 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
             _showWaterItems = false;
             _showExerciseItems = false;
             _showFoodItems = false;
-            
+
             // Apply selected filter
             if (filterType == 'water') {
               _selectedFilters.add('Nước');
@@ -65,7 +85,7 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
         }
       }
     });
-    
+
     _loadAllData();
   }
 
@@ -82,9 +102,13 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
       // Load exercise data
       final exerciseProvider = Provider.of<ExerciseProvider>(context, listen: false);
       await exerciseProvider.loadAllExercises();
-      
+
+      // Load food data
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      await foodProvider.loadData();
+
       // Combine data
-      _combineData(waterProvider, exerciseProvider);
+      _combineData(waterProvider, exerciseProvider, foodProvider);
       
       setState(() {
         _isLoading = false;
@@ -100,9 +124,9 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
     }
   }
 
-  void _combineData(WaterProvider waterProvider, ExerciseProvider exerciseProvider) {
+  void _combineData(WaterProvider waterProvider, ExerciseProvider exerciseProvider, FoodProvider foodProvider) {
     Map<String, List<dynamic>> combined = {};
-    
+
     final startDateFormatted = DateFormat('yyyy-MM-dd').format(_startDate);
     final endDateFormatted = DateFormat('yyyy-MM-dd').format(_endDate.add(Duration(days: 1)));
     
@@ -143,7 +167,25 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
         }
       });
     }
-    
+
+    // Process food entries
+    if (_showFoodItems) {
+      for (var entry in foodProvider.allFoodEntries) {
+        final date = DateFormat('yyyy-MM-dd').format(entry.dateTime);
+        // Nếu không áp dụng bộ lọc ngày hoặc mục nằm trong phạm vi ngày đã chọn
+        if (!_isFilteringByDate || (date.compareTo(startDateFormatted) >= 0 && date.compareTo(endDateFormatted) < 0)) {
+          if (!combined.containsKey(date)) {
+            combined[date] = [];
+          }
+          combined[date]!.add({
+            'type': 'food',
+            'data': entry,
+            'timestamp': entry.dateTime,
+          });
+        }
+      }
+    }
+
     // Sort entries by timestamp for each date
     combined.forEach((date, entries) {
       entries.sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
@@ -376,19 +418,24 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
         final entries = _combinedEntriesByDate[date]!;
         final dateTime = DateTime.parse(date);
         
-        // Tính tổng số calories từ bài tập và tổng lượng nước trong ngày
-        int totalCalories = 0;
+        // Tính tổng số calories từ bài tập, tổng lượng nước và calories từ thực phẩm trong ngày
+        int totalExerciseCalories = 0;
+        double totalFoodCalories = 0;
         int totalWater = 0;
         int exerciseCount = 0;
         int waterCount = 0;
-        
+        int foodCount = 0;
+
         for (var entry in entries) {
           if (entry['type'] == 'exercise') {
-            totalCalories += (entry['data'] as Exercise).calories;
+            totalExerciseCalories += (entry['data'] as Exercise).calories;
             exerciseCount++;
           } else if (entry['type'] == 'water') {
             totalWater += (entry['data'] as WaterEntry).amount;
             waterCount++;
+          } else if (entry['type'] == 'food') {
+            totalFoodCalories += (entry['data'] as FoodEntry).totalCalories;
+            foodCount++;
           }
         }
         
@@ -432,10 +479,10 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                     SizedBox(height: 4),
                     Row(
                       children: [
-                        if (totalCalories > 0)
+                        if (totalExerciseCalories > 0)
                           Chip(
                             label: Text(
-                              '${totalCalories} kcal',
+                              '🔥 ${totalExerciseCalories} kcal',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -447,10 +494,25 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                             padding: EdgeInsets.zero,
                           ),
                         SizedBox(width: 8),
+                        if (totalFoodCalories > 0)
+                          Chip(
+                            label: Text(
+                              '🍽️ ${totalFoodCalories.toInt()} kcal',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                            backgroundColor: Colors.green,
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                          ),
+                        SizedBox(width: 8),
                         if (totalWater > 0)
                           Chip(
                             label: Text(
-                              '${totalWater} ml',
+                              '💧 ${totalWater} ml',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -463,13 +525,15 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                           ),
                       ],
                     ),
-                    if (exerciseCount > 0 || waterCount > 0)
+                    if (exerciseCount > 0 || waterCount > 0 || foodCount > 0)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Row(
+                        child: Wrap(
+                          spacing: 16,
                           children: [
                             if (exerciseCount > 0)
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.fitness_center,
@@ -478,7 +542,7 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                                   ),
                                   SizedBox(width: 4),
                                   Text(
-                                    '$exerciseCount hoạt động',
+                                    '$exerciseCount bài tập',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.grey[700],
@@ -486,10 +550,28 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                                   ),
                                 ],
                               ),
-                            if (exerciseCount > 0 && waterCount > 0)
-                              SizedBox(width: 16),
+                            if (foodCount > 0)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.restaurant,
+                                    size: 14,
+                                    color: Colors.green,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    '$foodCount bữa ăn',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             if (waterCount > 0)
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.water_drop,
@@ -498,7 +580,7 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                                   ),
                                   SizedBox(width: 4),
                                   Text(
-                                    '$waterCount lần uống nước',
+                                    '$waterCount lần uống',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.grey[700],
@@ -527,6 +609,8 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                     return _buildWaterEntryListItem(entry['data'] as WaterEntry);
                   } else if (entry['type'] == 'exercise' && _showExerciseItems) {
                     return _buildExerciseListItem(entry['data'] as Exercise);
+                  } else if (entry['type'] == 'food' && _showFoodItems) {
+                    return _buildFoodEntryListItem(entry['data'] as FoodEntry);
                   } else {
                     return SizedBox.shrink();
                   }
@@ -619,6 +703,97 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
                 Icon(Icons.edit_outlined, color: Colors.blue, size: 18),
                 SizedBox(width: 8),
                 Text('Chỉnh sửa'),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                SizedBox(width: 8),
+                Text('Xóa'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFoodEntryListItem(FoodEntry foodEntry) {
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          _getFoodIcon(foodEntry.mealType),
+          color: Colors.green,
+          size: 20,
+        ),
+      ),
+      title: Text(
+        foodEntry.description,
+        style: TextStyle(fontWeight: FontWeight.w500),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${foodEntry.mealType} - ${foodEntry.totalCalories.toInt()} kcal',
+            style: TextStyle(fontSize: 12),
+          ),
+          if (foodEntry.totalProtein > 0 || foodEntry.totalCarbs > 0 || foodEntry.totalFat > 0)
+            Text(
+              'P: ${foodEntry.totalProtein.toInt()}g | C: ${foodEntry.totalCarbs.toInt()}g | F: ${foodEntry.totalFat.toInt()}g',
+              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            ),
+          Text(
+            DateFormat('HH:mm').format(foodEntry.dateTime),
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
+      ),
+      isThreeLine: true,
+      trailing: PopupMenuButton<String>(
+        icon: Icon(Icons.more_vert, color: Colors.grey.shade700),
+        onSelected: (value) {
+          if (value == 'edit') {
+            _editFoodEntry(foodEntry);
+          } else if (value == 'favorite') {
+            _toggleFoodFavorite(foodEntry);
+          } else if (value == 'delete') {
+            _deleteFoodEntry(foodEntry);
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'edit',
+            child: Row(
+              children: [
+                Icon(Icons.edit_outlined, color: Colors.blue, size: 18),
+                SizedBox(width: 8),
+                Text('Chỉnh sửa'),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'favorite',
+            child: Row(
+              children: [
+                Icon(
+                  foodEntry.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: foodEntry.isFavorite ? Colors.red : Colors.grey,
+                  size: 18,
+                ),
+                SizedBox(width: 8),
+                Text(foodEntry.isFavorite ? 'Bỏ yêu thích' : 'Yêu thích'),
               ],
             ),
           ),
@@ -762,31 +937,45 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
   }
   
   String _getAppBarTitle() {
+    // Use custom title if provided
+    if (widget.customTitle != null) {
+      return widget.customTitle!;
+    }
+
     List<String> titles = [];
     if (_showWaterItems) titles.add('Nước');
     if (_showExerciseItems) titles.add('Bài tập');
     if (_showFoodItems) titles.add('Thực phẩm');
-    
+
     return titles.join(' & ');
   }
   
   Widget _getAppBarIcon() {
-    if (_showWaterItems && _showExerciseItems) {
+    List<Widget> icons = [];
+
+    if (_showWaterItems) {
+      icons.add(Icon(Icons.water_drop, color: Colors.blue, size: 18));
+    }
+    if (_showExerciseItems) {
+      icons.add(Icon(Icons.fitness_center, color: Colors.orange, size: 18));
+    }
+    if (_showFoodItems) {
+      icons.add(Icon(Icons.restaurant, color: Colors.green, size: 18));
+    }
+
+    if (icons.length > 1) {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.celebration, size: 24, color: Colors.amber),
           SizedBox(width: 8),
-          Icon(Icons.water_drop, color: Colors.blue, size: 18),
-          Icon(Icons.fitness_center, color: Colors.orange, size: 18),
+          ...icons,
         ],
       );
-    } else if (_showWaterItems) {
-      return Icon(Icons.water_drop, color: Colors.blue, size: 18);
-    } else if (_showExerciseItems) {
-      return Icon(Icons.fitness_center, color: Colors.orange, size: 18);
+    } else if (icons.isNotEmpty) {
+      return icons.first;
     } else {
-      return Icon(Icons.fastfood, color: Colors.green, size: 18);
+      return Icon(Icons.history, color: Colors.grey, size: 18);
     }
   }
 
@@ -841,6 +1030,162 @@ class _CombinedHistoryScreenState extends State<CombinedHistoryScreen> {
         return Icons.sports_soccer;
       default:
         return Icons.fitness_center;
+    }
+  }
+
+  // Phương thức helper để lấy icon phù hợp dựa trên loại bữa ăn
+  IconData _getFoodIcon(String mealType) {
+    switch (mealType.toLowerCase()) {
+      case 'sáng':
+      case 'breakfast':
+      case 'bữa sáng':
+        return Icons.wb_sunny;
+      case 'trưa':
+      case 'lunch':
+      case 'bữa trưa':
+        return Icons.wb_sunny_outlined;
+      case 'tối':
+      case 'dinner':
+      case 'bữa tối':
+        return Icons.nightlight_round;
+      default:
+        return Icons.restaurant;
+    }
+  }
+
+  // Xóa food entry - đồng bộ với food_history_screen
+  Future<void> _deleteFoodEntry(FoodEntry foodEntry) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Xóa bữa ăn', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(
+          'Bạn có chắc chắn muốn xóa ${foodEntry.description}?',
+          style: TextStyle(fontSize: 16),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        actions: [
+          TextButton(
+            child: Text('Hủy', style: TextStyle(fontSize: 16)),
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          TextButton(
+            child: Text(
+              'Xóa',
+              style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        await foodProvider.deleteFoodEntry(foodEntry.id);
+
+        // Hiển thị snackbar giống food_history_screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 16),
+                SizedBox(width: 8),
+                Text('Đã xóa bữa ăn', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+            behavior: SnackBarBehavior.fixed,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: Colors.green.shade600,
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+
+        _loadAllData();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể xóa bữa ăn: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Chỉnh sửa food entry - đồng bộ với food_history_screen
+  Future<void> _editFoodEntry(FoodEntry foodEntry) async {
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FoodNutritionDetailScreen(
+            foodEntry: foodEntry,
+            onSave: (updatedEntry) {
+              // Cập nhật food entry thông qua provider
+              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+              foodProvider.updateFoodEntry(updatedEntry);
+            },
+          ),
+        ),
+      );
+
+      // Reload data sau khi chỉnh sửa
+      if (result != null) {
+        _loadAllData();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể mở màn hình chỉnh sửa: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Toggle favorite status cho food entry - đồng bộ với food_history_screen
+  void _toggleFoodFavorite(FoodEntry foodEntry) {
+    try {
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      foodProvider.toggleFavorite(foodEntry.id, !foodEntry.isFavorite);
+
+      // Hiển thị thông báo
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                foodEntry.isFavorite ? Icons.favorite_border : Icons.favorite,
+                color: Colors.white,
+                size: 16,
+              ),
+              SizedBox(width: 8),
+              Text(
+                foodEntry.isFavorite ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          backgroundColor: foodEntry.isFavorite ? Colors.grey.shade600 : Colors.red.shade600,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // Reload data để cập nhật UI
+      _loadAllData();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể cập nhật trạng thái yêu thích: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }

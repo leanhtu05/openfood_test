@@ -32,6 +32,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../screens/ai_chat_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/sync_reset_screen.dart';
+import '../utils/auth_helper.dart';
 
 import '../widgets/home/nutrition_section.dart';
 import '../widgets/home/exercise_section.dart';
@@ -612,17 +613,34 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     color: AppColors.food,
                     onTap: () async {
                       Navigator.pop(context);
-                      // Navigate to food logging
-                      final result = await Navigator.push(
+
+                      // Kiểm tra đăng nhập trước khi vào food logging
+                      final success = await AuthHelper.requireLogin(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => FoodLoggingScreen(initialDate: _selectedDate),
-                        ),
+                        onAuthenticated: () async {
+                          // Navigate to food logging
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => FoodLoggingScreen(initialDate: _selectedDate),
+                            ),
+                          );
+
+                          // Handle result and reload data
+                          if (result != null) {
+                            await _loadDataForSelectedDate();
+                          }
+                        },
+                        title: 'Ghi lại bữa ăn',
+                        message: 'Mời bạn đăng nhập để trải nghiệm tính năng ghi lại bữa ăn và nhận diện thức ăn bằng AI',
+                        feature: 'ghi lại bữa ăn',
                       );
 
-                      // Handle result and reload data
-                      if (result != null) {
-                        await _loadDataForSelectedDate();
+                      if (!success) {
+                        AuthHelper.showLoginRequiredSnackBar(
+                          context,
+                          feature: 'ghi lại bữa ăn',
+                        );
                       }
                     },
                   ),
@@ -672,9 +690,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     icon: Icons.restaurant_menu,
                     label: 'Kế hoạch',
                     color: Colors.orange.shade600,
-                    onTap: () {
+                    onTap: () async {
                       Navigator.pop(context);
-                      Navigator.pushNamed(context, '/diet-plan');
+
+                      // Kiểm tra đăng nhập trước khi vào trang kế hoạch
+                      final success = await AuthHelper.requireLogin(
+                        context,
+                        onAuthenticated: () => Navigator.pushNamed(context, '/diet-plan'),
+                        title: 'Xem kế hoạch ăn',
+                        message: 'Mời bạn đăng nhập để trải nghiệm tính năng kế hoạch ăn cá nhân hóa',
+                        feature: 'kế hoạch ăn',
+                      );
+
+                      if (!success) {
+                        AuthHelper.showLoginRequiredSnackBar(
+                          context,
+                          feature: 'kế hoạch ăn',
+                        );
+                      }
                     },
                   ),
                   _buildQuickActionButton(
@@ -927,21 +960,37 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           SizedBox(height: 8),
           MealsSection(
             onMealTap: () async {
-              // Push to the food logging screen with current time-based meal type
-              String currentMealType = _getCurrentMealTypeByTime();
-              
-              final result = await Navigator.push(
+              // Kiểm tra đăng nhập trước khi vào food logging
+              final success = await AuthHelper.requireLogin(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => FoodLoggingScreen(
-                    initialDate: _selectedDate,
-                    initialMealType: currentMealType,
-                  ),
-                ),
+                onAuthenticated: () async {
+                  // Push to the food logging screen with current time-based meal type
+                  String currentMealType = _getCurrentMealTypeByTime();
+
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FoodLoggingScreen(
+                        initialDate: _selectedDate,
+                        initialMealType: currentMealType,
+                      ),
+                    ),
+                  );
+                  // Process result and reload data when returning
+                  if (result != null) {
+                    await _loadDataForSelectedDate();
+                  }
+                },
+                title: 'Ghi lại bữa ăn',
+                message: 'Mời bạn đăng nhập để trải nghiệm tính năng ghi lại bữa ăn và nhận diện thức ăn bằng AI',
+                feature: 'ghi lại bữa ăn',
               );
-              // Process result and reload data when returning
-              if (result != null) {
-                await _loadDataForSelectedDate();
+
+              if (!success) {
+                AuthHelper.showLoginRequiredSnackBar(
+                  context,
+                  feature: 'ghi lại bữa ăn',
+                );
               }
             },
             onFoodItemTap: _handleFoodItemTap,

@@ -202,7 +202,6 @@ class AppIcons {
   static const String breakfast = '🍳';
   static const String lunch = '🥗';
   static const String dinner = '🍝';
-  static const String snack = '🍌';
 }
 
 // API Keys

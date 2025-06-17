@@ -807,9 +807,6 @@ Color getMealColor(String mealType) {
     case 'tối':
     case 'bữa tối':
       return Colors.indigo;
-    case 'phụ':
-    case 'bữa phụ':
-      return Colors.purple;
     default:
       return Colors.green;
   }
@@ -820,6 +817,5 @@ String getMealDisplayName(String mealType) {
   if (mealType.toLowerCase().contains('sáng')) return 'Bữa sáng';
   if (mealType.toLowerCase().contains('trưa')) return 'Bữa trưa';
   if (mealType.toLowerCase().contains('tối')) return 'Bữa tối';
-  if (mealType.toLowerCase().contains('phụ')) return 'Bữa phụ';
   return mealType;
-} 
+}

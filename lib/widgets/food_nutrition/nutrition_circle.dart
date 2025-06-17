@@ -153,7 +153,8 @@ class _NutritionCircleState extends State<NutritionCircle> with SingleTickerProv
       return SizedBox.shrink();
     }
     
-    if (widget.value == 0 && !widget.hideWhenZero) {
+    // Chỉ hiển thị text đơn giản khi value = 0 VÀ không có showPercentage VÀ không có showTotalValue
+    if (widget.value == 0 && !widget.hideWhenZero && !widget.showPercentage && !widget.showTotalValue) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: Row(

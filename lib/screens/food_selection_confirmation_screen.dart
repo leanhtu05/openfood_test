@@ -476,17 +476,13 @@ class _FoodSelectionConfirmationScreenState extends State<FoodSelectionConfirmat
   String _getMealTypeBasedOnTime() {
     final now = DateTime.now();
     final hour = now.hour;
-    
+
     if (hour >= 5 && hour < 10) {
       return 'Bữa sáng';
-    } else if (hour >= 10 && hour < 14) {
+    } else if (hour >= 10 && hour < 16) {
       return 'Bữa trưa';
-    } else if (hour >= 14 && hour < 17) {
-      return 'Bữa phụ';
-    } else if (hour >= 17 && hour < 21) {
-      return 'Bữa tối';
     } else {
-      return 'Bữa phụ';
+      return 'Bữa tối';
     }
   }
 }

@@ -667,10 +667,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 right: 20,
                 child: _buildWeightLabel(
                   '${currentWeight.toStringAsFixed(1)} kg',
-                  'Mục tiêu',
+                  'Hiện tại',
                   Colors.green[400]!
                 ),
               ),
+
+              // Thêm label cho cân nặng mục tiêu nếu có
+              if (targetWeight > 0)
+                Positioned(
+                  top: 80,
+                  right: 20,
+                  child: _buildWeightLabel(
+                    '${targetWeight.toStringAsFixed(1)} kg',
+                    'Mục tiêu',
+                    Colors.blue[400]!
+                  ),
+                ),
             ],
           ),
         ),
@@ -1096,24 +1108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.grey[50],
               ),
               padding: EdgeInsets.all(16),
-              child: Stack(
-                children: [
-                  _buildBarChart(),
-                  // Nút giảm giá ở góc phải
-                  Positioned(
-                    bottom: 10,
-                    right: 10,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-
-                    ),
-                  ),
-                ],
-              ),
+              child: _buildBarChart(),
             ),
             SizedBox(height: 16),
             // Thêm chú thích
@@ -1125,6 +1120,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildLegendItem("Bắt đầu", Colors.red.shade400),
                 _buildLegendItem("Kỳ nghỉ 🏖️", Colors.orange.shade400),
                 _buildLegendItem("Hiện tại ✅", Colors.green.shade400),
+                // Thêm chú thích cho mục tiêu nếu có
+                if (Provider.of<udp.UserDataProvider>(context, listen: false).targetWeightKg > 0)
+                  _buildLegendItem("Mục tiêu 🎯", Colors.blue.shade400),
               ],
             ),
           ],

@@ -28,6 +28,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:intl/intl.dart';
 import '../widgets/meal_detail_card.dart';
+import '../utils/auth_helper.dart';
 
 // 🎨 Clean & Simple Color Scheme - Inspired by reference image
 class DietPlanColors {
@@ -360,13 +361,27 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     try {
       // Kiểm tra xác thực
       final authProvider = Provider.of<UserAuthProvider>(context, listen: false);
-      if (!authProvider.isAuthenticated) {
-        throw Exception('Người dùng chưa đăng nhập');
+      if (!authProvider.isAuthenticated || FirebaseAuth.instance.currentUser?.isAnonymous == true) {
+        // Người dùng chưa đăng nhập, dừng loading và return
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasError = false;
+          });
+        }
+        return;
       }
 
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
-        throw Exception('Không xác định được ID người dùng');
+        // Không xác định được ID người dùng, dừng loading và return
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasError = false;
+          });
+        }
+        return;
       }
 
       print('🔍 Đang tìm kiếm kế hoạch ăn cho người dùng: $userId');
@@ -845,13 +860,20 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               },
               tooltip: 'Danh sách mua sắm',
             ),
-            IconButton(
-              icon: Icon(
-                Icons.refresh,
-                color: DietPlanColors.textSecondary,
+            AuthHelper.requireAuthWrapper(
+              context: context,
+              onTap: _performGenerateNewMealPlan,
+              feature: 'tạo kế hoạch ăn',
+              title: 'Tạo kế hoạch ăn mới',
+              message: 'Mời bạn đăng nhập để trải nghiệm tính năng tạo kế hoạch ăn cá nhân hóa bằng AI',
+              child: IconButton(
+                icon: Icon(
+                  Icons.refresh,
+                  color: DietPlanColors.textSecondary,
+                ),
+                onPressed: () {}, // onPressed sẽ được xử lý bởi wrapper
+                tooltip: 'Tạo kế hoạch mới',
               ),
-              onPressed: _generateNewMealPlan,
-              tooltip: 'Tạo kế hoạch mới',
             ),
           ],
         ),
@@ -908,6 +930,83 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     );
   }
 
+  Widget _buildLoginPrompt() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: DietPlanColors.primaryLight,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.restaurant_menu,
+                size: 40,
+                color: DietPlanColors.primary,
+              ),
+            ),
+            SizedBox(height: 24),
+            Text(
+              'Kế hoạch ăn cá nhân hóa',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: DietPlanColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Mời bạn đăng nhập để trải nghiệm tính năng tạo kế hoạch ăn cá nhân hóa bằng AI',
+              style: TextStyle(
+                fontSize: 16,
+                color: DietPlanColors.textSecondary,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 32),
+            ElevatedButton.icon(
+              icon: Icon(Icons.login, size: 20),
+              label: Text('Đăng nhập ngay', style: TextStyle(fontSize: 16)),
+              onPressed: () {
+                Navigator.pushNamed(context, '/auth');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: DietPlanColors.primary,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                elevation: 2,
+              ),
+            ),
+            SizedBox(height: 16),
+            TextButton(
+              onPressed: () {
+                // Hiển thị mock data để người dùng có thể xem trước
+                _loadMockData();
+              },
+              child: Text(
+                'Xem trước kế hoạch mẫu',
+                style: TextStyle(
+                  color: DietPlanColors.textSecondary,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadingState() {
     return Center(
       child: Column(
@@ -922,6 +1021,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   }
 
   Widget _buildBody() {
+    // Kiểm tra trạng thái đăng nhập trước
+    final authProvider = Provider.of<UserAuthProvider>(context, listen: false);
+    if (!authProvider.isAuthenticated || FirebaseAuth.instance.currentUser?.isAnonymous == true) {
+      return _buildLoginPrompt();
+    }
+
     if (_mealPlan == null) {
       return Center(
         child: Column(
@@ -1000,7 +1105,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Kế hoạch ăn kiêng',
+                        'Giảm cân cân bằng cho Tú',
                         style: TextStyle(
                           fontSize: 14,
                           color: DietPlanColors.textSecondary,
@@ -2467,6 +2572,26 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
 
   // Hàm tạo kế hoạch ăn mới
   Future<void> _generateNewMealPlan() async {
+    // Kiểm tra đăng nhập trước khi tạo kế hoạch
+    final success = await AuthHelper.requireLogin(
+      context,
+      onAuthenticated: () => _performGenerateNewMealPlan(),
+      title: 'Tạo kế hoạch ăn mới',
+      message: 'Mời bạn đăng nhập để trải nghiệm tính năng tạo kế hoạch ăn cá nhân hóa bằng AI',
+      feature: 'tạo kế hoạch ăn',
+    );
+
+    if (!success) {
+      // Người dùng không đăng nhập, hiển thị thông báo
+      AuthHelper.showLoginRequiredSnackBar(
+        context,
+        feature: 'tạo kế hoạch ăn',
+      );
+    }
+  }
+
+  // Thực hiện tạo kế hoạch ăn mới sau khi đã đăng nhập
+  Future<void> _performGenerateNewMealPlan() async {
     // Hiển thị hộp thoại xác nhận trước
     bool confirmed = await showDialog(
       context: context,
