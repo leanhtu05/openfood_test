@@ -1283,40 +1283,44 @@ class FoodProvider with ChangeNotifier {
   
   // Tải dữ liệu
   Future<void> loadData() async {
+    debugPrint('🔄 FoodProvider: Bắt đầu loadData cho ngày $_selectedDate');
+
     // Kiểm tra xem có người dùng đang đăng nhập không
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      debugPrint('⚠️ Không có người dùng đăng nhập, không thể tải dữ liệu từ Firestore');
+      debugPrint('⚠️ Không có người dùng đăng nhập, sử dụng dữ liệu local');
+      notifyListeners();
       return;
     }
-    
-    // Xóa các món trùng lặp trước khi tải dữ liệu mới
-    await removeDuplicateFoodEntries();
-    
+
     // Kiểm tra xem đã có dữ liệu cho ngày được chọn chưa
-    final hasDataForSelectedDate = _foodEntries.any((entry) => 
+    final hasDataForSelectedDate = _foodEntries.any((entry) =>
         entry.dateTime.toIso8601String().split('T')[0] == _selectedDate);
-    
+
     // Nếu đã có dữ liệu cho ngày được chọn, không cần tải lại
     if (hasDataForSelectedDate) {
       debugPrint('ℹ️ Đã có dữ liệu cho ngày $_selectedDate, không cần tải lại');
+      notifyListeners();
       return;
     }
     
     try {
       if (ApiService.useDirectFirestore) {
-        // Ưu tiên lấy dữ liệu từ Firestore trực tiếp
+        // Ưu tiên lấy dữ liệu từ Firestore trực tiếp với timeout
         try {
           final firestore = FirebaseFirestore.instance;
-          debugPrint('🔄 Truy vấn trực tiếp vào Firestore cho thực phẩm ngày $_selectedDate...');
-          
-          // Thử truy vấn trực tiếp bằng trường date
-          debugPrint('   🔍 Thử truy vấn với trường date="$_selectedDate"');
+          debugPrint('🔄 Truy vấn Firestore cho ngày $_selectedDate (timeout: 10s)...');
+
+          // Thêm timeout để tránh loading vô hạn
           final directQuery = await firestore
               .collection('food_entries')
               .where('user_id', isEqualTo: user.uid)
               .where('date', isEqualTo: _selectedDate)
-              .get();
+              .get()
+              .timeout(Duration(seconds: 10), onTimeout: () {
+                debugPrint('⏰ Timeout khi truy vấn Firestore, sử dụng dữ liệu local');
+                throw TimeoutException('Firestore query timeout', Duration(seconds: 10));
+              });
           
           if (directQuery.docs.isNotEmpty) {
             debugPrint('   ✅ Tìm thấy ${directQuery.docs.length} mục thực phẩm bằng truy vấn trực tiếp');

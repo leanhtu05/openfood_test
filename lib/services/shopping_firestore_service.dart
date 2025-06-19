@@ -135,12 +135,40 @@ class ShoppingFirestoreService {
 
       return querySnapshot.docs.map((doc) {
         final data = doc.data();
-        return GroceryCostAnalysis.fromJson(data);
+        // Xử lý timestamp fields trước khi parse
+        final processedData = _processTimestampFields(data);
+        return GroceryCostAnalysis.fromJson(processedData);
       }).toList();
     } catch (e) {
       print('❌ Lỗi lấy cost analyses: $e');
       return [];
     }
+  }
+
+  /// Xử lý các trường timestamp từ Firestore
+  static Map<String, dynamic> _processTimestampFields(Map<String, dynamic> data) {
+    final result = Map<String, dynamic>.from(data);
+
+    // Danh sách các trường có thể là timestamp
+    final timestampFields = [
+      'created_at',
+      'updated_at',
+      'analysis_date',
+      'recorded_at',
+      'last_updated',
+    ];
+
+    for (final field in timestampFields) {
+      if (result.containsKey(field)) {
+        final value = result[field];
+        if (value is Timestamp) {
+          // Chuyển Timestamp thành ISO string để GroceryCostAnalysis.fromJson có thể parse
+          result[field] = value.toDate().toIso8601String();
+        }
+      }
+    }
+
+    return result;
   }
 
   // ===== SHOPPING HISTORY =====

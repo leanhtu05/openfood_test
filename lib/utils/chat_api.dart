@@ -219,7 +219,7 @@ class ChatApi {
             'user_id': userId,
             'chat_id': chatId,
           }),
-        ).timeout(const Duration(seconds: 15)),
+        ).timeout(const Duration(seconds: 90)),  // Tăng timeout lên 90 giây
         retryWithToken: (newToken) => http.post(
           Uri.parse('$baseUrl/chat'),
           headers: {
@@ -231,7 +231,7 @@ class ChatApi {
             'user_id': userId,
             'chat_id': chatId,
           }),
-        ).timeout(const Duration(seconds: 15)),
+        ).timeout(const Duration(seconds: 90)),  // Tăng timeout lên 90 giây
       );
 
       print('🔷 Nhận response với status: ${response.statusCode}');

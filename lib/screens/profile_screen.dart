@@ -1117,12 +1117,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                _buildLegendItem("Bắt đầu", Colors.red.shade400),
-                _buildLegendItem("Kỳ nghỉ 🏖️", Colors.orange.shade400),
                 _buildLegendItem("Hiện tại ✅", Colors.green.shade400),
-                // Thêm chú thích cho mục tiêu nếu có
-                if (Provider.of<udp.UserDataProvider>(context, listen: false).targetWeightKg > 0)
-                  _buildLegendItem("Mục tiêu 🎯", Colors.blue.shade400),
+                _buildLegendItem("Sự kiện 🎉", Colors.orange.shade400),
+                _buildLegendItem("Mục tiêu 🎯", Colors.blue.shade400),
               ],
             ),
           ],
@@ -1262,56 +1259,88 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final goal = userDataProvider.goal; // Mục tiêu thật
     final pace = userDataProvider.pace; // Tốc độ thật (kg/tuần)
 
-    // Tính toán dữ liệu mẫu dựa trên thông tin thực tế của người dùng
+    // Tính toán dữ liệu biểu đồ theo thứ tự: Hiện tại → Sự kiện → Mục tiêu
     List<FlSpot> mockData = [];
+
+    // Lấy thông tin sự kiện từ UserDataProvider
+    final eventDate = userDataProvider.eventDate;
+    final eventType = userDataProvider.eventType;
+
+    // Tính toán cân nặng tại thời điểm sự kiện (giữa hiện tại và mục tiêu)
+    double eventWeight;
+    if (targetWeight > 0) {
+      // Có mục tiêu cụ thể - sự kiện ở giữa
+      eventWeight = (currentWeight + targetWeight) / 2;
+    } else {
+      // Không có mục tiêu cụ thể - tính dựa trên goal và pace
+      if (goal == "Giảm cân") {
+        eventWeight = currentWeight - (pace * 3); // Giảm 3 tuần
+      } else if (goal == "Tăng cân") {
+        eventWeight = currentWeight + (pace * 3); // Tăng 3 tuần
+      } else {
+        eventWeight = currentWeight; // Duy trì
+      }
+    }
+
+    // Tạo dữ liệu biểu đồ với 7 điểm
     if (goal == "Giảm cân") {
       if (targetWeight > 0) {
-        // Có mục tiêu cụ thể
-        double weightDifference = currentWeight - targetWeight;
-        double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-        double startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6));
-
-        for (int i = 0; i < 7; i++) {
-          double weightAtWeek = startWeight - (pace * i);
-          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
-        }
+        // Có mục tiêu cụ thể: Hiện tại → Sự kiện → Mục tiêu
+        mockData = [
+          FlSpot(0, currentWeight), // Hiện tại
+          FlSpot(1, currentWeight - (pace * 0.5)),
+          FlSpot(2, currentWeight - (pace * 1)),
+          FlSpot(3, eventWeight), // Sự kiện
+          FlSpot(4, eventWeight - (pace * 1)),
+          FlSpot(5, eventWeight - (pace * 2)),
+          FlSpot(6, targetWeight), // Mục tiêu
+        ];
       } else {
-        // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
-        double startWeight = currentWeight + (pace * 6);
-        for (int i = 0; i < 7; i++) {
-          double weightAtWeek = startWeight - (pace * i);
-          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
-        }
+        // Không có mục tiêu cụ thể
+        mockData = [
+          FlSpot(0, currentWeight), // Hiện tại
+          FlSpot(1, currentWeight - (pace * 0.5)),
+          FlSpot(2, currentWeight - (pace * 1)),
+          FlSpot(3, eventWeight), // Sự kiện
+          FlSpot(4, eventWeight - (pace * 1)),
+          FlSpot(5, eventWeight - (pace * 2)),
+          FlSpot(6, eventWeight - (pace * 3)), // Mục tiêu ước tính
+        ];
       }
     } else if (goal == "Tăng cân") {
       if (targetWeight > 0) {
-        // Có mục tiêu cụ thể
-        double weightDifference = targetWeight - currentWeight;
-        double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-        double startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6));
-
-        for (int i = 0; i < 7; i++) {
-          double weightAtWeek = startWeight + (pace * i);
-          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
-        }
+        // Có mục tiêu cụ thể: Hiện tại → Sự kiện → Mục tiêu
+        mockData = [
+          FlSpot(0, currentWeight), // Hiện tại
+          FlSpot(1, currentWeight + (pace * 0.5)),
+          FlSpot(2, currentWeight + (pace * 1)),
+          FlSpot(3, eventWeight), // Sự kiện
+          FlSpot(4, eventWeight + (pace * 1)),
+          FlSpot(5, eventWeight + (pace * 2)),
+          FlSpot(6, targetWeight), // Mục tiêu
+        ];
       } else {
-        // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
-        double startWeight = currentWeight - (pace * 6);
-        for (int i = 0; i < 7; i++) {
-          double weightAtWeek = startWeight + (pace * i);
-          mockData.add(FlSpot(i.toDouble(), weightAtWeek));
-        }
+        // Không có mục tiêu cụ thể
+        mockData = [
+          FlSpot(0, currentWeight), // Hiện tại
+          FlSpot(1, currentWeight + (pace * 0.5)),
+          FlSpot(2, currentWeight + (pace * 1)),
+          FlSpot(3, eventWeight), // Sự kiện
+          FlSpot(4, eventWeight + (pace * 1)),
+          FlSpot(5, eventWeight + (pace * 2)),
+          FlSpot(6, eventWeight + (pace * 3)), // Mục tiêu ước tính
+        ];
       }
     } else {
       // Duy trì cân nặng - biến động nhẹ quanh cân nặng hiện tại
       mockData = [
-        FlSpot(0, currentWeight + 0.3),
-        FlSpot(1, currentWeight - 0.2),
-        FlSpot(2, currentWeight + 0.1),
-        FlSpot(3, currentWeight - 0.1),
-        FlSpot(4, currentWeight + 0.2),
-        FlSpot(5, currentWeight - 0.1),
-        FlSpot(6, currentWeight),
+        FlSpot(0, currentWeight), // Hiện tại
+        FlSpot(1, currentWeight + 0.1),
+        FlSpot(2, currentWeight - 0.1),
+        FlSpot(3, currentWeight + 0.2), // Sự kiện (có thể tăng nhẹ do ăn uống)
+        FlSpot(4, currentWeight - 0.1),
+        FlSpot(5, currentWeight + 0.1),
+        FlSpot(6, currentWeight), // Mục tiêu (duy trì)
       ];
     }
 
@@ -1333,12 +1362,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
 
-    // Tạo nhãn cho trục X (ngày tháng)
+    // Tạo nhãn cho trục X theo thứ tự: Hiện tại → Sự kiện → Mục tiêu
     final now = DateTime.now();
     final xLabels = <String>[];
+
     for (int i = 0; i < chartData.length; i++) {
-      final date = now.subtract(Duration(days: (chartData.length - 1 - i) * 4));
-      xLabels.add('thg ${date.month} ${date.day}');
+      if (i == 0) {
+        xLabels.add('Hiện tại');
+      } else if (i == 3) {
+        // Hiển thị ngày sự kiện nếu có, nếu không thì hiển thị "Sự kiện"
+        if (eventDate != null) {
+          xLabels.add('${eventDate.day}/${eventDate.month}');
+        } else {
+          xLabels.add('Sự kiện');
+        }
+      } else if (i == chartData.length - 1) {
+        xLabels.add('Mục tiêu');
+      } else {
+        // Các điểm trung gian - hiển thị ngày tháng ước tính
+        final estimatedDate = now.add(Duration(days: i * 7)); // Mỗi tuần
+        xLabels.add('${estimatedDate.day}/${estimatedDate.month}');
+      }
     }
 
     return BarChart(
@@ -1419,14 +1463,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final index = entry.key;
           final spot = entry.value;
 
+          // Xác định màu sắc dựa trên vị trí
+          Color barColor;
+          if (index == 0) {
+            barColor = Colors.green.shade400; // Hiện tại - màu xanh lá
+          } else if (index == 3) {
+            barColor = Colors.orange.shade400; // Sự kiện - màu cam
+          } else if (index == chartData.length - 1) {
+            barColor = Colors.blue.shade400; // Mục tiêu - màu xanh dương
+          } else {
+            barColor = Colors.grey[300]!; // Các cột khác - màu xám nhạt
+          }
+
           return BarChartGroupData(
             x: index,
             barRods: [
               BarChartRodData(
                 toY: spot.y,
-                color: index == chartData.length - 1
-                    ? Colors.blue[400] // Cột cuối cùng màu xanh dương
-                    : Colors.grey[300], // Các cột khác màu xám nhạt
+                color: barColor,
                 width: 20,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(4),
@@ -1507,21 +1561,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         // Chỉ hiển thị 3 nhãn chính để tránh chồng chéo
                         if (value == 0) return Padding(
                           padding: EdgeInsets.only(top: 8),
-                          child: Text('Bắt đầu',
+                          child: Text('Hiện tại',
                             style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
                             textAlign: TextAlign.center,
                           ),
                         );
                         if (value == 3) return Padding(
                           padding: EdgeInsets.only(top: 8),
-                          child: Text('Kỳ nghỉ',
+                          child: Text('Sự kiện',
                             style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
                             textAlign: TextAlign.center,
                           ),
                         );
                         if (value == 6) return Padding(
                           padding: EdgeInsets.only(top: 8),
-                          child: Text('Hiện tại',
+                          child: Text('Mục tiêu',
                             style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
                             textAlign: TextAlign.center,
                           ),
@@ -1570,72 +1624,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       if (goal == "Giảm cân") {
                         if (targetWeight > 0) {
-                          // Có mục tiêu cụ thể
-                          double weightDifference = currentWeight - targetWeight;
-                          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-                          double startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6));
-
+                          // Có mục tiêu cụ thể: Hiện tại → Sự kiện → Mục tiêu
+                          double eventWeight = (currentWeight + targetWeight) / 2;
                           return [
-                            FlSpot(0, startWeight),
-                            FlSpot(1, startWeight - pace),
-                            FlSpot(2, startWeight - (pace * 2)),
-                            FlSpot(3, startWeight - (pace * 3)), // Kỳ nghỉ
-                            FlSpot(4, startWeight - (pace * 4)),
-                            FlSpot(5, startWeight - (pace * 5)),
-                            FlSpot(6, currentWeight), // Hiện tại
+                            FlSpot(0, currentWeight), // Hiện tại
+                            FlSpot(1, currentWeight - (pace * 0.5)),
+                            FlSpot(2, currentWeight - (pace * 1)),
+                            FlSpot(3, eventWeight), // Sự kiện
+                            FlSpot(4, eventWeight - (pace * 1)),
+                            FlSpot(5, eventWeight - (pace * 2)),
+                            FlSpot(6, targetWeight), // Mục tiêu
                           ];
                         } else {
-                          // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
-                          double startWeight = currentWeight + (pace * 6);
+                          // Không có mục tiêu cụ thể
+                          double eventWeight = currentWeight - (pace * 3);
                           return [
-                            FlSpot(0, startWeight),
-                            FlSpot(1, startWeight - pace),
-                            FlSpot(2, startWeight - (pace * 2)),
-                            FlSpot(3, startWeight - (pace * 3)), // Kỳ nghỉ
-                            FlSpot(4, startWeight - (pace * 4)),
-                            FlSpot(5, startWeight - (pace * 5)),
-                            FlSpot(6, currentWeight), // Hiện tại
+                            FlSpot(0, currentWeight), // Hiện tại
+                            FlSpot(1, currentWeight - (pace * 0.5)),
+                            FlSpot(2, currentWeight - (pace * 1)),
+                            FlSpot(3, eventWeight), // Sự kiện
+                            FlSpot(4, eventWeight - (pace * 1)),
+                            FlSpot(5, eventWeight - (pace * 2)),
+                            FlSpot(6, eventWeight - (pace * 3)), // Mục tiêu ước tính
                           ];
                         }
                       } else if (goal == "Tăng cân") {
                         if (targetWeight > 0) {
-                          // Có mục tiêu cụ thể
-                          double weightDifference = targetWeight - currentWeight;
-                          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-                          double startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6));
-
+                          // Có mục tiêu cụ thể: Hiện tại → Sự kiện → Mục tiêu
+                          double eventWeight = (currentWeight + targetWeight) / 2;
                           return [
-                            FlSpot(0, startWeight),
-                            FlSpot(1, startWeight + pace),
-                            FlSpot(2, startWeight + (pace * 2)),
-                            FlSpot(3, startWeight + (pace * 3)), // Kỳ nghỉ
-                            FlSpot(4, startWeight + (pace * 4)),
-                            FlSpot(5, startWeight + (pace * 5)),
-                            FlSpot(6, currentWeight), // Hiện tại
+                            FlSpot(0, currentWeight), // Hiện tại
+                            FlSpot(1, currentWeight + (pace * 0.5)),
+                            FlSpot(2, currentWeight + (pace * 1)),
+                            FlSpot(3, eventWeight), // Sự kiện
+                            FlSpot(4, eventWeight + (pace * 1)),
+                            FlSpot(5, eventWeight + (pace * 2)),
+                            FlSpot(6, targetWeight), // Mục tiêu
                           ];
                         } else {
-                          // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
-                          double startWeight = currentWeight - (pace * 6);
+                          // Không có mục tiêu cụ thể
+                          double eventWeight = currentWeight + (pace * 3);
                           return [
-                            FlSpot(0, startWeight),
-                            FlSpot(1, startWeight + pace),
-                            FlSpot(2, startWeight + (pace * 2)),
-                            FlSpot(3, startWeight + (pace * 3)), // Kỳ nghỉ
-                            FlSpot(4, startWeight + (pace * 4)),
-                            FlSpot(5, startWeight + (pace * 5)),
-                            FlSpot(6, currentWeight), // Hiện tại
+                            FlSpot(0, currentWeight), // Hiện tại
+                            FlSpot(1, currentWeight + (pace * 0.5)),
+                            FlSpot(2, currentWeight + (pace * 1)),
+                            FlSpot(3, eventWeight), // Sự kiện
+                            FlSpot(4, eventWeight + (pace * 1)),
+                            FlSpot(5, eventWeight + (pace * 2)),
+                            FlSpot(6, eventWeight + (pace * 3)), // Mục tiêu ước tính
                           ];
                         }
                       } else {
-                        // Duy trì cân nặng
+                        // Duy trì cân nặng: Hiện tại → Sự kiện → Mục tiêu
                         return [
-                          FlSpot(0, currentWeight + 0.3),
+                          FlSpot(0, currentWeight), // Hiện tại
                           FlSpot(1, currentWeight + 0.1),
                           FlSpot(2, currentWeight - 0.1),
-                          FlSpot(3, currentWeight + 0.2), // Kỳ nghỉ
-                          FlSpot(4, currentWeight - 0.2),
+                          FlSpot(3, currentWeight + 0.2), // Sự kiện (có thể tăng nhẹ do ăn uống)
+                          FlSpot(4, currentWeight - 0.1),
                           FlSpot(5, currentWeight + 0.1),
-                          FlSpot(6, currentWeight), // Hiện tại
+                          FlSpot(6, currentWeight), // Mục tiêu (duy trì)
                         ];
                       }
                     }() : _weightHistory,
@@ -1658,16 +1706,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     dotData: FlDotData(
                       show: true,
                       getDotPainter: (spot, percent, barData, index) {
-                        // Điểm đặc biệt tại kỳ nghỉ và hiện tại
+                        // Điểm đặc biệt theo thứ tự: Hiện tại → Sự kiện → Mục tiêu
                         Color dotColor = Colors.orange;
                         double dotSize = 7.0;
-                        
-                        if (index == 0) { // Bắt đầu
-                          dotColor = Colors.red.shade400;
-                        } else if (index == 3) { // Kỳ nghỉ
-                          dotColor = Colors.orange.shade500;
-                        } else if (index == 6 || index == _weightHistory.length - 1) { // Hiện tại
+
+                        if (index == 0) { // Hiện tại
                           dotColor = Colors.green.shade500;
+                        } else if (index == 3) { // Sự kiện
+                          dotColor = Colors.orange.shade500;
+                        } else if (index == 6 || index == _weightHistory.length - 1) { // Mục tiêu
+                          dotColor = Colors.blue.shade500;
                         } else {
                           return FlDotCirclePainter(
                             radius: 0, // Ẩn các điểm khác
@@ -1725,61 +1773,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           
-          // Nhãn cân nặng bắt đầu - responsive positioning
+          // Nhãn cân nặng hiện tại - bên trái
           _buildChartLabel(
             top: 5,
             left: 10,
             title: _weightHistory.isEmpty ? () {
               final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-              final currentWeight = userDataProvider.weightKg;
-              final targetWeight = userDataProvider.targetWeightKg;
-              final goal = userDataProvider.goal;
-              final pace = userDataProvider.pace;
-
-              if (goal == "Giảm cân") {
-                if (targetWeight > 0) {
-                  // Có mục tiêu cụ thể
-                  double weightDifference = currentWeight - targetWeight;
-                  double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-                  double startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6));
-                  return '${startWeight.toStringAsFixed(1)} kg';
-                } else {
-                  // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
-                  double startWeight = currentWeight + (pace * 6);
-                  return '${startWeight.toStringAsFixed(1)} kg';
-                }
-              } else if (goal == "Tăng cân") {
-                if (targetWeight > 0) {
-                  // Có mục tiêu cụ thể
-                  double weightDifference = targetWeight - currentWeight;
-                  double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-                  double startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6));
-                  return '${startWeight.toStringAsFixed(1)} kg';
-                } else {
-                  // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
-                  double startWeight = currentWeight - (pace * 6);
-                  return '${startWeight.toStringAsFixed(1)} kg';
-                }
-              } else {
-                return '${(currentWeight + 0.3).toStringAsFixed(1)} kg';
-              }
+              return '${userDataProvider.weightKg.toStringAsFixed(1)} kg';
             }() : '${_weightHistory.first.y.toStringAsFixed(1)} kg',
-            subtitle: "Bắt đầu",
+            subtitle: "Hiện tại ✅",
             alignment: CrossAxisAlignment.start,
-            color: Colors.red.shade400,
+            color: Colors.green.shade500,
           ),
 
-          // Nhãn cân nặng hiện tại - chỉ hiển thị 2 nhãn chính để tránh chồng chéo
+          // Nhãn cân nặng mục tiêu - bên phải
           _buildChartLabel(
             top: 5,
             right: 10,
             title: _weightHistory.isEmpty ? () {
               final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-              return '${userDataProvider.weightKg.toStringAsFixed(1)} kg';
+              final targetWeight = userDataProvider.targetWeightKg;
+              final currentWeight = userDataProvider.weightKg;
+              final goal = userDataProvider.goal;
+              final pace = userDataProvider.pace;
+
+              if (targetWeight > 0) {
+                return '${targetWeight.toStringAsFixed(1)} kg';
+              } else {
+                // Tính mục tiêu ước tính
+                if (goal == "Giảm cân") {
+                  double estimatedTarget = currentWeight - (pace * 6);
+                  return '${estimatedTarget.toStringAsFixed(1)} kg';
+                } else if (goal == "Tăng cân") {
+                  double estimatedTarget = currentWeight + (pace * 6);
+                  return '${estimatedTarget.toStringAsFixed(1)} kg';
+                } else {
+                  return '${currentWeight.toStringAsFixed(1)} kg';
+                }
+              }
             }() : '${_weightHistory.last.y.toStringAsFixed(1)} kg',
-            subtitle: "Hiện tại ✅",
+            subtitle: "Mục tiêu 🎯",
             alignment: CrossAxisAlignment.end,
-            color: Colors.green.shade500,
+            color: Colors.blue.shade500,
           ),
         ],
       ),

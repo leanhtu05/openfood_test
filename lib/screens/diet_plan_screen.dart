@@ -1635,35 +1635,47 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
           ),
         );
 
-          // Đợi một lúc để Firebase cập nhật dữ liệu
-          await Future.delayed(Duration(seconds: 2));
+          // 🔥 TĂNG DELAY VÀ THÊM RETRY LOGIC
+          print('⏳ Đang đợi backend lưu vào Firestore...');
 
-          // Đọc lại dữ liệu từ latest_meal_plans trước
-          final latestDocSnapshot = await FirebaseFirestore.instance
-              .collection('latest_meal_plans')
-              .doc(userId)
-              .get();
+          // Retry logic với delay tăng dần
+          bool dataFound = false;
+          for (int attempt = 1; attempt <= 5; attempt++) {
+            print('🔄 Thử lần $attempt/5 - Đợi ${attempt * 2} giây...');
+            await Future.delayed(Duration(seconds: attempt * 2)); // 2s, 4s, 6s, 8s, 10s
 
-          if (latestDocSnapshot.exists && latestDocSnapshot.data() != null) {
-            final result = latestDocSnapshot.data()!;
-            print('✅ Đã tải kế hoạch ăn cập nhật từ latest_meal_plans');
+            // Đọc lại dữ liệu từ latest_meal_plans với force refresh
+            final latestDocSnapshot = await FirebaseFirestore.instance
+                .collection('latest_meal_plans')
+                .doc(userId)
+                .get(const GetOptions(source: Source.server)); // Force từ server, không cache
 
-            setState(() {
-              _mealPlan = MealPlan.fromJson(result);
-              _isLoading = false;
-              _hasError = false;
-            });
+            if (latestDocSnapshot.exists && latestDocSnapshot.data() != null) {
+              final result = latestDocSnapshot.data()!;
+              print('✅ Lần thử $attempt: Đã tải kế hoạch ăn cập nhật từ latest_meal_plans');
 
-            // Hiển thị thông báo thành công
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Đã thay thế $mealType thành công!'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-            return;
+              setState(() {
+                _mealPlan = MealPlan.fromJson(result);
+                _isLoading = false;
+                _hasError = false;
+              });
+
+              // Hiển thị thông báo thành công
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Đã thay thế $mealType thành công!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+              dataFound = true;
+              break;
+            } else {
+              print('⚠️ Lần thử $attempt: Chưa tìm thấy dữ liệu trong latest_meal_plans');
+            }
           }
+
+          if (dataFound) return;
 
           // Nếu không tìm thấy trong latest_meal_plans, kiểm tra meal_plans
           print('⚠️ Không tìm thấy kế hoạch ăn trong latest_meal_plans, kiểm tra meal_plans');

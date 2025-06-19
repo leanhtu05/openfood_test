@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'dart:async';
@@ -421,24 +422,23 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _checkUserDataAndNavigate() async {
     try {
       final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-      await userDataProvider.syncOrFetchUserData(context);
 
-      bool hasBasicUserData = userDataProvider.age > 0 &&
-          userDataProvider.heightCm > 0 &&
-          userDataProvider.weightKg > 0;
+      // Kiểm tra trực tiếp xem user có tồn tại trong Firestore không
+      bool userExistsInFirestore = await _checkUserExistsInFirestore();
 
-      print('🔍 Kiểm tra dữ liệu người dùng: ${hasBasicUserData ? "Đã có dữ liệu" : "Chưa có dữ liệu"}');
-      print('📊 Chi tiết: Tên=${userDataProvider.name}, Tuổi=${userDataProvider.age}, Chiều cao=${userDataProvider.heightCm}, Cân nặng=${userDataProvider.weightKg}');
+      print('🔍 Kiểm tra user trong Firestore: ${userExistsInFirestore ? "Đã tồn tại" : "Chưa tồn tại"}');
 
-      if (!hasBasicUserData) {
-        print('➡️ Chuyển hướng đến màn hình onboarding vì người dùng chưa có dữ liệu');
+      if (!userExistsInFirestore) {
+        print('➡️ Chuyển hướng đến màn hình onboarding vì user chưa có trong Firestore');
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const OnboardingScreen()),
           );
         }
       } else {
-        print('➡️ Chuyển hướng đến màn hình chính vì người dùng đã có dữ liệu');
+        print('➡️ Chuyển hướng đến màn hình chính vì user đã có trong Firestore');
+        // Load dữ liệu sau khi đã xác nhận user tồn tại
+        await userDataProvider.syncOrFetchUserData(context);
         if (mounted) {
           if (widget.onAuthSuccess != null) {
             widget.onAuthSuccess!();
@@ -451,16 +451,55 @@ class _AuthScreenState extends State<AuthScreen> {
       }
     } catch (e) {
       print('❌ Lỗi khi kiểm tra dữ liệu người dùng: $e');
+      // Khi có lỗi, chuyển đến onboarding để đảm bảo an toàn
       if (mounted) {
-        if (widget.onAuthSuccess != null) {
-          widget.onAuthSuccess!();
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => HomeScreen()),
-          );
-        }
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+        );
       }
     }
+  }
+
+  // Kiểm tra trực tiếp xem user có tồn tại trong Firestore không
+  Future<bool> _checkUserExistsInFirestore() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final user = authService.currentUser;
+
+      if (user == null) {
+        print('❌ Không có user đăng nhập');
+        return false;
+      }
+
+      print('🔍 Kiểm tra user ${user.uid} trong Firestore...');
+
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      bool exists = docSnapshot.exists;
+      print('📊 User ${user.uid} ${exists ? "đã tồn tại" : "chưa tồn tại"} trong Firestore');
+
+      return exists;
+    } catch (e) {
+      print('❌ Lỗi khi kiểm tra user trong Firestore: $e');
+      return false;
+    }
+  }
+
+  // Kiểm tra xem người dùng đã có dữ liệu trong Firestore chưa (backup method)
+  bool _hasCompleteOnboardingData(UserDataProvider userDataProvider) {
+    // Chỉ kiểm tra xem user đã được tạo trong Firestore chưa
+    // Nếu có ít nhất tên hoặc tuổi thì coi như đã có dữ liệu
+    bool hasUserData = userDataProvider.name.isNotEmpty || userDataProvider.age > 0;
+
+    print('🔍 Kiểm tra dữ liệu user:');
+    print('   - Tên: "${userDataProvider.name}"');
+    print('   - Tuổi: ${userDataProvider.age}');
+    print('   - Có dữ liệu: $hasUserData');
+
+    return hasUserData;
   }
 
   Future<void> _submit() async {
@@ -546,20 +585,9 @@ class _AuthScreenState extends State<AuthScreen> {
 
             // Removed snackbar for better UX
 
-            if (isLogin) {
-              if (widget.onAuthSuccess != null) {
-                print('✅ Gọi onAuthSuccess callback sau khi đăng nhập');
-                widget.onAuthSuccess!();
-              } else {
-                print('✅ Chuyển hướng đến màn hình chính sau khi đăng nhập');
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => HomeScreen()),
-                );
-              }
-            } else {
-              print('✅ Kiểm tra dữ liệu người dùng sau khi đăng ký');
-              await _checkUserDataAndNavigate();
-            }
+            // Luôn kiểm tra dữ liệu người dùng sau khi đăng nhập/đăng ký thành công
+            print('✅ Kiểm tra dữ liệu người dùng sau khi ${isLogin ? "đăng nhập" : "đăng ký"}');
+            await _checkUserDataAndNavigate();
           } catch (syncError) {
             print('❌ Lỗi nghiêm trọng khi đồng bộ/tải dữ liệu sau khi xác thực: $syncError');
             String displayError = 'Đã xảy ra lỗi khi chuẩn bị dữ liệu của bạn. Vui lòng thử lại.';
@@ -575,11 +603,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
             if (mounted) {
               // Removed snackbar for better UX
-              if (widget.onAuthSuccess != null) {
-                widget.onAuthSuccess!();
-              } else {
-                await _checkUserDataAndNavigate();
-              }
+              // Luôn kiểm tra dữ liệu người dùng ngay cả khi có lỗi đồng bộ
+              await _checkUserDataAndNavigate();
             }
           }
         } else if (mounted) {
@@ -601,11 +626,8 @@ class _AuthScreenState extends State<AuthScreen> {
             // Removed snackbar for better UX
             Future.delayed(Duration(seconds: 1), () async {
               if (mounted) {
-                if (widget.onAuthSuccess != null) {
-                  widget.onAuthSuccess!();
-                } else {
-                  await _checkUserDataAndNavigate();
-                }
+                // Luôn kiểm tra dữ liệu người dùng
+                await _checkUserDataAndNavigate();
               }
             });
             return;
@@ -1065,13 +1087,15 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+      backgroundColor: Colors.grey[50],
+      body: Stack(
+        children: [
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
               const SizedBox(height: 40),
 
               // Logo và tiêu đề
@@ -1191,7 +1215,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           _buildSocialIconButton(
                             icon: Icons.g_translate, // Better Google icon
                             color: const Color(0xFF4285F4), // Google blue color
-                            onPressed: _isLoading ? null : _signInWithGoogle,
+                            onPressed: (_isLoading || _isVerifying || _isResending) ? null : _signInWithGoogle,
                             tooltip: 'Đăng nhập bằng Google',
                           ),
                           const SizedBox(height: 8),
@@ -1232,11 +1256,65 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ],
                 ),
-            ],
+                ],
+              ),
+            ),
           ),
-        ),
+
+          // Loading overlay
+          if (_isLoading || _isVerifying || _isResending)
+            Container(
+            color: Colors.black.withOpacity(0.3),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE65100)),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _getLoadingMessage(),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  String _getLoadingMessage() {
+    if (_isVerifying) {
+      return 'Đang xác thực mã OTP...';
+    } else if (_isResending) {
+      return 'Đang gửi lại mã OTP...';
+    } else if (_isPhoneLogin) {
+      return 'Đang gửi mã OTP...';
+    } else {
+      return isLogin ? 'Đang đăng nhập...' : 'Đang đăng ký...';
+    }
   }
 
   Widget _buildEmailLoginForm() {
@@ -1372,12 +1450,12 @@ class _AuthScreenState extends State<AuthScreen> {
           SizedBox(
             height: 56,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _submit,
+              onPressed: (_isLoading || _isVerifying || _isResending) ? null : _submit,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFE65100),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: _isLoading
+              child: (_isLoading || _isVerifying || _isResending)
                   ? const CircularProgressIndicator(color: Colors.white)
                   : Text(
                 isLogin ? 'Đăng nhập' : 'Đăng ký',
@@ -1439,7 +1517,7 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Tooltip(
             message: tooltip,
             child: Center(
-              child: _isLoading && tooltip.contains('Google')
+              child: (_isLoading || _isVerifying || _isResending) && tooltip.contains('Google')
                   ? SizedBox(
                       width: 20,
                       height: 20,
@@ -1601,12 +1679,12 @@ class _AuthScreenState extends State<AuthScreen> {
           width: double.infinity,
           height: 55,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : (_showOtpField ? _verifyOtp : _verifyPhoneNumber),
+            onPressed: (_isLoading || _isVerifying || _isResending) ? null : (_showOtpField ? _verifyOtp : _verifyPhoneNumber),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFE65100),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: _isLoading
+            child: (_isLoading || _isVerifying || _isResending)
                 ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
               _showOtpField ? 'Xác nhận' : 'Gửi mã OTP',

@@ -622,8 +622,8 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
     // Hủy timer cũ nếu còn
     _loadingTimeoutTimer?.cancel();
     
-    // Đặt timer mới để tự động tắt trạng thái loading sau 30 giây
-    _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
+    // Đặt timer mới để tự động tắt trạng thái loading sau 120 giây
+    _loadingTimeoutTimer = Timer(const Duration(seconds: 120), () {
       if (mounted && _isTyping) {
         print('⚠️ Đã quá thời gian chờ phản hồi, tự động tắt trạng thái loading');
         setState(() {
@@ -633,7 +633,7 @@ class _AIChatScreenState extends State<AIChatScreen> with WidgetsBindingObserver
         // Hiển thị thông báo cho người dùng
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Không nhận được phản hồi từ server sau 30 giây. Vui lòng thử lại sau.'),
+            content: Text('Không nhận được phản hồi từ server sau 2 phút. Vui lòng thử lại sau.'),
             duration: Duration(seconds: 5),
           ),
         );

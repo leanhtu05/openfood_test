@@ -3,11 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:openfood/screens/home_screen.dart';
-import 'package:openfood/screens/meal_screen.dart';
-import 'package:openfood/screens/exercise_log_screen.dart';
-import 'package:openfood/screens/exercise_history_screen.dart';
-import 'package:openfood/screens/water_history_screen.dart';
-import 'package:openfood/screens/combined_history_screen.dart';
 import 'package:openfood/providers/exercise_provider.dart';
 import 'package:openfood/providers/water_provider.dart';
 import 'package:openfood/providers/food_provider.dart';
@@ -66,6 +61,17 @@ Future<void> main() async {
         isFirebaseInitialized = true;
         initializationComplete = true;
         print('Firebase đã được khởi tạo thành công');
+
+        // Debug authentication state
+        FirebaseAuth.instance.authStateChanges().listen((User? user) {
+          if (user == null) {
+            print('🔐 User chưa đăng nhập');
+          } else {
+            print('✅ User đã đăng nhập: ${user.uid}');
+            print('📧 Email: ${user.email}');
+            print('👤 Anonymous: ${user.isAnonymous}');
+          }
+        });
       }),
       
       // Timeout sau 5 giây

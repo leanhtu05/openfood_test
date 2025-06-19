@@ -4,12 +4,14 @@ import 'package:http/http.dart' as http;
 import '../models/grocery_cost_analysis.dart';
 import '../screens/grocery_list_screen.dart';
 import 'shopping_firestore_service.dart';
+import 'price_ai_analysis_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Service tích hợp AI Finance Agent để phân tích chi phí thực phẩm
 class FinanceAgentService {
   static const String _baseUrl = 'https://backend-openfood.onrender.com';
-  
+  static final PriceAIAnalysisService _aiService = PriceAIAnalysisService();
+
   // Database giá cả thực phẩm Việt Nam (mẫu)
   static final Map<String, Map<String, dynamic>> _vietnamFoodPrices = {
     // Thịt tươi sống
@@ -18,7 +20,7 @@ class FinanceAgentService {
     'thịt gà': {'price_per_kg': 120000, 'unit': 'kg', 'category': '🥩 Thịt tươi sống'},
     'cá': {'price_per_kg': 200000, 'unit': 'kg', 'category': '🥩 Thịt tươi sống'},
     'tôm': {'price_per_kg': 400000, 'unit': 'kg', 'category': '🥩 Thịt tươi sống'},
-    
+
     // Rau củ quả
     'cà chua': {'price_per_kg': 25000, 'unit': 'kg', 'category': '🥬 Rau củ quả'},
     'hành tây': {'price_per_kg': 20000, 'unit': 'kg', 'category': '🥬 Rau củ quả'},
@@ -26,24 +28,72 @@ class FinanceAgentService {
     'rau xà lách': {'price_per_kg': 30000, 'unit': 'kg', 'category': '🥬 Rau củ quả'},
     'bí đỏ': {'price_per_kg': 15000, 'unit': 'kg', 'category': '🥬 Rau củ quả'},
     'chuối': {'price_per_kg': 25000, 'unit': 'kg', 'category': '🥬 Rau củ quả'},
-    
+
     // Thực phẩm khô
     'gạo': {'price_per_kg': 25000, 'unit': 'kg', 'category': '🌾 Thực phẩm khô'},
     'bánh mì': {'price_per_piece': 8000, 'unit': 'lát', 'category': '🌾 Thực phẩm khô'},
     'yến mạch': {'price_per_kg': 80000, 'unit': 'kg', 'category': '🌾 Thực phẩm khô'},
-    
+
     // Sản phẩm từ sữa
     'trứng gà': {'price_per_piece': 4000, 'unit': 'quả', 'category': '🥛 Sản phẩm từ sữa'},
     'sữa chua hy lạp': {'price_per_kg': 120000, 'unit': 'kg', 'category': '🥛 Sản phẩm từ sữa'},
     'phô mai': {'price_per_kg': 200000, 'unit': 'kg', 'category': '🥛 Sản phẩm từ sữa'},
-    
+
     // Gia vị & Nước chấm
     'dầu oliu': {'price_per_liter': 150000, 'unit': 'muỗng canh', 'category': '🧂 Gia vị & Nước chấm'},
     'mật ong': {'price_per_kg': 300000, 'unit': 'muỗng canh', 'category': '🧂 Gia vị & Nước chấm'},
   };
 
-  /// Phân tích chi phí danh sách mua sắm và lưu vào Firebase
+  /// Phân tích chi phí danh sách mua sắm với AI và lưu vào Firebase
   static Future<GroceryCostAnalysis> analyzeCosts(
+    Map<String, GroceryItem> groceryItems,
+    {double? budgetLimit, bool saveToFirebase = true, bool useAI = true}
+  ) async {
+    try {
+      // Thử sử dụng AI trước
+      if (useAI) {
+        try {
+          return await _analyzeWithAI(groceryItems, budgetLimit: budgetLimit, saveToFirebase: saveToFirebase);
+        } catch (e) {
+          print('⚠️ AI analysis failed, falling back to local analysis: $e');
+        }
+      }
+
+      // Fallback: Tính toán local
+      return await _analyzeLocally(groceryItems, budgetLimit: budgetLimit, saveToFirebase: saveToFirebase);
+
+    } catch (e) {
+      print('❌ Lỗi khi phân tích chi phí: $e');
+      // Trả về phân tích mặc định nếu có lỗi
+      return _getDefaultAnalysis(budgetLimit);
+    }
+  }
+
+  /// Phân tích với AI backend
+  static Future<GroceryCostAnalysis> _analyzeWithAI(
+    Map<String, GroceryItem> groceryItems,
+    {double? budgetLimit, bool saveToFirebase = true}
+  ) async {
+    // Chuyển đổi groceryItems thành format cho AI
+    final groceryItemsList = groceryItems.values.map((item) => {
+      'name': item.name,
+      'amount': item.amount,
+      'unit': item.unit,
+      'category': item.category,
+    }).toList();
+
+    // Gọi AI service
+    final aiAnalysis = await _aiService.analyzeGroceryListIntelligently(
+      groceryItemsList,
+      budgetLimit: budgetLimit,
+    );
+
+    // Convert AI response thành GroceryCostAnalysis
+    return _convertAIResponseToAnalysis(aiAnalysis, groceryItems, budgetLimit);
+  }
+
+  /// Phân tích local (fallback)
+  static Future<GroceryCostAnalysis> _analyzeLocally(
     Map<String, GroceryItem> groceryItems,
     {double? budgetLimit, bool saveToFirebase = true}
   ) async {
@@ -64,10 +114,10 @@ class FinanceAgentService {
           estimatedCost: cost,
           pricePerUnit: _getPricePerUnit(item),
         );
-        
+
         itemsWithCost.add(itemWithCost);
         totalCost += cost;
-        
+
         categoryTotals[item.category] = (categoryTotals[item.category] ?? 0) + cost;
         categoryItemCounts[item.category] = (categoryItemCounts[item.category] ?? 0) + 1;
       }
@@ -77,7 +127,7 @@ class FinanceAgentService {
       for (final category in categoryTotals.keys) {
         final categoryTotal = categoryTotals[category]!;
         final itemCount = categoryItemCounts[category]!;
-        
+
         categoryBreakdown[category] = CategoryCostBreakdown(
           categoryName: category,
           totalCost: categoryTotal,
@@ -121,8 +171,7 @@ class FinanceAgentService {
       return analysis;
 
     } catch (e) {
-      print('❌ Lỗi khi phân tích chi phí: $e');
-      // Trả về phân tích mặc định nếu có lỗi
+      print('❌ Lỗi local analysis: $e');
       return _getDefaultAnalysis(budgetLimit);
     }
   }
@@ -339,6 +388,89 @@ class FinanceAgentService {
     } catch (e) {
       print('❌ Lỗi lấy shopping stats: $e');
       return {};
+    }
+  }
+
+  /// Convert AI response thành GroceryCostAnalysis
+  static GroceryCostAnalysis _convertAIResponseToAnalysis(
+    Map<String, dynamic> aiResponse,
+    Map<String, GroceryItem> groceryItems,
+    double? budgetLimit,
+  ) {
+    try {
+      // Parse AI response
+      final totalCost = (aiResponse['total_cost'] ?? 0.0).toDouble();
+      final averageCostPerItem = (aiResponse['average_cost_per_item'] ?? 0.0).toDouble();
+
+      // Parse category breakdown
+      final categoryBreakdown = <String, CategoryCostBreakdown>{};
+      final categoryData = aiResponse['category_breakdown'] as Map<String, dynamic>? ?? {};
+
+      for (final entry in categoryData.entries) {
+        final data = entry.value as Map<String, dynamic>;
+        categoryBreakdown[entry.key] = CategoryCostBreakdown(
+          categoryName: data['category_name'] ?? entry.key,
+          totalCost: (data['total_cost'] ?? 0.0).toDouble(),
+          percentage: (data['percentage'] ?? 0.0).toDouble(),
+          itemCount: data['item_count'] ?? 0,
+          averageCostPerItem: (data['average_cost_per_item'] ?? 0.0).toDouble(),
+          topExpensiveItems: List<String>.from(data['top_expensive_items'] ?? []),
+        );
+      }
+
+      // Parse saving tips
+      final savingTips = <CostSavingTip>[];
+      final tipsData = aiResponse['saving_tips'] as List<dynamic>? ?? [];
+      for (final tipData in tipsData) {
+        final tip = tipData as Map<String, dynamic>;
+        savingTips.add(CostSavingTip(
+          title: tip['title'] ?? '',
+          description: tip['description'] ?? '',
+          potentialSaving: (tip['potential_saving'] ?? 0.0).toDouble(),
+          category: tip['category'] ?? '',
+          priority: tip['priority'] ?? 3,
+        ));
+      }
+
+      // Parse budget comparison
+      final budgetData = aiResponse['budget_comparison'] as Map<String, dynamic>? ?? {};
+      final budgetComparison = BudgetComparison(
+        budgetLimit: budgetLimit ?? 500000,
+        actualCost: totalCost,
+        difference: totalCost - (budgetLimit ?? 500000),
+        isOverBudget: totalCost > (budgetLimit ?? 500000),
+        percentageUsed: (budgetLimit ?? 500000) > 0 ? (totalCost / (budgetLimit ?? 500000)) * 100 : 0,
+      );
+
+      // Parse price alerts
+      final priceAlerts = <PriceAlert>[];
+      final alertsData = aiResponse['price_alerts'] as List<dynamic>? ?? [];
+      for (final alertData in alertsData) {
+        final alert = alertData as Map<String, dynamic>;
+        priceAlerts.add(PriceAlert(
+          itemName: alert['item_name'] ?? '',
+          currentPrice: (alert['current_price'] ?? 0.0).toDouble(),
+          averagePrice: (alert['average_price'] ?? 0.0).toDouble(),
+          priceChange: (alert['price_change'] ?? 0.0).toDouble(),
+          alertType: alert['alert_type'] ?? 'info',
+          message: alert['message'] ?? '',
+        ));
+      }
+
+      return GroceryCostAnalysis(
+        totalCost: totalCost,
+        averageCostPerItem: averageCostPerItem,
+        categoryBreakdown: categoryBreakdown,
+        savingTips: savingTips,
+        budgetComparison: budgetComparison,
+        priceAlerts: priceAlerts,
+        analysisDate: DateTime.now(),
+      );
+
+    } catch (e) {
+      print('❌ Lỗi convert AI response: $e');
+      // Fallback to local analysis
+      throw Exception('Failed to convert AI response');
     }
   }
 }

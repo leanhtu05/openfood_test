@@ -104,6 +104,10 @@ dependencies:
   youtube_player_flutter: ^9.0.1
   grouped_list: ^5.1.2
 
+  # File sharing and export
+  share_plus: ^7.2.2
+  cross_file: ^0.3.3+8
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

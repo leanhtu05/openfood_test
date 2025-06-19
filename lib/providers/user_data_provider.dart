@@ -63,6 +63,8 @@ class UserDataProvider with ChangeNotifier {
   int _eventDay = 0;
   int _eventMonth = 0;
   int _eventYear = 0;
+  DateTime? _eventDate;
+  String _eventType = '';
   List<String> _dietRestrictions = [];
   String _dietPreference = '';
   List<String> _healthConditions = [];
@@ -498,6 +500,10 @@ class UserDataProvider with ChangeNotifier {
   int get eventMonth => _eventMonth;
 
   int get eventYear => _eventYear;
+
+  DateTime? get eventDate => _eventDate;
+
+  String get eventType => _eventType;
 
   List<String> get dietRestrictions => _dietRestrictions;
 
@@ -947,7 +953,29 @@ class UserDataProvider with ChangeNotifier {
       });
     }
   }
-  
+
+  set eventDate(DateTime? value) {
+    if (_eventDate != value) {
+      _eventDate = value;
+      saveUserData();
+      _markDataAsChanged(); // Đánh dấu dữ liệu đã thay đổi
+      Future.microtask(() {
+        notifyListeners();
+      });
+    }
+  }
+
+  set eventType(String value) {
+    if (_eventType != value) {
+      _eventType = value;
+      saveUserData();
+      _markDataAsChanged(); // Đánh dấu dữ liệu đã thay đổi
+      Future.microtask(() {
+        notifyListeners();
+      });
+    }
+  }
+
   set dietRestrictions(List<String> value) {
     _dietRestrictions = value;
     notifyListeners();
