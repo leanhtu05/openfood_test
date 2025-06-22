@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/user_service.dart';
 
 class WaterProvider with ChangeNotifier {
   final WaterService _waterService = WaterService();
@@ -30,8 +31,11 @@ class WaterProvider with ChangeNotifier {
   bool get hasWaterEntriesForToday => _totalWaterToday > 0;
   String get selectedDate => _selectedDate;
   
-  // Mục tiêu nước (có thể được điều chỉnh sau này)
-  final int waterGoal = 3700; // mL
+  // Mục tiêu nước động dựa trên profile người dùng
+  int _waterGoal = 2500; // mL - giá trị mặc định
+
+  // Getter cho mục tiêu nước
+  int get waterGoal => _waterGoal;
   
   // Constructor khởi tạo với dữ liệu sync
   WaterProvider({FirebaseAuth? authService})
@@ -54,17 +58,123 @@ class WaterProvider with ChangeNotifier {
   Future<void> _loadInitialData() async {
     // Tải dữ liệu từ SharedPreferences trước
     await _loadWaterEntriesFromPrefs();
-    
+
+    // Cập nhật mục tiêu nước dựa trên profile người dùng
+    await _updateWaterGoal();
+
     // Cập nhật tổng lượng nước cho ngày đã chọn
     _updateTotalWaterForSelectedDate();
-    
+
     // Lấy thời gian lần cuối uống nước
     _lastWaterTime = _getLastWaterTimeFromEntries(_entries);
-    
+
     // Tải dữ liệu từ API nếu có người dùng đăng nhập
     loadData();
   }
   
+  // Cập nhật mục tiêu nước dựa trên profile người dùng
+  Future<void> _updateWaterGoal() async {
+    try {
+      final user = _authService.currentUser;
+      if (user != null) {
+        // Tạo instance UserService và lấy profile người dùng
+        final userService = UserService();
+        final userProfile = await userService.getUserProfile();
+
+        if (userProfile != null) {
+          // Tính toán mục tiêu nước dựa trên profile
+          _waterGoal = _calculateWaterGoal(userProfile);
+          debugPrint('✅ Đã cập nhật mục tiêu nước: $_waterGoal ml dựa trên profile người dùng');
+        } else {
+          // Sử dụng giá trị mặc định nếu không có profile
+          _waterGoal = 2500;
+          debugPrint('ℹ️ Sử dụng mục tiêu nước mặc định: $_waterGoal ml');
+        }
+      } else {
+        // Người dùng chưa đăng nhập, sử dụng giá trị mặc định
+        _waterGoal = 2500;
+        debugPrint('ℹ️ Người dùng chưa đăng nhập, sử dụng mục tiêu nước mặc định: $_waterGoal ml');
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi khi cập nhật mục tiêu nước: $e');
+      _waterGoal = 2500; // Fallback
+    }
+  }
+
+  // Tính toán mục tiêu nước dựa trên thông tin cá nhân
+  int _calculateWaterGoal(Map<String, dynamic> userProfile) {
+    try {
+      // Lấy thông tin cơ bản với các field names có thể có trong Firebase
+      final double weight = (userProfile['weightKg'] ?? userProfile['weight'] ?? 70.0).toDouble();
+      final double height = (userProfile['heightCm'] ?? userProfile['height'] ?? 170.0).toDouble();
+      final int age = userProfile['age'] ?? 25;
+      final String gender = userProfile['gender'] ?? 'male';
+      final String activityLevel = userProfile['activityLevel'] ?? 'moderate';
+
+      // Công thức tính mục tiêu nước cơ bản: 35ml/kg cân nặng
+      double baseWater = weight * 35;
+
+      // Điều chỉnh theo giới tính
+      if (gender.toLowerCase() == 'female') {
+        baseWater *= 0.9; // Phụ nữ cần ít nước hơn 10%
+      }
+
+      // Điều chỉnh theo tuổi
+      if (age > 65) {
+        baseWater *= 0.85; // Người cao tuổi cần ít nước hơn
+      } else if (age < 18) {
+        baseWater *= 1.1; // Trẻ em/thanh thiếu niên cần nhiều nước hơn
+      }
+
+      // Điều chỉnh theo mức độ hoạt động
+      switch (activityLevel.toLowerCase()) {
+        case 'sedentary':
+        case 'low':
+          baseWater *= 1.0; // Không thay đổi
+          break;
+        case 'moderate':
+        case 'medium':
+          baseWater *= 1.15; // Tăng 15%
+          break;
+        case 'active':
+        case 'high':
+          baseWater *= 1.3; // Tăng 30%
+          break;
+        case 'very_active':
+        case 'very high':
+          baseWater *= 1.5; // Tăng 50%
+          break;
+      }
+
+      // Điều chỉnh theo BMI (nếu có thông tin chiều cao)
+      if (height > 0) {
+        final double bmi = weight / ((height / 100) * (height / 100));
+        if (bmi > 30) {
+          baseWater *= 1.1; // Người béo phì cần nhiều nước hơn
+        } else if (bmi < 18.5) {
+          baseWater *= 0.95; // Người gầy cần ít nước hơn
+        }
+      }
+
+      // Làm tròn và đảm bảo trong khoảng hợp lý (1500-5000ml)
+      int finalGoal = baseWater.round();
+      finalGoal = finalGoal.clamp(1500, 5000);
+
+      debugPrint('💧 Tính toán mục tiêu nước:');
+      debugPrint('   Cân nặng: ${weight}kg');
+      debugPrint('   Chiều cao: ${height}cm');
+      debugPrint('   Tuổi: $age');
+      debugPrint('   Giới tính: $gender');
+      debugPrint('   Mức độ hoạt động: $activityLevel');
+      debugPrint('   Mục tiêu nước: ${finalGoal}ml');
+
+      return finalGoal;
+    } catch (e) {
+      debugPrint('❌ Lỗi khi tính toán mục tiêu nước: $e');
+      return 2500; // Giá trị mặc định
+    }
+  }
+
   // Cập nhật tổng lượng nước cho ngày đã chọn
   void _updateTotalWaterForSelectedDate() {
     try {
@@ -106,6 +216,9 @@ class WaterProvider with ChangeNotifier {
       // Nếu người dùng đã đăng nhập, ưu tiên lấy dữ liệu từ Firebase
       final user = _authService.currentUser;
       if (user != null) {
+        // Cập nhật mục tiêu nước dựa trên profile
+        await _updateWaterGoal();
+
         debugPrint('🔄 Đang tải dữ liệu nước từ Firebase cho ngày $_selectedDate');
         try {
           // Chuyển đổi selectedDate thành đối tượng DateTime
@@ -724,24 +837,61 @@ class WaterProvider with ChangeNotifier {
     }
   }
 
+  // Method to manually update water goal (public method)
+  Future<void> updateWaterGoal() async {
+    await _updateWaterGoal();
+    notifyListeners();
+  }
+
+  // Method to set custom water goal
+  void setCustomWaterGoal(int goal) {
+    if (goal >= 1000 && goal <= 6000) {
+      _waterGoal = goal;
+      notifyListeners();
+      debugPrint('✅ Đã đặt mục tiêu nước tùy chỉnh: $goal ml');
+    } else {
+      debugPrint('❌ Mục tiêu nước không hợp lệ: $goal ml (phải từ 1000-6000ml)');
+    }
+  }
+
+  // Method to get water goal percentage
+  double getWaterGoalPercentage() {
+    if (_waterGoal <= 0) return 0.0;
+    return (_totalWaterToday / _waterGoal).clamp(0.0, 1.0);
+  }
+
+  // Method to get remaining water needed
+  int getRemainingWaterNeeded() {
+    final remaining = _waterGoal - _totalWaterToday;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  // Method to check if goal is achieved
+  bool isGoalAchieved() {
+    return _totalWaterToday >= _waterGoal;
+  }
+
   // Method to clear data when user logs out
   Future<void> clearDataOnLogout() async {
     try {
       debugPrint('🧹 WaterProvider: Clearing data on logout...');
-      
+
       // Clear all water entries
       _entries = [];
-      
+
       // Reset water statistics
       _totalWaterToday = 0;
       _lastWaterTime = null;
-      
+
+      // Reset water goal to default
+      _waterGoal = 2500;
+
       // Update SharedPreferences
       await _saveWaterEntriesToPrefs();
-      
+
       // Notify UI to update
       notifyListeners();
-      
+
       debugPrint('✅ WaterProvider: Data cleared successfully on logout');
     } catch (e) {
       debugPrint('❌ WaterProvider: Error clearing data on logout: $e');

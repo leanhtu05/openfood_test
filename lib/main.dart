@@ -27,6 +27,7 @@ import 'package:openfood/services/api_service.dart';
 import 'screens/admin/firestore_admin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/user_service.dart';
+import 'services/real_video_service.dart';
 
 
 bool isFirebaseInitialized = false;
@@ -223,13 +224,11 @@ Future<void> main() async {
       double tdeeCalories = userDataProvider.tdeeCalories;
       double nutritionGoalsCalories = userDataProvider.nutritionGoals['calories'] ?? 0.0;
       
-      if (tdeeCalories <= 0 || 
-          (tdeeCalories - 2000.0).abs() < 1.0 || 
-          (tdeeCalories - 2468.0).abs() < 1.0 ||
+      if (tdeeCalories <= 0 ||
+          (tdeeCalories - 2000.0).abs() < 1.0 ||
           nutritionGoalsCalories <= 0 ||
-          (nutritionGoalsCalories - 2000.0).abs() < 1.0 || 
-          (nutritionGoalsCalories - 2468.0).abs() < 1.0) {
-        
+          (nutritionGoalsCalories - 2000.0).abs() < 1.0) {
+
         print('⚠️ Phát hiện TDEE không hợp lệ ($tdeeCalories kcal), cố gắng khắc phục tự động...');
         needRecalculation = true;
       }
@@ -287,7 +286,17 @@ Future<void> initializeServices() async {
     // Khởi tạo Food Database Service
     final foodDatabaseService = FoodDatabaseService();
     await foodDatabaseService.initialize();
-    
+
+    // Khởi tạo Real Video Service với backend connection test
+    try {
+      print('🎬 Initializing YouTube Video Service...');
+      final realVideoService = RealVideoService();
+      await realVideoService.initialize();
+      print('✅ YouTube Video Service initialized');
+    } catch (e) {
+      print('❌ Error initializing YouTube Video Service: $e');
+    }
+
     // Cập nhật URL server cho API calls
     try {
       // Nếu bạn đang gặp vấn đề với kết nối, có thể thay đổi địa chỉ IP server ở đây

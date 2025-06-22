@@ -9,6 +9,7 @@ import '../screens/price_report_screen.dart';
 import '../screens/ai_price_insights_screen.dart';
 import '../screens/ai_price_prediction_screen.dart';
 import '../screens/ai_grocery_optimizer_screen.dart';
+import '../screens/youtube_cooking_demo_screen.dart';
 // Import các màn hình khác ở đây
 
 class AppRoutes {
@@ -22,6 +23,7 @@ class AppRoutes {
   static const String aiPriceInsights = '/ai-price-insights';
   static const String aiPricePrediction = '/ai-price-prediction';
   static const String aiGroceryOptimizer = '/ai-grocery-optimizer';
+  static const String youtubeCookingDemo = '/youtube-cooking-demo';
   // Các route khác ở đây
 
   static Map<String, WidgetBuilder> routes = {
@@ -34,6 +36,7 @@ class AppRoutes {
     aiPriceInsights: (context) => const AIPriceInsightsScreen(),
     aiPricePrediction: (context) => const AIPricePredictionScreen(),
     aiGroceryOptimizer: (context) => const AIGroceryOptimizerScreen(),
+    youtubeCookingDemo: (context) => const YouTubeCookingDemoScreen(),
     // priceReport requires parameters, so it's handled via Navigator.push
     // Các route khác ở đây
   };

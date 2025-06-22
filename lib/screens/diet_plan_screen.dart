@@ -28,6 +28,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:intl/intl.dart';
 import '../widgets/meal_detail_card.dart';
+import '../widgets/meal_loading_card.dart';
+import 'recipe_detail_screen.dart';
 import '../utils/auth_helper.dart';
 
 // 🎨 Clean & Simple Color Scheme - Inspired by reference image
@@ -107,6 +109,9 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   MealPlan? _mealPlan;
   FirestoreService? _firestoreService;
   bool _isFirebaseInitialized = false;
+
+  // 🔥 TRACK MEAL ĐANG ĐƯỢC THAY THẾ
+  String? _replacingMealType;
 
   final List<String> _daysOfWeek = [
     'T.2', 'T.3', 'T.4', 'T.5', 'T.6', 'T.7', 'CN'
@@ -1309,173 +1314,52 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   Widget _buildMealSection(BuildContext context, String title, Meal meal) {
     final mealColor = _getMealColor(title);
 
+    // 🔥 HIỂN THỊ LOADING CARD NẾU ĐANG THAY THẾ MÓN NÀY
+    if (_replacingMealType == title) {
+      return MealLoadingCard(mealType: title);
+    }
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header với icon và tên bữa ăn
-          _buildMealHeader(title, mealColor),
+          // 🎨 SIMPLIFIED MEAL HEADER
+          _buildSimplifiedMealHeader(title, mealColor, meal),
 
-          // Meal detail
-          MealDetailCard(
-            meal: meal,
-            mealType: title,
-            dayOfWeek: _englishDays[_selectedDayIndex],
-            onReplace: () {
-              _replaceMeal(title);
-            },
-            onLog: () {
-              _addMealToFoodLog(meal, title);
-            },
-            hideTitle: true,
-          ),
+          // 🎨 SIMPLIFIED MEAL CONTENT
+          _buildSimplifiedMealContent(meal, title),
+
+          // 🎨 CLEAN ACTION BUTTONS
+          _buildCleanActionButtons(meal, title),
         ],
       ),
     );
   }
 
-  Widget _buildMealHeader(String title, Color color) {
-    Meal? currentMeal = _getCurrentMealByType(title);
 
-    // Get meal icon based on meal type
-    IconData mealIcon;
-    switch (title) {
-      case 'Bữa sáng':
-        mealIcon = Icons.wb_sunny;
-        break;
-      case 'Bữa trưa':
-        mealIcon = Icons.wb_cloudy;
-        break;
-      case 'Bữa tối':
-        mealIcon = Icons.nights_stay;
-        break;
-      default:
-        mealIcon = Icons.restaurant;
-    }
 
-    if (currentMeal == null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(mealIcon, size: 20, color: color),
-            SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: DietPlanColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Meal type and name
-          Row(
-            children: [
-              Icon(mealIcon, size: 20, color: color),
-              SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: DietPlanColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8),
-
-          // Nutrition summary row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildMealNutrient(
-                Icons.local_fire_department,
-                '${currentMeal.nutrition['calories']}kcal',
-                '',
-                Colors.red
-              ),
-              _buildMealNutrient(
-                Icons.water_drop,
-                '${currentMeal.nutrition['protein']}g',
-                '',
-                Colors.blue
-              ),
-              _buildMealNutrient(
-                Icons.circle,
-                '${currentMeal.nutrition['fat']}g',
-                '',
-                Colors.orange
-              ),
-              _buildMealNutrient(
-                Icons.eco,
-                '${currentMeal.nutrition['carbs']}g',
-                '',
-                Colors.green
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMealNutrient(IconData icon, String value, String unit, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 12,
-          color: color,
-        ),
-        SizedBox(width: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: color,
-          ),
-        ),
-        if (unit.isNotEmpty) ...[
-          SizedBox(width: 2),
-          Text(
-            unit,
-            style: TextStyle(
-              fontSize: 10,
-              color: color.withOpacity(0.8),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
 
   // Handle replacing a meal
   Future<void> _replaceMeal(String mealType) async {
+    // 🔥 NGAY LẬP TỨC SET STATE THAY THẾ
+    setState(() {
+      _replacingMealType = mealType; // Đánh dấu meal đang được thay thế
+      _hasError = false;
+    });
+
     final snackBar = SnackBar(
       content: Text('Đang thay thế $mealType...'),
       duration: Duration(seconds: 1),
@@ -1495,13 +1379,16 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
 
       // Get user nutrition goals using the utility class
       final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
-      final nutritionTargets = NutritionCalculator.calculateNutritionTargets(userDataProvider);
-      
-      // Chuyển đổi các giá trị sang double (đã là double từ NutritionCalculator)
-      final caloriesTarget = nutritionTargets['calories']!.round();
-      final proteinTarget = nutritionTargets['protein']!.round();
-      final fatTarget = nutritionTargets['fat']!.round();
-      final carbsTarget = nutritionTargets['carbs']!.round();
+      final dailyNutritionTargets = NutritionCalculator.calculateNutritionTargets(userDataProvider);
+
+      // 🔥 TÍNH TOÁN MỤC TIÊU CHO TỪNG BỮA ĂN (KHÔNG PHẢI CẢ NGÀY)
+      final mealNutritionTargets = _calculateMealNutritionTargets(mealType, dailyNutritionTargets);
+
+      // Chuyển đổi các giá trị sang int
+      final caloriesTarget = mealNutritionTargets['calories']!.round();
+      final proteinTarget = mealNutritionTargets['protein']!.round();
+      final fatTarget = mealNutritionTargets['fat']!.round();
+      final carbsTarget = mealNutritionTargets['carbs']!.round();
 
       // Lấy thông tin người dùng
       final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -1527,6 +1414,9 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       final headers = await ApiService.getAuthHeaders();
       final replaceUrl = Uri.parse('${app_config.apiBaseUrl}${app_config.ApiEndpoints.replaceMeal}');
 
+      // 🔧 FIX: Add diversity parameters to force new meals
+      final diversityTimestamp = DateTime.now().millisecondsSinceEpoch;
+
       // Tạo dữ liệu đúng định dạng cho API
       // Đặt các giá trị dinh dưỡng ở cấp cao nhất theo yêu cầu của API
       final requestData = {
@@ -1538,14 +1428,19 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         'fat_target': fatTarget,
         'carbs_target': carbsTarget,
         'use_ai': true,
+        'force_diversity': true,  // 🔧 FIX: Force diversity
+        'diversity_timestamp': diversityTimestamp,  // 🔧 FIX: Timestamp for uniqueness
+        'avoid_recent': true,  // 🔧 FIX: Avoid recent meals
+        'clear_cache': true,  // 🔧 FIX: Clear AI cache
       };
 
       // In ra thông tin debug về các giá trị dinh dưỡng
-      print('📊 Giá trị dinh dưỡng gửi đến API:');
-      print('📊 calories_target: $caloriesTarget (${caloriesTarget.runtimeType})');
-      print('📊 protein_target: $proteinTarget (${proteinTarget.runtimeType})');
-      print('📊 fat_target: $fatTarget (${fatTarget.runtimeType})');
-      print('📊 carbs_target: $carbsTarget (${carbsTarget.runtimeType})');
+      print('📊 Mục tiêu dinh dưỡng hằng ngày: ${dailyNutritionTargets}');
+      print('📊 Mục tiêu dinh dưỡng cho $mealType:');
+      print('📊 calories_target: $caloriesTarget kcal (${caloriesTarget.runtimeType})');
+      print('📊 protein_target: $proteinTarget g (${proteinTarget.runtimeType})');
+      print('📊 fat_target: $fatTarget g (${fatTarget.runtimeType})');
+      print('📊 carbs_target: $carbsTarget g (${carbsTarget.runtimeType})');
 
       // Thêm preferences dưới dạng chuỗi nếu có
       if (preferences != null && preferences.isNotEmpty) {
@@ -1654,11 +1549,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               final result = latestDocSnapshot.data()!;
               print('✅ Lần thử $attempt: Đã tải kế hoạch ăn cập nhật từ latest_meal_plans');
 
-              setState(() {
-                _mealPlan = MealPlan.fromJson(result);
-                _isLoading = false;
-                _hasError = false;
-              });
+              // 🔥 CẬP NHẬT SMART - CHỈ THAY THẾ MÓN ĂN CỤ THỂ
+              _updateMealPlanSmart(MealPlan.fromJson(result), mealType);
 
               // Hiển thị thông báo thành công
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1688,11 +1580,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             final result = docSnapshot.data()!;
             print('✅ Đã tải kế hoạch ăn cập nhật từ meal_plans');
 
-            setState(() {
-              _mealPlan = MealPlan.fromJson(result);
-              _isLoading = false;
-              _hasError = false;
-            });
+            // 🔥 CẬP NHẬT SMART - CHỈ THAY THẾ MÓN ĂN CỤ THỂ
+            _updateMealPlanSmart(MealPlan.fromJson(result), mealType);
 
               // Hiển thị thông báo thành công
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1898,6 +1787,76 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     }
   }
 
+  // 🔥 CẬP NHẬT THÔNG MINH - CHỈ THAY THẾ MÓN ĂN CỤ THỂ
+  void _updateMealPlanSmart(MealPlan newMealPlan, String replacedMealType) {
+    setState(() {
+      if (_mealPlan != null && newMealPlan.weeklyPlan.isNotEmpty) {
+        // Tìm ngày hiện tại
+        final currentDayName = _englishDays[_selectedDayIndex];
+        final newDayPlan = newMealPlan.weeklyPlan[currentDayName];
+
+        if (newDayPlan != null && _mealPlan!.weeklyPlan.containsKey(currentDayName)) {
+          // Lấy day plan cũ
+          final oldDayPlan = _mealPlan!.weeklyPlan[currentDayName]!;
+
+          // Tạo day plan mới với chỉ món ăn được thay thế
+          Map<String, List<Meal>> updatedMeals = Map.from(oldDayPlan.meals);
+
+          switch (replacedMealType.toLowerCase()) {
+            case 'bữa sáng':
+              if (newDayPlan.meals.containsKey('Bữa sáng')) {
+                updatedMeals['Bữa sáng'] = newDayPlan.meals['Bữa sáng']!;
+                print('🔥 Đã thay thế Bữa sáng');
+              }
+              break;
+
+            case 'bữa trưa':
+              if (newDayPlan.meals.containsKey('Bữa trưa')) {
+                updatedMeals['Bữa trưa'] = newDayPlan.meals['Bữa trưa']!;
+                print('🔥 Đã thay thế Bữa trưa');
+              }
+              break;
+
+            case 'bữa tối':
+              if (newDayPlan.meals.containsKey('Bữa tối')) {
+                updatedMeals['Bữa tối'] = newDayPlan.meals['Bữa tối']!;
+                print('🔥 Đã thay thế Bữa tối');
+              }
+              break;
+
+            default:
+              // Nếu không xác định được meal type, thay thế toàn bộ ngày
+              updatedMeals = newDayPlan.meals;
+              print('🔥 Thay thế toàn bộ ngày do không xác định được meal type');
+          }
+
+          // Tạo DayMealPlan mới với meals đã cập nhật
+          final updatedDayPlan = DayMealPlan(
+            meals: updatedMeals,
+            nutritionSummary: newDayPlan.nutritionSummary, // Cập nhật nutrition summary
+          );
+
+          // Cập nhật vào meal plan
+          _mealPlan!.weeklyPlan[currentDayName] = updatedDayPlan;
+        } else {
+          // Nếu không tìm thấy ngày cũ hoặc ngày mới, thay thế toàn bộ
+          if (newDayPlan != null) {
+            _mealPlan!.weeklyPlan[currentDayName] = newDayPlan;
+          }
+        }
+      } else {
+        // Nếu không có meal plan cũ, sử dụng meal plan mới
+        _mealPlan = newMealPlan;
+      }
+
+      _isLoading = false;
+      _hasError = false;
+      _replacingMealType = null; // 🔥 CLEAR STATE THAY THẾ
+    });
+
+    print('✅ Đã cập nhật thông minh món $replacedMealType');
+  }
+
   // Hàm chuyển đổi định dạng ngày sang định dạng API
   String _convertToAPIDay(String day) {
     // API sử dụng định dạng "Thứ 2", "Thứ 3", v.v.
@@ -1910,6 +1869,316 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       case 'Saturday': return 'Thứ 7';
       case 'Sunday': return 'Chủ Nhật';
       default: return day;
+    }
+  }
+
+  // 🔥 TÍNH TOÁN MỤC TIÊU DINH DƯỠNG CHO TỪNG BỮA ĂN
+  Map<String, double> _calculateMealNutritionTargets(String mealType, Map<String, double> dailyTargets) {
+    // Tỷ lệ phân bổ cho từng bữa ăn
+    Map<String, double> mealRatios = _getMealNutritionRatios(mealType);
+
+    return {
+      'calories': dailyTargets['calories']! * mealRatios['calories']!,
+      'protein': dailyTargets['protein']! * mealRatios['protein']!,
+      'fat': dailyTargets['fat']! * mealRatios['fat']!,
+      'carbs': dailyTargets['carbs']! * mealRatios['carbs']!,
+    };
+  }
+
+  // 🎨 SIMPLIFIED MEAL HEADER
+  Widget _buildSimplifiedMealHeader(String title, Color color, Meal meal) {
+    IconData mealIcon = _getMealIcon(title);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Meal icon
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              mealIcon,
+              color: color,
+              size: 24,
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          // Meal info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${meal.dishes.length} món ăn',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: color.withOpacity(0.7),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Calories badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: color.withOpacity(0.2)),
+            ),
+            child: Text(
+              '${meal.nutrition['calories']?.toInt() ?? 0} kcal',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🎨 SIMPLIFIED MEAL CONTENT
+  Widget _buildSimplifiedMealContent(Meal meal, String mealType) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Dish names
+          ...meal.dishes.asMap().entries.map((entry) {
+            int index = entry.key;
+            Dish dish = entry.value;
+
+            return Container(
+              margin: EdgeInsets.only(bottom: index < meal.dishes.length - 1 ? 12 : 0),
+              child: InkWell(
+                onTap: () => _navigateToRecipeDetail(dish),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.restaurant,
+                        color: Colors.orange.shade600,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          dish.name,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.grey.shade400,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  // 🎨 CLEAN ACTION BUTTONS
+  Widget _buildCleanActionButtons(Meal meal, String mealType) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Recipe button
+          Expanded(
+            child: _buildActionButton(
+              icon: Icons.menu_book,
+              label: 'Công thức',
+              color: Colors.orange,
+              onTap: () => _navigateToRecipeDetail(meal.dishes.first),
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Replace button
+          Expanded(
+            child: _buildActionButton(
+              icon: Icons.refresh,
+              label: 'Thay thế',
+              color: Colors.blue,
+              onTap: () => _replaceMeal(mealType),
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Log button
+          Expanded(
+            child: _buildActionButton(
+              icon: Icons.check_circle,
+              label: 'Ghi nhận',
+              color: Colors.green,
+              onTap: () => _addMealToFoodLog(meal, mealType),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper method for action buttons
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: color,
+              size: 20,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper method to get meal icon
+  IconData _getMealIcon(String mealType) {
+    switch (mealType.toLowerCase()) {
+      case 'bữa sáng':
+      case 'breakfast':
+        return Icons.wb_sunny;
+      case 'bữa trưa':
+      case 'lunch':
+        return Icons.wb_sunny_outlined;
+      case 'bữa tối':
+      case 'dinner':
+        return Icons.nightlight_round;
+      default:
+        return Icons.restaurant;
+    }
+  }
+
+  // 🔗 NAVIGATE TO RECIPE DETAIL
+  void _navigateToRecipeDetail(Dish dish) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecipeDetailScreen(dish: dish),
+      ),
+    );
+  }
+
+  // 🔥 TỶ LỆ PHÂN BỔ DINH DƯỠNG CHO TỪNG BỮA ĂN
+  Map<String, double> _getMealNutritionRatios(String mealType) {
+    switch (mealType.toLowerCase()) {
+      case 'bữa sáng':
+      case 'breakfast':
+        return {
+          'calories': 0.25,  // 25% calories trong ngày
+          'protein': 0.30,   // 30% protein trong ngày
+          'fat': 0.25,       // 25% fat trong ngày
+          'carbs': 0.30,     // 30% carbs trong ngày
+        };
+
+      case 'bữa trưa':
+      case 'lunch':
+        return {
+          'calories': 0.40,  // 40% calories trong ngày
+          'protein': 0.40,   // 40% protein trong ngày
+          'fat': 0.40,       // 40% fat trong ngày
+          'carbs': 0.40,     // 40% carbs trong ngày
+        };
+
+      case 'bữa tối':
+      case 'dinner':
+        return {
+          'calories': 0.35,  // 35% calories trong ngày
+          'protein': 0.30,   // 30% protein trong ngày
+          'fat': 0.35,       // 35% fat trong ngày
+          'carbs': 0.30,     // 30% carbs trong ngày
+        };
+
+      default:
+        // Mặc định cho bữa ăn nhẹ
+        return {
+          'calories': 0.15,  // 15% calories trong ngày
+          'protein': 0.15,   // 15% protein trong ngày
+          'fat': 0.15,       // 15% fat trong ngày
+          'carbs': 0.15,     // 15% carbs trong ngày
+        };
     }
   }
 

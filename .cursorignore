@@ -1,0 +1,16 @@
+# Bỏ qua thư mục node_modules
+node_modules/
+
+# Bỏ qua tất cả file .log
+*.log
+
+# Bỏ qua thư mục build
+build/
+
+# Bỏ qua tất cả NGOẠI TRỪ thư mục src
+/*
+!/src
+
+# Bỏ qua tất cả các file trong assets ngoại trừ .png
+assets/*
+!assets/*.png

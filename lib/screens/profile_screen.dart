@@ -49,6 +49,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   // Biến để lưu trữ dữ liệu người dùng
   double _weight = 54.0;
+  double _targetWeight = 0.0; // Thêm biến local cho cân nặng mục tiêu
   String _name = "Lê Anh Tú";
   int _age = 23;
   double _tdee = 2275;
@@ -121,6 +122,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final userName = userDataProvider.name;
       final targetWeight = userDataProvider.targetWeightKg;
 
+      // 🔍 DEBUG: Kiểm tra giá trị cân nặng từ UserDataProvider
+      print('🔍 DEBUG ProfileScreen - Cân nặng từ UserDataProvider: $weight kg');
+      print('🔍 DEBUG ProfileScreen - Cân nặng mục tiêu từ UserDataProvider: $targetWeight kg');
+      print('🔍 DEBUG ProfileScreen - Mục tiêu: $goal, Tốc độ: $pace kg/tuần');
+
       // Lấy TDEE trực tiếp từ UserDataProvider thay vì tính lại
       final tdee = userDataProvider.tdeeCalories;
 
@@ -131,51 +137,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final spotList = <FlSpot>[];
       final currentWeight = weight;
 
-      // Tính cân nặng ban đầu dựa trên mục tiêu thực tế
-      double startWeight;
+      // 🔧 LOGIC MỚI: Biểu đồ hiển thị hành trình từ hiện tại đến mục tiêu
+      // Điểm đầu tiên = cân nặng hiện tại, điểm cuối = mục tiêu hoặc dự đoán
+      double startWeight = currentWeight; // 🔧 BẮT ĐẦU TỪ CÂN NẶNG HIỆN TẠI
+      double endWeight;
+
       if (goal == "Giảm cân") {
         if (targetWeight > 0) {
-          // Có mục tiêu cụ thể - tính dựa trên target weight
-          double weightDifference = currentWeight - targetWeight;
-          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-          startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
-          print('📊 Giảm cân (có mục tiêu): Hiện tại=$currentWeight, Mục tiêu=$targetWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+          // Có mục tiêu cụ thể - kết thúc ở target weight
+          endWeight = targetWeight; // 50.0 kg
+          print('📊 Giảm cân (có mục tiêu): Từ $currentWeight kg → $endWeight kg');
         } else {
           // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
-          startWeight = currentWeight + (pace * 6);
-          print('📊 Giảm cân (không có mục tiêu): Hiện tại=$currentWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+          endWeight = currentWeight - (pace * 6);
+          print('📊 Giảm cân (không có mục tiêu): Từ $currentWeight kg → $endWeight kg');
         }
       } else if (goal == "Tăng cân") {
         if (targetWeight > 0) {
-          // Có mục tiêu cụ thể - tính dựa trên target weight
-          double weightDifference = targetWeight - currentWeight;
-          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-          startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
-          print('📊 Tăng cân (có mục tiêu): Hiện tại=$currentWeight, Mục tiêu=$targetWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+          // Có mục tiêu cụ thể - kết thúc ở target weight
+          endWeight = targetWeight;
+          print('📊 Tăng cân (có mục tiêu): Từ $currentWeight kg → $endWeight kg');
         } else {
           // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
-          startWeight = currentWeight - (pace * 6);
-          print('📊 Tăng cân (không có mục tiêu): Hiện tại=$currentWeight, Tốc độ=$pace, Bắt đầu=$startWeight');
+          endWeight = currentWeight + (pace * 6);
+          print('📊 Tăng cân (không có mục tiêu): Từ $currentWeight kg → $endWeight kg');
         }
       } else {
-        // Duy trì cân nặng - biến động nhẹ
-        startWeight = currentWeight + 0.5;
-        print('📊 Duy trì: Hiện tại=$currentWeight, Bắt đầu=$startWeight');
+        // Duy trì cân nặng - biến động nhẹ quanh cân nặng hiện tại
+        endWeight = currentWeight;
+        print('📊 Duy trì: Quanh $currentWeight kg');
       }
 
-      // Tạo lịch sử cân nặng thực tế trong 7 điểm thời gian
+      // 🔧 Tạo hành trình cân nặng từ hiện tại đến mục tiêu trong 7 điểm thời gian
       for (int i = 0; i < 7; i++) {
         double progressWeight;
         if (i == 0) {
-          // Điểm bắt đầu
-          progressWeight = startWeight;
+          // Điểm đầu tiên = cân nặng hiện tại
+          progressWeight = startWeight; // 63.1 kg
         } else if (i == 6) {
-          // Điểm hiện tại
-          progressWeight = currentWeight;
+          // Điểm cuối = mục tiêu hoặc dự đoán
+          progressWeight = endWeight; // 50.0 kg (cho giảm cân)
         } else {
-          // Các điểm trung gian - tính toán dựa trên tiến độ tuyến tính
+          // Các điểm trung gian - tiến độ tuyến tính từ hiện tại đến mục tiêu
           final progress = i / 6.0; // Tiến độ từ 0 đến 1
-          progressWeight = startWeight + (currentWeight - startWeight) * progress;
+          progressWeight = startWeight + (endWeight - startWeight) * progress;
 
           // Thêm một chút biến động tự nhiên nhỏ
           final variation = (i % 2 == 0 ? 0.1 : -0.1);
@@ -183,11 +188,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
 
         spotList.add(FlSpot(i.toDouble(), progressWeight));
+        print('📊 Điểm $i: ${progressWeight.toStringAsFixed(1)} kg');
       }
 
       // Cập nhật dữ liệu với thông tin thật từ UserDataProvider
       setState(() {
         _weight = weight;
+        _targetWeight = targetWeight; // Lưu cân nặng mục tiêu vào biến local
         _age = age;
         _name = userName.isNotEmpty ? userName : "Người dùng";
         _tdee = tdee > 0 ? tdee : 2000; // Fallback nếu TDEE chưa được tính
@@ -535,43 +542,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Simplified weight chart matching the design
   Widget _buildSimplifiedWeightChart() {
-    // Lấy dữ liệu thật từ UserDataProvider
+    // Sử dụng dữ liệu đã được đồng bộ từ _loadUserData() để đảm bảo tính nhất quán
     final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-    final currentWeight = userDataProvider.weightKg; // Cân nặng hiện tại thật
-    final targetWeight = userDataProvider.targetWeightKg; // Cân nặng mục tiêu thật
+    final currentWeight = _weight; // Sử dụng biến local đã được đồng bộ
+    final targetWeight = _targetWeight; // Sử dụng biến local đã được đồng bộ
     final goal = userDataProvider.goal; // Mục tiêu thật
-    final pace = userDataProvider.pace; // Tốc độ thật (kg/tuần)
+    final pace = _weeklyWeightChange; // Sử dụng biến local đã được đồng bộ
 
-    // Tính cân nặng ban đầu dựa trên mục tiêu thực tế
-    double startWeight;
+    // 🔍 DEBUG: Kiểm tra giá trị được sử dụng trong simplified chart
+    print('🔍 DEBUG _buildSimplifiedWeightChart - currentWeight (local): $currentWeight kg');
+    print('🔍 DEBUG _buildSimplifiedWeightChart - targetWeight (local): $targetWeight kg');
+    print('🔍 DEBUG _buildSimplifiedWeightChart - UserDataProvider.weightKg: ${userDataProvider.weightKg} kg');
+    print('🔍 DEBUG _buildSimplifiedWeightChart - goal: $goal, pace: $pace kg/tuần');
+
+    // 🔧 LOGIC MỚI: Sử dụng dữ liệu từ _weightHistory nếu có, nếu không thì tạo mock data
+    // Biểu đồ luôn bắt đầu từ cân nặng hiện tại
+    print('🔍 _weightHistory.length: ${_weightHistory.length}');
     if (_weightHistory.isNotEmpty) {
-      startWeight = _weightHistory.first.y;
+      print('🔍 Sử dụng dữ liệu từ _weightHistory');
+      // Sử dụng dữ liệu thực từ _loadUserData()
     } else {
-      // Tính toán cân nặng ban đầu dựa trên mục tiêu và tốc độ thực tế
-      if (goal == "Giảm cân") {
-        if (targetWeight > 0) {
-          // Có mục tiêu cụ thể
-          double weightDifference = currentWeight - targetWeight;
-          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-          startWeight = currentWeight + (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
-        } else {
-          // Không có mục tiêu cụ thể - giả định giảm trong 6 tuần
-          startWeight = currentWeight + (pace * 6);
-        }
-      } else if (goal == "Tăng cân") {
-        if (targetWeight > 0) {
-          // Có mục tiêu cụ thể
-          double weightDifference = targetWeight - currentWeight;
-          double estimatedWeeks = pace > 0 ? weightDifference / pace : 6;
-          startWeight = currentWeight - (pace * Math.min(estimatedWeeks, 6)); // Tối đa 6 tuần
-        } else {
-          // Không có mục tiêu cụ thể - giả định tăng trong 6 tuần
-          startWeight = currentWeight - (pace * 6);
-        }
-      } else {
-        // Duy trì cân nặng - biến động nhẹ
-        startWeight = currentWeight + 0.5;
-      }
+      print('🔍 Tạo mock data cho biểu đồ');
+      // Tạo mock data bắt đầu từ cân nặng hiện tại
     }
 
     // Tính toán ngày tháng hiện tại
@@ -867,13 +859,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         lineBarsData: [
           LineChartBarData(
             spots: _weightHistory.isEmpty ? [
-              FlSpot(0, 52),
-              FlSpot(1, 52.5),
-              FlSpot(2, 53),
-              FlSpot(3, 52.8),
-              FlSpot(4, 53.5),
-              FlSpot(5, 53.8),
-              FlSpot(6, 54),
+              FlSpot(0, 63.1), // 🔧 BẮT ĐẦU từ cân nặng hiện tại
+              FlSpot(1, 62.3),
+              FlSpot(2, 61.5),
+              FlSpot(3, 60.7),
+              FlSpot(4, 59.9),
+              FlSpot(5, 51.1),
+              FlSpot(6, 50.0), // 🔧 KẾT THÚC ở mục tiêu
             ] : _weightHistory,
             isCurved: true,
             gradient: LinearGradient(
@@ -925,10 +917,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // AI suggestion notification với thông tin cá nhân hóa
   Widget _buildWeightUpdateNotification() {
-    // Lấy thông tin từ UserDataProvider để cá nhân hóa thông báo
+    // Sử dụng dữ liệu đã được đồng bộ từ _loadUserData() để đảm bảo tính nhất quán
     final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
     final goal = userDataProvider.goal;
-    final targetWeight = userDataProvider.targetWeightKg;
+    final targetWeight = _targetWeight; // Sử dụng biến local đã được đồng bộ
 
     // Tạo thông báo cá nhân hóa dựa trên mục tiêu
     String personalizedMessage = "";
@@ -937,14 +929,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final remainingWeight = _weight - targetWeight;
         personalizedMessage = "Bạn còn ${remainingWeight.toStringAsFixed(1)} kg nữa để đạt mục tiêu ${targetWeight.toStringAsFixed(1)} kg. ";
       } else {
-        personalizedMessage = "Bạn đang trong quá trình giảm cân với tốc độ ${userDataProvider.pace.toStringAsFixed(1)} kg/tuần. ";
+        personalizedMessage = "Bạn đang trong quá trình giảm cân với tốc độ ${_weeklyWeightChange.toStringAsFixed(1)} kg/tuần. ";
       }
     } else if (goal == "Tăng cân") {
       if (targetWeight > 0) {
         final remainingWeight = targetWeight - _weight;
         personalizedMessage = "Bạn cần tăng thêm ${remainingWeight.toStringAsFixed(1)} kg để đạt mục tiêu ${targetWeight.toStringAsFixed(1)} kg. ";
       } else {
-        personalizedMessage = "Bạn đang trong quá trình tăng cân với tốc độ ${userDataProvider.pace.toStringAsFixed(1)} kg/tuần. ";
+        personalizedMessage = "Bạn đang trong quá trình tăng cân với tốc độ ${_weeklyWeightChange.toStringAsFixed(1)} kg/tuần. ";
       }
     } else if (goal == "Duy trì cân nặng") {
       personalizedMessage = "Bạn đang duy trì cân nặng ở mức ${_weight.toStringAsFixed(1)} kg. ";
@@ -1252,25 +1244,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Bar chart for weight history - giống như trong ảnh
   Widget _buildBarChart() {
-    // Lấy dữ liệu thật từ UserDataProvider
+    // Sử dụng dữ liệu đã được đồng bộ từ _loadUserData() để đảm bảo tính nhất quán
     final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-    final currentWeight = userDataProvider.weightKg; // Cân nặng hiện tại thật
-    final targetWeight = userDataProvider.targetWeightKg; // Cân nặng mục tiêu thật
+    final currentWeight = _weight; // Sử dụng biến local đã được đồng bộ
+    final targetWeight = _targetWeight; // Sử dụng biến local đã được đồng bộ
     final goal = userDataProvider.goal; // Mục tiêu thật
-    final pace = userDataProvider.pace; // Tốc độ thật (kg/tuần)
+    final pace = _weeklyWeightChange; // Sử dụng biến local đã được đồng bộ
 
-    // Tính toán dữ liệu biểu đồ theo thứ tự: Hiện tại → Sự kiện → Mục tiêu
+    // 🔍 DEBUG: Kiểm tra giá trị được sử dụng trong biểu đồ
+    print('🔍 DEBUG _buildBarChart - currentWeight (local): $currentWeight kg');
+    print('🔍 DEBUG _buildBarChart - targetWeight (local): $targetWeight kg');
+    print('🔍 DEBUG _buildBarChart - UserDataProvider.weightKg: ${userDataProvider.weightKg} kg');
+    print('🔍 DEBUG _buildBarChart - goal: $goal, pace: $pace kg/tuần');
+
+    // 🔧 LOGIC MỚI: Tạo dữ liệu biểu đồ từ hiện tại đến mục tiêu
     List<FlSpot> mockData = [];
 
     // Lấy thông tin sự kiện từ UserDataProvider
     final eventDate = userDataProvider.eventDate;
     final eventType = userDataProvider.eventType;
 
-    // Tính toán cân nặng tại thời điểm sự kiện (giữa hiện tại và mục tiêu)
+    // 🔧 Tính toán cân nặng tại thời điểm sự kiện (điểm giữa hành trình)
     double eventWeight;
     if (targetWeight > 0) {
-      // Có mục tiêu cụ thể - sự kiện ở giữa
-      eventWeight = (currentWeight + targetWeight) / 2;
+      // Có mục tiêu cụ thể - sự kiện ở giữa hành trình từ hiện tại đến mục tiêu
+      eventWeight = (currentWeight + targetWeight) / 2; // (63.1 + 50.0) / 2 = 56.55
     } else {
       // Không có mục tiêu cụ thể - tính dựa trên goal và pace
       if (goal == "Giảm cân") {
@@ -1281,6 +1279,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         eventWeight = currentWeight; // Duy trì
       }
     }
+
+    print('🔧 BarChart - Hiện tại: $currentWeight, Sự kiện: $eventWeight, Mục tiêu: $targetWeight');
 
     // Tạo dữ liệu biểu đồ với 7 điểm
     if (goal == "Giảm cân") {
@@ -1615,12 +1615,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 lineBarsData: [
                   LineChartBarData(
                     spots: _weightHistory.isEmpty ? () {
-                      // Lấy dữ liệu thật từ UserDataProvider
+                      // Sử dụng dữ liệu đã được đồng bộ từ _loadUserData()
                       final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-                      final currentWeight = userDataProvider.weightKg;
-                      final targetWeight = userDataProvider.targetWeightKg;
+                      final currentWeight = _weight; // Sử dụng biến local
+                      final targetWeight = _targetWeight; // Sử dụng biến local
                       final goal = userDataProvider.goal;
-                      final pace = userDataProvider.pace;
+                      final pace = _weeklyWeightChange; // Sử dụng biến local
 
                       if (goal == "Giảm cân") {
                         if (targetWeight > 0) {
@@ -1777,10 +1777,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildChartLabel(
             top: 5,
             left: 10,
-            title: _weightHistory.isEmpty ? () {
-              final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-              return '${userDataProvider.weightKg.toStringAsFixed(1)} kg';
-            }() : '${_weightHistory.first.y.toStringAsFixed(1)} kg',
+            title: _weightHistory.isEmpty ?
+              '${_weight.toStringAsFixed(1)} kg' : '${_weightHistory.first.y.toStringAsFixed(1)} kg',
             subtitle: "Hiện tại ✅",
             alignment: CrossAxisAlignment.start,
             color: Colors.green.shade500,
@@ -1792,10 +1790,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             right: 10,
             title: _weightHistory.isEmpty ? () {
               final userDataProvider = Provider.of<udp.UserDataProvider>(context, listen: false);
-              final targetWeight = userDataProvider.targetWeightKg;
-              final currentWeight = userDataProvider.weightKg;
+              final targetWeight = _targetWeight; // Sử dụng biến local
+              final currentWeight = _weight; // Sử dụng biến local
               final goal = userDataProvider.goal;
-              final pace = userDataProvider.pace;
+              final pace = _weeklyWeightChange; // Sử dụng biến local
 
               if (targetWeight > 0) {
                 return '${targetWeight.toStringAsFixed(1)} kg';

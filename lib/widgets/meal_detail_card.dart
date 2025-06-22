@@ -58,6 +58,148 @@ class _MealDetailCardState extends State<MealDetailCard> {
     return allSteps;
   }
 
+  // 🎨 ENHANCED ACTION BUTTONS WITH BETTER UX
+  Widget _buildEnhancedActionButtons() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          // Header với icon và text
+          Row(
+            children: [
+              Icon(
+                Icons.touch_app,
+                color: Colors.blue.shade600,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Thao tác với bữa ăn',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Action buttons grid
+          Row(
+            children: [
+              // 🍳 Xem hướng dẫn nấu ăn
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.menu_book,
+                  label: 'Hướng dẫn',
+                  color: Colors.orange,
+                  onTap: () => _showCookingInstructions(context),
+                  tooltip: 'Xem hướng dẫn nấu ăn chi tiết',
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              // 🔄 Thay thế món ăn
+              if (widget.onReplace != null)
+                Expanded(
+                  child: _buildActionButton(
+                    icon: Icons.refresh,
+                    label: 'Thay thế',
+                    color: Colors.blue,
+                    onTap: widget.onReplace!,
+                    tooltip: 'Thay thế bằng món ăn khác',
+                  ),
+                ),
+
+              if (widget.onReplace != null) const SizedBox(width: 8),
+
+              // ✅ Ghi nhận vào food log
+              if (widget.onLog != null)
+                Expanded(
+                  child: _buildActionButton(
+                    icon: Icons.check_circle,
+                    label: 'Ghi nhận',
+                    color: Colors.green,
+                    onTap: widget.onLog!,
+                    tooltip: 'Ghi nhận vào nhật ký ăn uống',
+                  ),
+                ),
+
+              if (widget.onLog != null) const SizedBox(width: 8),
+
+              // 📊 Xem chi tiết dinh dưỡng
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.analytics,
+                  label: 'Dinh dưỡng',
+                  color: Colors.purple,
+                  onTap: () => _showNutritionDetails(context),
+                  tooltip: 'Xem thông tin dinh dưỡng chi tiết',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🎨 BUILD INDIVIDUAL ACTION BUTTON
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 24,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     bool hasDishes = widget.meal.dishes.isNotEmpty;
@@ -169,50 +311,8 @@ class _MealDetailCardState extends State<MealDetailCard> {
             ),
           ),
         
-        // Nút thao tác
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              if (widget.onReplace != null)
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: widget.onReplace,
-                    icon: Icon(Icons.refresh, color: Colors.blue, size: 18),
-                    label: Text(
-                      'Thay thế bằng AI',
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.blue.shade50,
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                    ),
-                  ),
-
-                ),
-              SizedBox(width: widget.onReplace != null && widget.onLog != null ? 8.0 : 0),
-              if (widget.onLog != null)
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: widget.onLog,
-                    icon: const Icon(Icons.check_circle_outline, size: 18),
-                    label: const Text('Ghi nhận'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.lightBlueAccent,
-                      side: const BorderSide(color: Colors.lightBlueAccent),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
+        // 🎨 ENHANCED ACTION BUTTONS WITH BETTER UX
+        _buildEnhancedActionButtons(),
       ],
     );
   }
@@ -676,4 +776,477 @@ class _MealDetailCardState extends State<MealDetailCard> {
       ],
     );
   }
-} 
+
+  // 🍳 SHOW COOKING INSTRUCTIONS DIALOG
+  void _showCookingInstructions(BuildContext context) {
+    // Lấy tất cả instructions từ các dishes
+    List<String> allInstructions = [];
+
+    if (widget.meal.dishes.isNotEmpty) {
+      for (int i = 0; i < widget.meal.dishes.length; i++) {
+        final dish = widget.meal.dishes[i];
+        allInstructions.add('${dish.name}:');
+        allInstructions.addAll(dish.instructions);
+        if (i < widget.meal.dishes.length - 1) {
+          allInstructions.add(''); // Thêm dòng trống giữa các món
+        }
+      }
+    } else {
+      allInstructions = widget.meal.instructions;
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.menu_book,
+                        color: Colors.orange.shade600,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Hướng dẫn nấu ăn',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.orange.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Meal name
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.restaurant,
+                                color: Colors.blue.shade600,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${widget.mealType} - ${widget.meal.name}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Instructions
+                        if (allInstructions.isNotEmpty) ...[
+                          Text(
+                            'Các bước thực hiện:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          ...allInstructions.asMap().entries.map((entry) {
+                            int index = entry.key;
+                            String instruction = entry.value;
+
+                            if (instruction.isEmpty) {
+                              return const SizedBox(height: 8);
+                            }
+
+                            // Check if this is a dish name (ends with :)
+                            bool isDishName = instruction.endsWith(':');
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: isDishName
+                                  ? Text(
+                                      instruction,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange.shade700,
+                                      ),
+                                    )
+                                  : Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          margin: const EdgeInsets.only(top: 2),
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange.shade400,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            instruction,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.grey.shade700,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            );
+                          }).toList(),
+                        ] else ...[
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Chưa có hướng dẫn nấu ăn chi tiết cho món này.',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Footer
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.check),
+                        label: const Text('Đã hiểu'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.orange.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 📊 SHOW NUTRITION DETAILS DIALOG
+  void _showNutritionDetails(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.7,
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.shade50,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.analytics,
+                        color: Colors.purple.shade600,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Thông tin dinh dưỡng',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.purple.shade700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.purple.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Meal name
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.restaurant,
+                                color: Colors.blue.shade600,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${widget.mealType} - ${widget.meal.name}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // Main nutrition info
+                        _buildNutritionCard(
+                          'Thông tin dinh dưỡng chính',
+                          [
+                            _buildNutritionRow('Calories', '${widget.meal.nutrition['calories']?.toInt() ?? 0}', 'kcal', Colors.red),
+                            _buildNutritionRow('Protein', '${widget.meal.nutrition['protein']?.toInt() ?? 0}', 'g', Colors.blue),
+                            _buildNutritionRow('Chất béo', '${widget.meal.nutrition['fat']?.toInt() ?? 0}', 'g', Colors.orange),
+                            _buildNutritionRow('Carbohydrate', '${widget.meal.nutrition['carbs']?.toInt() ?? 0}', 'g', Colors.green),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Detailed nutrition per dish
+                        if (widget.meal.dishes.isNotEmpty) ...[
+                          Text(
+                            'Dinh dưỡng từng món:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          ...widget.meal.dishes.map((dish) {
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: _buildNutritionCard(
+                                dish.name,
+                                [
+                                  _buildNutritionRow('Calories', '${dish.nutrition['calories']?.toInt() ?? 0}', 'kcal', Colors.red),
+                                  _buildNutritionRow('Protein', '${dish.nutrition['protein']?.toInt() ?? 0}', 'g', Colors.blue),
+                                  _buildNutritionRow('Chất béo', '${dish.nutrition['fat']?.toInt() ?? 0}', 'g', Colors.orange),
+                                  _buildNutritionRow('Carbs', '${dish.nutrition['carbs']?.toInt() ?? 0}', 'g', Colors.green),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Footer
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.check),
+                        label: const Text('Đóng'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.purple.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper method for nutrition card
+  Widget _buildNutritionCard(String title, List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  // Helper method for nutrition row
+  Widget _buildNutritionRow(String label, String value, String unit, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            '$value $unit',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

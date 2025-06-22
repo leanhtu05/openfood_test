@@ -77,7 +77,7 @@ class GroceryCostCalculator {
           }
           
           final amount = double.tryParse(item.amount) ?? 1.0;
-          final estimatedCost = pricePerUnit * amount;
+          final estimatedCost = (pricePerUnit * amount).toDouble(); // 🔧 FIX: Explicit double conversion
           
           updatedItems.add(GroceryItemWithCost(
             name: item.name,
@@ -126,9 +126,9 @@ class GroceryCostCalculator {
         (sum, item) => sum + item.estimatedCost,
       );
       
-      final percentage = totalCost > 0 ? (categoryTotalCost / totalCost) * 100 : 0.0;
-      final averageCostPerItem = categoryItemList.isNotEmpty 
-          ? categoryTotalCost / categoryItemList.length 
+      final percentage = totalCost > 0 ? ((categoryTotalCost / totalCost) * 100).toDouble() : 0.0;
+      final averageCostPerItem = categoryItemList.isNotEmpty
+          ? (categoryTotalCost / categoryItemList.length).toDouble()
           : 0.0;
       
       // Tìm top 3 items đắt nhất trong danh mục
@@ -221,7 +221,7 @@ class GroceryCostCalculator {
   BudgetComparison _calculateBudgetComparison(double actualCost, double budgetLimit) {
     final difference = actualCost - budgetLimit;
     final isOverBudget = difference > 0;
-    final percentageUsed = budgetLimit > 0 ? (actualCost / budgetLimit) * 100 : 0;
+    final percentageUsed = budgetLimit > 0 ? ((actualCost / budgetLimit) * 100).toDouble() : 0.0;
     
     return BudgetComparison(
       budgetLimit: budgetLimit,
@@ -245,7 +245,7 @@ class GroceryCostCalculator {
       for (final item in items) {
         final categoryData = categoryStats[item.category] as Map<String, dynamic>?;
         if (categoryData != null) {
-          final averagePrice = categoryData['average'] as double? ?? 0.0;
+          final averagePrice = (categoryData['average'] as num?)?.toDouble() ?? 0.0;
           final currentPrice = item.pricePerUnit;
           final priceChange = ((currentPrice - averagePrice) / averagePrice) * 100;
           
@@ -303,7 +303,7 @@ class GroceryCostCalculator {
         final ingredients = _parseMealIngredients(meal);
         for (final ingredient in ingredients.entries) {
           final name = ingredient.key;
-          final amount = ingredient.value['amount'] as double;
+          final amount = (ingredient.value['amount'] as num).toDouble();
           final unit = ingredient.value['unit'] as String;
           
           ingredientAmounts[name] = (ingredientAmounts[name] ?? 0.0) + amount;
@@ -328,7 +328,7 @@ class GroceryCostCalculator {
       
       final estimatedCost = await _priceService.calculateEstimatedCost(name, amount);
       final priceData = await _priceService.getFoodPrice(name);
-      
+
       double pricePerUnit = 0.0;
       if (priceData != null) {
         if (priceData.containsKey('price_per_kg')) {
@@ -339,13 +339,13 @@ class GroceryCostCalculator {
           pricePerUnit = (priceData['price_per_unit'] as num).toDouble();
         }
       }
-      
+
       groceryItems.add(GroceryItemWithCost(
         name: name,
         amount: amount.toString(),
         unit: unit,
         category: category,
-        estimatedCost: estimatedCost,
+        estimatedCost: estimatedCost, // Service đã trả về double
         pricePerUnit: pricePerUnit,
       ));
     }

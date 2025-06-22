@@ -332,10 +332,10 @@ class MealPlanApiService {
   static Future<Map<String, dynamic>?> replaceMeal({
     required String day,
     required String mealType,
-    double? caloriesTarget = 2000.0,
-    double? proteinTarget = 120.0,
-    double? fatTarget = 65.0,
-    double? carbsTarget = 250.0,
+    double? caloriesTarget, // 🔥 KHÔNG CÓ GIÁ TRỊ MẶC ĐỊNH - SẼ TÍNH TOÁN DỰA TRÊN MEAL TYPE
+    double? proteinTarget,  // 🔥 KHÔNG CÓ GIÁ TRỊ MẶC ĐỊNH
+    double? fatTarget,      // 🔥 KHÔNG CÓ GIÁ TRỊ MẶC ĐỊNH
+    double? carbsTarget,    // 🔥 KHÔNG CÓ GIÁ TRỊ MẶC ĐỊNH
     bool useAI = true,
     String? userId,
     List<String>? preferences,
@@ -345,16 +345,24 @@ class MealPlanApiService {
     String? dietPreference,
   }) async {
     try {
+      // 🔥 TÍNH TOÁN MỤC TIÊU DINH DƯỠNG HỢP LÝ CHO TỪNG BỮA ĂN
+      Map<String, double> mealTargets = _calculateMealTargets(
+        mealType,
+        caloriesTarget,
+        proteinTarget,
+        fatTarget,
+        carbsTarget
+      );
+
       Map<String, dynamic> requestData = {
         'day_of_week': day,
         'meal_type': mealType,
         'use_ai': useAI,
+        'calories_target': mealTargets['calories']!.round(),
+        'protein_target': mealTargets['protein']!.round(),
+        'fat_target': mealTargets['fat']!.round(),
+        'carbs_target': mealTargets['carbs']!.round(),
       };
-
-      if (caloriesTarget != null) requestData['calories_target'] = caloriesTarget.round();
-      if (proteinTarget != null) requestData['protein_target'] = proteinTarget.round();
-      if (fatTarget != null) requestData['fat_target'] = fatTarget.round();
-      if (carbsTarget != null) requestData['carbs_target'] = carbsTarget.round();
       if (userId != null && userId.isNotEmpty) requestData['user_id'] = userId;
       if (preferences != null && preferences.isNotEmpty) requestData['preferences'] = preferences;
       if (allergies != null && allergies.isNotEmpty) requestData['allergies'] = allergies;
@@ -824,4 +832,70 @@ class MealPlanApiService {
       return false;
     }
   }
-} 
+
+  // 🔥 TÍNH TOÁN MỤC TIÊU DINH DƯỠNG HỢP LÝ CHO TỪNG BỮA ĂN
+  static Map<String, double> _calculateMealTargets(
+    String mealType,
+    double? caloriesTarget,
+    double? proteinTarget,
+    double? fatTarget,
+    double? carbsTarget,
+  ) {
+    // Mục tiêu dinh dưỡng mặc định cho cả ngày (người Việt Nam trung bình)
+    const double dailyCalories = 2000.0;
+    const double dailyProtein = 80.0;   // 1.2g/kg cho người 65kg
+    const double dailyFat = 65.0;       // 30% calories từ fat
+    const double dailyCarbs = 250.0;    // 50% calories từ carbs
+
+    // Tỷ lệ phân bổ cho từng bữa ăn
+    Map<String, double> mealRatios = _getMealRatios(mealType);
+
+    return {
+      'calories': caloriesTarget ?? (dailyCalories * mealRatios['calories']!),
+      'protein': proteinTarget ?? (dailyProtein * mealRatios['protein']!),
+      'fat': fatTarget ?? (dailyFat * mealRatios['fat']!),
+      'carbs': carbsTarget ?? (dailyCarbs * mealRatios['carbs']!),
+    };
+  }
+
+  // 🔥 TỶ LỆ PHÂN BỔ DINH DƯỠNG CHO TỪNG BỮA ĂN
+  static Map<String, double> _getMealRatios(String mealType) {
+    switch (mealType.toLowerCase()) {
+      case 'bữa sáng':
+      case 'breakfast':
+        return {
+          'calories': 0.25,  // 25% calories trong ngày (500 kcal)
+          'protein': 0.30,   // 30% protein trong ngày (24g)
+          'fat': 0.25,       // 25% fat trong ngày (16g)
+          'carbs': 0.30,     // 30% carbs trong ngày (75g)
+        };
+
+      case 'bữa trưa':
+      case 'lunch':
+        return {
+          'calories': 0.40,  // 40% calories trong ngày (800 kcal)
+          'protein': 0.40,   // 40% protein trong ngày (32g)
+          'fat': 0.40,       // 40% fat trong ngày (26g)
+          'carbs': 0.40,     // 40% carbs trong ngày (100g)
+        };
+
+      case 'bữa tối':
+      case 'dinner':
+        return {
+          'calories': 0.35,  // 35% calories trong ngày (700 kcal)
+          'protein': 0.30,   // 30% protein trong ngày (24g)
+          'fat': 0.35,       // 35% fat trong ngày (23g)
+          'carbs': 0.30,     // 30% carbs trong ngày (75g)
+        };
+
+      default:
+        // Mặc định cho bữa ăn nhẹ
+        return {
+          'calories': 0.15,  // 15% calories trong ngày (300 kcal)
+          'protein': 0.15,   // 15% protein trong ngày (12g)
+          'fat': 0.15,       // 15% fat trong ngày (10g)
+          'carbs': 0.15,     // 15% carbs trong ngày (37g)
+        };
+    }
+  }
+}

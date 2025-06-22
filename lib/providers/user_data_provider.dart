@@ -703,10 +703,15 @@ class UserDataProvider with ChangeNotifier {
 
   // Phương thức trung tâm để cập nhật mục tiêu dinh dưỡng dựa trên TDEE
   void updateNutritionGoalsByTDEE({bool notify = true}) {
+    debugPrint('🔄 updateNutritionGoalsByTDEE được gọi với TDEE: $_tdeeCalories, Goal: $_goal');
+
     _adjustCaloriesByGoal();
     _calculateMacrosByCalories();
     saveUserData();
-    
+
+    // 🔧 FIX: Log để debug vấn đề calorie target
+    debugPrint('✅ Đã cập nhật nutrition goals: calories=${_nutritionGoals['calories']}, protein=${_nutritionGoals['protein']}, carbs=${_nutritionGoals['carbs']}, fat=${_nutritionGoals['fat']}');
+
     if (notify) {
       // Sử dụng debounce để tránh thông báo quá nhiều lần
       if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
@@ -1789,9 +1794,43 @@ class UserDataProvider with ChangeNotifier {
         '✅ Đã cập nhật nutrition_goals theo TDEE mới: calories=${_nutritionGoals['calories']}');
   }
 
+  // 🔧 FIX: Method để force reload dữ liệu từ Firebase
+  Future<void> forceReloadFromFirebase() async {
+    try {
+      debugPrint('🔄 Force reload dữ liệu từ Firebase...');
+
+      if (!isUserAuthenticated()) {
+        debugPrint('⚠️ User chưa đăng nhập, không thể reload từ Firebase');
+        return;
+      }
+
+      // Reset cờ để ưu tiên dữ liệu từ Firebase
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('data_loaded_from_firestore', false);
+
+      // Load dữ liệu từ Firebase
+      await loadFromFirestore();
+
+      // Đảm bảo TDEE được tính toán đúng
+      if (_tdeeCalories <= 0) {
+        await _initializeTDEEAsync();
+      }
+
+      // Cập nhật nutrition goals
+      updateNutritionGoalsByTDEE();
+
+      debugPrint('✅ Đã force reload dữ liệu từ Firebase thành công');
+      debugPrint('📊 TDEE: $_tdeeCalories, Nutrition Goals Calories: ${_nutritionGoals['calories']}');
+
+    } catch (e) {
+      debugPrint('❌ Lỗi khi force reload từ Firebase: $e');
+    }
+  }
+
   // Phương thức lấy mục tiêu calo nhất quán dựa trên TDEE và mục tiêu người dùng
   int getConsistentCalorieGoal() {
-    // Nếu đã có giá trị trong nutrition goals (đã được điều chỉnh theo mục tiêu)
+    // 🔧 FIX: Log để debug
+    debugPrint('🔍 getConsistentCalorieGoal - TDEE: $_tdeeCalories, Goal: $_goal, Nutrition Goals Calories: ${_nutritionGoals['calories']}');
 
     // Nếu có TDEE, ưu tiên tính toán dựa trên mục tiêu người dùng
     if (_tdeeCalories > 0 && (_tdeeCalories - 2000.0).abs() >= 0.001) {
@@ -1848,13 +1887,13 @@ class UserDataProvider with ChangeNotifier {
     }
 
     // Nếu không có giá trị nào khả dụng, sử dụng dailyCalories
-    if (_dailyCalories > 0) {
-      debugPrint('Sử dụng dailyCalories: $_dailyCalories');
+    if (_dailyCalories > 0 && _dailyCalories != 2000) {
+      debugPrint('📊 Sử dụng dailyCalories: $_dailyCalories');
       return _dailyCalories;
     }
 
     // Giá trị mặc định cuối cùng
-    debugPrint('Sử dụng giá trị mặc định: 2000');
+    debugPrint('⚠️ Sử dụng giá trị mặc định: 2000');
     return 2000;
   }
 
@@ -4112,6 +4151,24 @@ class UserDataProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Lỗi khi đồng bộ (ghi đè hoàn toàn) lên Firebase: $e');
     }
+  }
+
+  // 🔧 DEBUG: Method để kiểm tra dữ liệu hiện tại
+  void debugCurrentData() {
+    debugPrint('=== DEBUG USER DATA ===');
+    debugPrint('TDEE Calories: $_tdeeCalories');
+    debugPrint('Daily Calories: $_dailyCalories');
+    debugPrint('Nutrition Goals Calories: ${_nutritionGoals['calories']}');
+    debugPrint('Goal: $_goal');
+    debugPrint('Pace: $_pace');
+    debugPrint('Weight: $_weightKg kg');
+    debugPrint('Height: $_heightCm cm');
+    debugPrint('Age: $_age');
+    debugPrint('Gender: $_gender');
+    debugPrint('Activity Level: $_activityLevel');
+    debugPrint('User ID: $_userId');
+    debugPrint('Email: $_email');
+    debugPrint('======================');
   }
 
   // Setters for TDEE values

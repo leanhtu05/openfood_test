@@ -74,6 +74,8 @@ class FinanceAgentService {
     Map<String, GroceryItem> groceryItems,
     {double? budgetLimit, bool saveToFirebase = true}
   ) async {
+    print('🤖 Bắt đầu phân tích AI cho ${groceryItems.length} items...');
+
     // Chuyển đổi groceryItems thành format cho AI
     final groceryItemsList = groceryItems.values.map((item) => {
       'name': item.name,
@@ -82,14 +84,25 @@ class FinanceAgentService {
       'category': item.category,
     }).toList();
 
+    print('📤 Gửi dữ liệu tới AI service...');
+
     // Gọi AI service
     final aiAnalysis = await _aiService.analyzeGroceryListIntelligently(
       groceryItemsList,
       budgetLimit: budgetLimit,
     );
 
+    print('📥 Nhận được phân tích từ AI: ${aiAnalysis.keys.join(", ")}');
+
     // Convert AI response thành GroceryCostAnalysis
-    return _convertAIResponseToAnalysis(aiAnalysis, groceryItems, budgetLimit);
+    final result = _convertAIResponseToAnalysis(aiAnalysis, groceryItems, budgetLimit);
+
+    // Lưu vào Firebase nếu cần
+    if (saveToFirebase) {
+      await _saveAnalysisToFirebase(groceryItems, result);
+    }
+
+    return result;
   }
 
   /// Phân tích local (fallback)
@@ -134,7 +147,7 @@ class FinanceAgentService {
           percentage: totalCost > 0 ? (categoryTotal / totalCost) * 100 : 0,
           itemCount: itemCount,
           averageCostPerItem: categoryTotal / itemCount,
-          topExpensiveItems: _getTopExpensiveItemsInCategory(itemsWithCost, category),
+          topExpensiveItems: _getTopExpensiveItemsInCategoryWithCost(itemsWithCost, category),
         );
       }
 
@@ -230,9 +243,19 @@ class FinanceAgentService {
     return amount > 0 ? totalCost / amount : 0;
   }
 
-  /// Lấy top items đắt nhất trong danh mục
+  /// Lấy top items đắt nhất trong danh mục (overload cho GroceryItem)
   static List<String> _getTopExpensiveItemsInCategory(
-    List<GroceryItemWithCost> items, 
+    List<GroceryItem> items,
+    String category
+  ) {
+    final categoryItems = items.where((item) => item.category == category).toList();
+    categoryItems.sort((a, b) => calculateItemCost(b).compareTo(calculateItemCost(a)));
+    return categoryItems.take(3).map((item) => item.name).toList();
+  }
+
+  /// Lấy top items đắt nhất trong danh mục (original method)
+  static List<String> _getTopExpensiveItemsInCategoryWithCost(
+    List<GroceryItemWithCost> items,
     String category
   ) {
     final categoryItems = items.where((item) => item.category == category).toList();
@@ -398,38 +421,110 @@ class FinanceAgentService {
     double? budgetLimit,
   ) {
     try {
-      // Parse AI response
-      final totalCost = (aiResponse['total_cost'] ?? 0.0).toDouble();
-      final averageCostPerItem = (aiResponse['average_cost_per_item'] ?? 0.0).toDouble();
+      print('🔄 Converting AI response to analysis...');
 
-      // Parse category breakdown
-      final categoryBreakdown = <String, CategoryCostBreakdown>{};
-      final categoryData = aiResponse['category_breakdown'] as Map<String, dynamic>? ?? {};
+      // Kiểm tra xem có phải enhanced local analysis không
+      final isLocalAnalysis = aiResponse['analysis_type'] == 'enhanced_local';
 
-      for (final entry in categoryData.entries) {
-        final data = entry.value as Map<String, dynamic>;
-        categoryBreakdown[entry.key] = CategoryCostBreakdown(
-          categoryName: data['category_name'] ?? entry.key,
-          totalCost: (data['total_cost'] ?? 0.0).toDouble(),
-          percentage: (data['percentage'] ?? 0.0).toDouble(),
-          itemCount: data['item_count'] ?? 0,
-          averageCostPerItem: (data['average_cost_per_item'] ?? 0.0).toDouble(),
-          topExpensiveItems: List<String>.from(data['top_expensive_items'] ?? []),
-        );
+      // Tính toán chi phí từ local data nếu AI không trả về
+      double totalCost = 0.0;
+      final categoryTotals = <String, double>{};
+      final categoryItemCounts = <String, int>{};
+
+      for (final item in groceryItems.values) {
+        final cost = calculateItemCost(item);
+        totalCost += cost;
+        categoryTotals[item.category] = (categoryTotals[item.category] ?? 0) + cost;
+        categoryItemCounts[item.category] = (categoryItemCounts[item.category] ?? 0) + 1;
       }
 
-      // Parse saving tips
+      final averageCostPerItem = groceryItems.isNotEmpty ? totalCost / groceryItems.length : 0.0;
+
+      print('💰 Tổng chi phí tính toán: ${totalCost.toStringAsFixed(0)} VND');
+
+      // Parse category breakdown (ưu tiên từ AI, fallback về local calculation)
+      final categoryBreakdown = <String, CategoryCostBreakdown>{};
+      final aiCategoryData = aiResponse['category_breakdown'] as Map<String, dynamic>? ?? {};
+
+      if (aiCategoryData.isNotEmpty && !isLocalAnalysis) {
+        // Sử dụng dữ liệu từ AI
+        print('📊 Sử dụng category breakdown từ AI');
+        for (final entry in aiCategoryData.entries) {
+          final data = entry.value as Map<String, dynamic>;
+          categoryBreakdown[entry.key] = CategoryCostBreakdown(
+            categoryName: data['category_name'] ?? entry.key,
+            totalCost: (data['total_cost'] ?? 0.0).toDouble(),
+            percentage: (data['percentage'] ?? 0.0).toDouble(),
+            itemCount: data['item_count'] ?? 0,
+            averageCostPerItem: (data['average_cost_per_item'] ?? 0.0).toDouble(),
+            topExpensiveItems: List<String>.from(data['top_expensive_items'] ?? []),
+          );
+        }
+      } else {
+        // Tạo category breakdown từ local calculation
+        print('📊 Tạo category breakdown từ local calculation');
+        for (final category in categoryTotals.keys) {
+          final categoryTotal = categoryTotals[category]!;
+          final itemCount = categoryItemCounts[category]!;
+
+          categoryBreakdown[category] = CategoryCostBreakdown(
+            categoryName: category,
+            totalCost: categoryTotal,
+            percentage: totalCost > 0 ? (categoryTotal / totalCost) * 100 : 0,
+            itemCount: itemCount,
+            averageCostPerItem: categoryTotal / itemCount,
+            topExpensiveItems: _getTopExpensiveItemsInCategory(
+              groceryItems.values.where((item) => item.category == category).toList(),
+              category
+            ),
+          );
+        }
+      }
+
+      // Parse saving tips (ưu tiên từ AI, fallback về local generation)
       final savingTips = <CostSavingTip>[];
-      final tipsData = aiResponse['saving_tips'] as List<dynamic>? ?? [];
-      for (final tipData in tipsData) {
-        final tip = tipData as Map<String, dynamic>;
-        savingTips.add(CostSavingTip(
-          title: tip['title'] ?? '',
-          description: tip['description'] ?? '',
-          potentialSaving: (tip['potential_saving'] ?? 0.0).toDouble(),
-          category: tip['category'] ?? '',
-          priority: tip['priority'] ?? 3,
-        ));
+      final aiTipsData = aiResponse['saving_tips'] as List<dynamic>? ?? [];
+      final aiOptimizationSuggestions = aiResponse['optimization_suggestions'] as List<dynamic>? ?? [];
+
+      if (aiTipsData.isNotEmpty && !isLocalAnalysis) {
+        // Sử dụng tips từ AI
+        print('💡 Sử dụng saving tips từ AI');
+        for (final tipData in aiTipsData) {
+          final tip = tipData as Map<String, dynamic>;
+          savingTips.add(CostSavingTip(
+            title: tip['title'] ?? '',
+            description: tip['description'] ?? '',
+            potentialSaving: (tip['potential_saving'] ?? 0.0).toDouble(),
+            category: tip['category'] ?? '',
+            priority: tip['priority'] ?? 3,
+          ));
+        }
+      } else if (aiOptimizationSuggestions.isNotEmpty) {
+        // Chuyển đổi optimization suggestions thành saving tips
+        print('💡 Chuyển đổi optimization suggestions thành saving tips');
+        for (int i = 0; i < aiOptimizationSuggestions.length && i < 5; i++) {
+          final suggestion = aiOptimizationSuggestions[i].toString();
+          savingTips.add(CostSavingTip(
+            title: 'Gợi ý AI #${i + 1}',
+            description: suggestion,
+            potentialSaving: totalCost * 0.1, // Ước tính tiết kiệm 10%
+            category: 'AI Analysis',
+            priority: 4,
+          ));
+        }
+      } else {
+        // Tạo saving tips local
+        print('💡 Tạo saving tips từ local analysis');
+        final itemsWithCost = groceryItems.values.map((item) => GroceryItemWithCost(
+          name: item.name,
+          amount: item.amount,
+          unit: item.unit,
+          category: item.category,
+          estimatedCost: calculateItemCost(item),
+          pricePerUnit: _getPricePerUnit(item),
+        )).toList();
+
+        savingTips.addAll(_generateSavingTips(itemsWithCost, categoryBreakdown));
       }
 
       // Parse budget comparison

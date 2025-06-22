@@ -10,6 +10,7 @@ import '../services/finance_agent_service.dart';
 import '../models/grocery_cost_analysis.dart';
 import '../widgets/grocery/cost_analysis_widget.dart';
 import '../utils/currency_formatter.dart';
+import '../utils/ai_analysis_tester.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'shopping_history_screen.dart';
 
@@ -414,6 +415,8 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     });
 
     try {
+      print('🚀 Bắt đầu phân tích AI cho ${_groceryItems.length} items...');
+
       final analysis = await FinanceAgentService.analyzeCosts(
         _groceryItems,
         budgetLimit: _budgetLimit,
@@ -424,12 +427,57 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
         _isAnalyzing = false;
       });
 
-      print('✅ Đã phân tích chi phí: ${analysis.totalCost} VND');
+      print('✅ Hoàn thành phân tích AI: ${analysis.totalCost.toStringAsFixed(0)} VND');
+
+      // Hiển thị thông báo thành công
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.analytics, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '🤖 AI đã phân tích xong! Tổng chi phí: ${analysis.totalCost.toStringAsFixed(0)} VND',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            duration: Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Xem',
+              textColor: Colors.white,
+              onPressed: () {
+                setState(() {
+                  _showCostAnalysis = true;
+                });
+              },
+            ),
+          ),
+        );
+      }
     } catch (e) {
       print('❌ Lỗi khi phân tích chi phí: $e');
       setState(() {
         _isAnalyzing = false;
       });
+
+      // Hiển thị thông báo lỗi
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Không thể kết nối AI backend, sử dụng phân tích local'),
+            backgroundColor: Colors.orange.shade600,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
     }
   }
 
@@ -550,22 +598,46 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
   /// Indicator khi đang phân tích
   Widget _buildAnalyzingIndicator() {
     return Container(
+      margin: EdgeInsets.all(16),
       padding: EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text(
+                '🤖 AI đang phân tích chi phí...',
+                style: TextStyle(
+                  color: Colors.blue.shade800,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
-          SizedBox(width: 12),
+          SizedBox(height: 8),
           Text(
-            'AI đang phân tích chi phí...',
+            'Đang kết nối với backend AI để có phân tích tốt nhất',
             style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 14,
+              color: Colors.blue.shade600,
+              fontSize: 12,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -777,6 +849,21 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
               HapticFeedback.lightImpact();
             },
           ),
+          // Test AI Analysis button (chỉ hiển thị trong debug mode)
+          if (const bool.fromEnvironment('dart.vm.product') == false)
+            IconButton(
+              icon: Icon(Icons.science, color: Colors.purple.shade600),
+              onPressed: () async {
+                print('🧪 Testing AI Analysis...');
+                if (_groceryItems.isNotEmpty) {
+                  await AIAnalysisTester.testWithRealData(_groceryItems);
+                } else {
+                  await AIAnalysisTester.runAllTests();
+                }
+                HapticFeedback.lightImpact();
+              },
+              tooltip: 'Test AI Analysis',
+            ),
         ],
       ),
       body: _groceryItems.isEmpty
