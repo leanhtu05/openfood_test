@@ -16,6 +16,17 @@ class _AccountLinkingScreenState extends State<AccountLinkingScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // 🔧 FIX: Method để kiểm tra trạng thái liên kết một cách đáng tin cậy
+  void _refreshLinkingStatus() {
+    // Force refresh Firebase user
+    widget.authService.refreshUser();
+
+    // Cập nhật UI
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -670,14 +681,14 @@ class _AccountLinkingScreenState extends State<AccountLinkingScreen> {
             duration: Duration(seconds: 3),
           ),
         );
-        
-        // Cập nhật lại UI để hiển thị tình trạng liên kết mới
+
+        // 🔧 FIX: Cập nhật UI ngay lập tức và kiểm tra lại sau
         setState(() {});
-        
-        // Sau 3 giây, tự động làm mới màn hình để cập nhật UI
+
+        // Kiểm tra lại trạng thái liên kết sau 1 giây
         Future.delayed(Duration(seconds: 1), () {
           if (mounted) {
-            setState(() {});
+            _refreshLinkingStatus();
           }
         });
       } else {
@@ -921,14 +932,14 @@ class _AccountLinkingScreenState extends State<AccountLinkingScreen> {
             duration: Duration(seconds: 3),
           ),
         );
-        
-        // Cập nhật lại UI để hiển thị tình trạng liên kết mới
+
+        // 🔧 FIX: Cập nhật UI ngay lập tức
         setState(() {});
-        
-        // Sau 1 giây, tự động làm mới màn hình để cập nhật UI
+
+        // Kiểm tra lại trạng thái liên kết sau 1 giây
         Future.delayed(Duration(seconds: 1), () {
           if (mounted) {
-            setState(() {});
+            _refreshLinkingStatus();
           }
         });
       } else {

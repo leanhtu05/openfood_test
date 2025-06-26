@@ -13,6 +13,8 @@ import '../utils/currency_formatter.dart';
 import '../utils/ai_analysis_tester.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'shopping_history_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class GroceryListScreen extends StatefulWidget {
   @override
@@ -26,6 +28,11 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
   String _searchQuery = '';
   Set<String> _collapsedCategories = {}; // Các category bị thu gọn
   late AnimationController _animationController;
+
+  // 🔧 FIX: Thêm filter options
+  String _selectedTimeFilter = 'all'; // 'all', 'today', 'tomorrow'
+  String _selectedMealFilter = 'all'; // 'all', 'breakfast', 'lunch', 'dinner'
+  bool _showFilterPanel = false;
 
   // AI Finance Agent variables
   GroceryCostAnalysis? _costAnalysis;
@@ -77,6 +84,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     // Tạo grocery list
     _generateGroceryList();
 
+    // 🔧 FIX: Tải trạng thái checked items từ SharedPreferences
+    await _loadCheckedItemsFromStorage();
+
     // Phân tích chi phí với AI Finance Agent
     _analyzeCosts();
   }
@@ -115,16 +125,26 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
 
     print('🔍 Bắt đầu xử lý meal plan với ${mealPlan.weeklyPlan.length} ngày');
 
-    // Chỉ lấy kế hoạch cho hôm nay và ngày mai (2 ngày)
+    // 🔧 FIX: Xác định ngày cần xử lý dựa trên filter
     final today = DateTime.now();
     final tomorrow = today.add(Duration(days: 1));
 
-    final daysToProcess = [
-      _getDayOfWeekString(today.weekday),
-      _getDayOfWeekString(tomorrow.weekday),
-    ];
+    List<String> daysToProcess = [];
 
-    print('📅 Chỉ xử lý 2 ngày: ${daysToProcess.join(", ")}');
+    if (_selectedTimeFilter == 'today') {
+      daysToProcess = [_getDayOfWeekString(today.weekday)];
+      print('📅 Chỉ xử lý hôm nay: ${daysToProcess.join(", ")}');
+    } else if (_selectedTimeFilter == 'tomorrow') {
+      daysToProcess = [_getDayOfWeekString(tomorrow.weekday)];
+      print('📅 Chỉ xử lý ngày mai: ${daysToProcess.join(", ")}');
+    } else {
+      // 'all' - xử lý cả 2 ngày
+      daysToProcess = [
+        _getDayOfWeekString(today.weekday),
+        _getDayOfWeekString(tomorrow.weekday),
+      ];
+      print('📅 Xử lý cả 2 ngày: ${daysToProcess.join(", ")}');
+    }
 
     mealPlan.weeklyPlan.forEach((dayName, dayPlan) {
       // Chỉ xử lý những ngày trong danh sách (case insensitive)
@@ -144,7 +164,26 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
 
       // Xử lý từng bữa ăn trong ngày
       dayPlan.meals.forEach((mealType, mealsList) {
-        print('🍽️ Xử lý bữa: $mealType với ${mealsList.length} món');
+        // 🔧 FIX: Filter theo bữa ăn nếu được chọn
+        if (_selectedMealFilter != 'all') {
+          final mealTypeLower = mealType.toLowerCase();
+          bool shouldProcessMeal = false;
+
+          if (_selectedMealFilter == 'breakfast' && (mealTypeLower.contains('breakfast') || mealTypeLower.contains('sáng'))) {
+            shouldProcessMeal = true;
+          } else if (_selectedMealFilter == 'lunch' && (mealTypeLower.contains('lunch') || mealTypeLower.contains('trưa'))) {
+            shouldProcessMeal = true;
+          } else if (_selectedMealFilter == 'dinner' && (mealTypeLower.contains('dinner') || mealTypeLower.contains('tối'))) {
+            shouldProcessMeal = true;
+          }
+
+          if (!shouldProcessMeal) {
+            print('⏭️ Bỏ qua bữa: $mealType (không khớp filter: $_selectedMealFilter)');
+            return;
+          }
+        }
+
+        print('🍽️ ✅ XỬ LÝ BỮA: $mealType với ${mealsList.length} món');
 
         mealsList.forEach((meal) {
           meal.dishes.forEach((dish) {
@@ -218,7 +257,23 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
       });
     });
 
-    print('✅ Hoàn thành xử lý, tổng cộng ${groceryList.length} nguyên liệu cho 2 ngày (hôm nay + ngày mai)');
+    // 🔧 FIX: Thông báo phù hợp với filter
+    String filterDescription = '';
+    if (_selectedTimeFilter == 'today') {
+      filterDescription = 'hôm nay';
+    } else if (_selectedTimeFilter == 'tomorrow') {
+      filterDescription = 'ngày mai';
+    } else {
+      filterDescription = '2 ngày (hôm nay + ngày mai)';
+    }
+
+    if (_selectedMealFilter != 'all') {
+      String mealName = _selectedMealFilter == 'breakfast' ? 'bữa sáng' :
+                       _selectedMealFilter == 'lunch' ? 'bữa trưa' : 'bữa tối';
+      filterDescription += ' - chỉ $mealName';
+    }
+
+    print('✅ Hoàn thành xử lý, tổng cộng ${groceryList.length} nguyên liệu cho $filterDescription');
     return groceryList;
   }
 
@@ -403,6 +458,79 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
       case 6: return 'Saturday';
       case 7: return 'Sunday';
       default: return 'Monday';
+    }
+  }
+
+  /// 🔧 FIX: Lưu trạng thái checked items vào SharedPreferences
+  Future<void> _saveCheckedItemsToStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+        final key = 'grocery_checked_items_${user.uid}';
+        final jsonString = json.encode(_checkedItems);
+        await prefs.setString(key, jsonString);
+        print('💾 Đã lưu trạng thái checked items: ${_checkedItems.length} items');
+      }
+    } catch (e) {
+      print('❌ Lỗi khi lưu checked items: $e');
+    }
+  }
+
+  /// 🔧 FIX: Tải trạng thái checked items từ SharedPreferences
+  Future<void> _loadCheckedItemsFromStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+        final key = 'grocery_checked_items_${user.uid}';
+        final jsonString = prefs.getString(key);
+
+        if (jsonString != null) {
+          final Map<String, dynamic> savedData = json.decode(jsonString);
+          final Map<String, bool> savedCheckedItems = {};
+
+          // Convert dynamic values to bool
+          savedData.forEach((key, value) {
+            savedCheckedItems[key] = value == true;
+          });
+
+          // Chỉ áp dụng cho những items hiện có trong grocery list
+          final Map<String, bool> validCheckedItems = {};
+          _groceryItems.keys.forEach((itemKey) {
+            validCheckedItems[itemKey] = savedCheckedItems[itemKey] ?? false;
+          });
+
+          setState(() {
+            _checkedItems = validCheckedItems;
+          });
+
+          final checkedCount = validCheckedItems.values.where((checked) => checked).length;
+          print('📥 Đã tải trạng thái checked items: $checkedCount/${validCheckedItems.length} items đã check');
+        } else {
+          print('📝 Không có dữ liệu checked items đã lưu');
+        }
+      }
+    } catch (e) {
+      print('❌ Lỗi khi tải checked items: $e');
+    }
+  }
+
+  /// 🔧 FIX: Xóa dữ liệu checked items cũ (khi tạo meal plan mới)
+  Future<void> _clearCheckedItemsStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+        final key = 'grocery_checked_items_${user.uid}';
+        await prefs.remove(key);
+        print('🗑️ Đã xóa dữ liệu checked items cũ');
+      }
+    } catch (e) {
+      print('❌ Lỗi khi xóa checked items: $e');
     }
   }
 
@@ -832,11 +960,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             onPressed: _openShoppingHistory,
             tooltip: 'Lịch sử mua sắm',
           ),
-          IconButton(
-            icon: Icon(Icons.filter_list),
-            onPressed: _showFilterOptions,
-            tooltip: 'Quản lý hiển thị',
-          ),
+
           IconButton(
             icon: Icon(Icons.share),
             onPressed: _shareGroceryList,
@@ -845,8 +969,21 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             icon: Icon(Icons.refresh),
             onPressed: () async {
               print('🔄 Đang tải lại meal plan...');
+
+              // 🔧 FIX: Xóa dữ liệu checked items cũ khi refresh
+              await _clearCheckedItemsStorage();
+
               await _loadMealPlanAndGenerateList();
               HapticFeedback.lightImpact();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Đã làm mới danh sách mua sắm!'),
+                  backgroundColor: Colors.green.shade600,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              );
             },
           ),
           // Test AI Analysis button (chỉ hiển thị trong debug mode)
@@ -876,45 +1013,204 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
   }
 
   Widget _buildSearchBar() {
+    return Column(
+      children: [
+        Container(
+          margin: EdgeInsets.fromLTRB(16, 16, 16, 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Tìm kiếm nguyên liệu...',
+              prefixIcon: Icon(Icons.search, color: Colors.grey.shade600),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_searchQuery.isNotEmpty)
+                    IconButton(
+                      icon: Icon(Icons.clear, color: Colors.grey.shade600),
+                      onPressed: () {
+                        setState(() {
+                          _searchController.clear();
+                          _searchQuery = '';
+                        });
+                      },
+                    ),
+                  IconButton(
+                    icon: Icon(
+                      _showFilterPanel ? Icons.filter_list : Icons.filter_list_outlined,
+                      color: _showFilterPanel ? Colors.blue.shade600 : Colors.grey.shade600,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _showFilterPanel = !_showFilterPanel;
+                      });
+                    },
+                    tooltip: 'Bộ lọc',
+                  ),
+                ],
+              ),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value;
+              });
+            },
+          ),
+        ),
+        if (_showFilterPanel) _buildFilterChips(),
+      ],
+    );
+  }
+
+  /// 🔧 FIX: Widget hiển thị filter chips
+  Widget _buildFilterChips() {
     return Container(
-      margin: EdgeInsets.all(16),
+      margin: EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.blue.shade50,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '⏰ Thời gian:',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.blue.shade800,
+            ),
+          ),
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _buildFilterChip('Tất cả', 'all', _selectedTimeFilter, (value) {
+                setState(() {
+                  _selectedTimeFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+              _buildFilterChip('Hôm nay', 'today', _selectedTimeFilter, (value) {
+                setState(() {
+                  _selectedTimeFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+              _buildFilterChip('Ngày mai', 'tomorrow', _selectedTimeFilter, (value) {
+                setState(() {
+                  _selectedTimeFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+            ],
+          ),
+          SizedBox(height: 12),
+          Text(
+            '🍽️ Bữa ăn:',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.blue.shade800,
+            ),
+          ),
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _buildFilterChip('Tất cả', 'all', _selectedMealFilter, (value) {
+                setState(() {
+                  _selectedMealFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+              _buildFilterChip('Bữa sáng', 'breakfast', _selectedMealFilter, (value) {
+                setState(() {
+                  _selectedMealFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+              _buildFilterChip('Bữa trưa', 'lunch', _selectedMealFilter, (value) {
+                setState(() {
+                  _selectedMealFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+              _buildFilterChip('Bữa tối', 'dinner', _selectedMealFilter, (value) {
+                setState(() {
+                  _selectedMealFilter = value;
+                  _generateGroceryList();
+                });
+              }),
+            ],
           ),
         ],
       ),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: 'Tìm kiếm nguyên liệu...',
-          prefixIcon: Icon(Icons.search, color: Colors.grey.shade600),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: Icon(Icons.clear, color: Colors.grey.shade600),
-                  onPressed: () {
-                    setState(() {
-                      _searchController.clear();
-                      _searchQuery = '';
-                    });
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    );
+  }
+
+  /// Helper để tạo filter chip
+  Widget _buildFilterChip(String label, String value, String currentValue, Function(String) onSelected) {
+    final isSelected = currentValue == value;
+    return FilterChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Colors.blue.shade700,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-        },
+      ),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          onSelected(value);
+        }
+      },
+      backgroundColor: Colors.white,
+      selectedColor: Colors.blue.shade600,
+      checkmarkColor: Colors.white,
+      side: BorderSide(
+        color: isSelected ? Colors.blue.shade600 : Colors.blue.shade300,
       ),
     );
+  }
+
+  /// 🔧 FIX: Tạo mô tả filter hiện tại
+  String _getFilterDescription() {
+    List<String> parts = [];
+
+    // Thời gian
+    if (_selectedTimeFilter == 'today') {
+      parts.add('hôm nay');
+    } else if (_selectedTimeFilter == 'tomorrow') {
+      parts.add('ngày mai');
+    } else {
+      parts.add('2 ngày');
+    }
+
+    // Bữa ăn
+    if (_selectedMealFilter != 'all') {
+      String mealName = _selectedMealFilter == 'breakfast' ? 'bữa sáng' :
+                       _selectedMealFilter == 'lunch' ? 'bữa trưa' : 'bữa tối';
+      parts.add(mealName);
+    }
+
+    return ' (${parts.join(' - ')})';
   }
 
   Widget _buildEmptyState() {
@@ -1035,7 +1331,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
                   ),
                   SizedBox(height: 4),
                   Text(
-                    '${(progress * 100).toInt()}% hoàn thành (2 ngày)',
+                    '${(progress * 100).toInt()}% hoàn thành${_getFilterDescription()}',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.white.withOpacity(0.9),
@@ -1271,6 +1567,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
             _checkedItems[item.name.toLowerCase()] = value ?? false;
           });
           HapticFeedback.lightImpact();
+
+          // 🔧 FIX: Lưu trạng thái ngay khi user thay đổi
+          _saveCheckedItemsToStorage();
         },
         activeColor: Colors.blue.shade600,
         checkColor: Colors.white,
@@ -1339,6 +1638,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     });
     HapticFeedback.mediumImpact();
 
+    // 🔧 FIX: Lưu trạng thái sau khi mark all
+    _saveCheckedItemsToStorage();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Đã đánh dấu tất cả nguyên liệu là hoàn thành!'),
@@ -1396,6 +1698,9 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
       }
     });
     HapticFeedback.lightImpact();
+
+    // 🔧 FIX: Lưu trạng thái sau khi reset
+    _saveCheckedItemsToStorage();
   }
 
   void _shareGroceryList() {
@@ -1453,146 +1758,7 @@ class _GroceryListScreenState extends State<GroceryListScreen> with TickerProvid
     );
   }
 
-  void _showFilterOptions() {
-    final allCategories = _groceryItems.values.map((item) => item.category).toSet().toList();
-    allCategories.sort();
 
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Quản lý hiển thị danh sách',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _collapsedCategories.clear();
-                            });
-                            setModalState(() {});
-                          },
-                          icon: Icon(Icons.visibility),
-                          label: Text('Mở tất cả'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade600,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _collapsedCategories.addAll(allCategories);
-                            });
-                            setModalState(() {});
-                          },
-                          icon: Icon(Icons.visibility_off),
-                          label: Text('Đóng tất cả'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Nhấn vào loại để mở/đóng:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: allCategories.map((category) {
-                      final isCollapsed = _collapsedCategories.contains(category);
-                      final itemCount = _groceryItems.values.where((item) => item.category == category).length;
-
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (isCollapsed) {
-                              _collapsedCategories.remove(category);
-                            } else {
-                              _collapsedCategories.add(category);
-                            }
-                          });
-                          setModalState(() {});
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isCollapsed ? Colors.grey.shade100 : Colors.blue.shade50,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isCollapsed ? Colors.grey.shade300 : Colors.blue.shade200,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isCollapsed ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_down,
-                                size: 16,
-                                color: isCollapsed ? Colors.grey.shade600 : Colors.blue.shade700,
-                              ),
-                              SizedBox(width: 6),
-                              Text(
-                                '$category ($itemCount)',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: isCollapsed ? Colors.grey.shade600 : Colors.blue.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  SizedBox(height: 20),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 }
 
 // Class để đại diện cho một item trong danh sách mua sắm

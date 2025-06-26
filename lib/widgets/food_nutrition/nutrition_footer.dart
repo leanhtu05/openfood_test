@@ -31,13 +31,13 @@ class NutritionFooter extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Row 1: Total weight - đơn giản, không thêm container
+                  // Row 1: Total weight - sử dụng totalWeight từ nutritionValues để đồng bộ
                   Row(
                     children: [
                       Icon(Icons.menu, size: 14, color: Colors.grey.shade800),
                       SizedBox(width: 4),
                       Text(
-                        "Tổng Cộng: ${foodEntry.totalWeight}g",
+                        "Tổng Cộng: ${(nutritionValues['totalWeight'] ?? foodEntry.totalWeight).toInt()}g",
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,

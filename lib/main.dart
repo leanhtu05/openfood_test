@@ -28,6 +28,7 @@ import 'screens/admin/firestore_admin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/user_service.dart';
 import 'services/real_video_service.dart';
+import 'services/notification_service.dart';
 
 
 bool isFirebaseInitialized = false;
@@ -148,6 +149,31 @@ Future<void> main() async {
 
   // Khởi tạo các service
   await initializeServices();
+
+  // 🔔 Khởi tạo notification service
+  try {
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+
+    // Tự động lên lịch notifications nếu đã được bật
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('enable_meal_reminders') ?? true) {
+      await notificationService.scheduleMealReminders();
+    }
+    if (prefs.getBool('enable_water_reminders') ?? true) {
+      await notificationService.scheduleWaterReminders();
+    }
+    if (prefs.getBool('enable_exercise_reminders') ?? true) {
+      await notificationService.scheduleExerciseReminders();
+    }
+    if (prefs.getBool('enable_grocery_reminders') ?? true) {
+      await notificationService.scheduleGroceryReminders();
+    }
+
+    print('✅ Notification service initialized and scheduled');
+  } catch (e) {
+    print('❌ Error initializing notification service: $e');
+  }
 
   // Khởi tạo shared preferences cho local storage
   await SharedPreferences.getInstance();

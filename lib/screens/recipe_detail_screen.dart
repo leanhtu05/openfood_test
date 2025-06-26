@@ -11,6 +11,15 @@ import '../services/video_validation_service.dart';
 import '../services/real_video_service.dart';
 import 'enhanced_video_player_screen.dart';
 
+// 🎨 Import DietPlanColors để sử dụng tông màu xanh nhẹ
+class DietPlanColors {
+  static const Color primary = Color(0xFF2196F3);
+  static const Color primaryLight = Color(0xFFE3F2FD);
+  static const Color primaryDark = Color(0xFF1976D2);
+  static const Color textPrimary = Color(0xFF212121);
+  static const Color textSecondary = Color(0xFF757575);
+}
+
 class RecipeDetailScreen extends StatefulWidget {
   final Dish dish;
 
@@ -38,10 +47,215 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   final VideoValidationService _videoValidationService = VideoValidationService();
   final RealVideoService _realVideoService = RealVideoService();
 
+  // 💖 Favorite & Recently Watched variables
+  bool _isFavorite = false;
+  List<Map<String, dynamic>> _recentlyWatchedVideos = [];
+
   @override
   void initState() {
     super.initState();
     _parseInstructions();
+    _loadFavoriteStatus();
+    _loadRecentlyWatchedVideos();
+  }
+
+  // 💖 LOAD FAVORITE STATUS
+  void _loadFavoriteStatus() {
+    // TODO: Load from SharedPreferences or database
+    // For now, set to false
+    setState(() {
+      _isFavorite = false;
+    });
+  }
+
+  // 📺 LOAD RECENTLY WATCHED VIDEOS
+  void _loadRecentlyWatchedVideos() {
+    // TODO: Load from SharedPreferences or database
+    // Sample data for demo
+    setState(() {
+      _recentlyWatchedVideos = [
+        {
+          'videoId': 'sample1',
+          'title': 'Cách nấu phở bò ngon',
+          'channel': 'Món Ngon Mỗi Ngày',
+          'watchedAt': DateTime.now().subtract(Duration(hours: 2)),
+          'thumbnail': 'https://example.com/thumb1.jpg',
+        },
+        {
+          'videoId': 'sample2',
+          'title': 'Bún chả Hà Nội chuẩn vị',
+          'channel': 'Ẩm Thực Việt',
+          'watchedAt': DateTime.now().subtract(Duration(days: 1)),
+          'thumbnail': 'https://example.com/thumb2.jpg',
+        },
+      ];
+    });
+  }
+
+  // 💖 TOGGLE FAVORITE
+  void _toggleFavorite() {
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+
+    // TODO: Save to SharedPreferences or database
+
+    // Show snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _isFavorite
+            ? '💖 Đã thêm "${widget.dish.name}" vào yêu thích'
+            : '💔 Đã xóa "${widget.dish.name}" khỏi yêu thích',
+        ),
+        duration: Duration(seconds: 2),
+        backgroundColor: _isFavorite ? Colors.pink : Colors.grey,
+        action: SnackBarAction(
+          label: 'Xem danh sách',
+          textColor: Colors.white,
+          onPressed: _showFavoriteRecipes,
+        ),
+      ),
+    );
+  }
+
+  // 💖 SHOW FAVORITE RECIPES
+  void _showFavoriteRecipes() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.favorite, color: Colors.pink, size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Công thức yêu thích',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1),
+            // Favorite recipes list
+            Expanded(
+              child: _buildFavoriteRecipesList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 📺 SHOW RECENTLY WATCHED VIDEOS
+  void _showRecentlyWatchedVideos() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.history, color: DietPlanColors.primary, size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Video đã xem',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => VideoLibraryScreen(),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      'Xem tất cả',
+                      style: TextStyle(color: DietPlanColors.primary),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1),
+            // Recently watched videos list
+            Expanded(
+              child: _buildRecentlyWatchedVideosList(),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Hàm để tách instructions thành các bước riêng biệt
@@ -244,7 +458,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
               child: Row(
                 children: [
                   Icon(Icons.play_circle_filled,
-                       color: Colors.orange.shade700, size: 28),
+                       color: DietPlanColors.primary, size: 28),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -324,7 +538,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
               icon: Icon(Icons.search),
               label: Text('Tìm kiếm thủ công'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange.shade600,
+                backgroundColor: DietPlanColors.primary,
                 foregroundColor: Colors.white,
                 padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -375,7 +589,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                     child: Icon(
                       Icons.play_circle_filled,
                       size: 64,
-                      color: Colors.orange.shade600,
+                      color: DietPlanColors.primary,
                     ),
                   ),
                   Positioned(
@@ -447,14 +661,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       Container(
                         padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
+                          color: DietPlanColors.primaryLight,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           'Xem ngay',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.orange.shade700,
+                            color: DietPlanColors.primary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -488,6 +702,47 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     Navigator.pop(context); // Đóng bottom sheet
 
     print('🎬 Playing video with ID: $videoId');
+
+    // 📺 ADD TO RECENTLY WATCHED
+    _addToRecentlyWatched(videoId);
+  }
+
+  // 📺 ADD VIDEO TO RECENTLY WATCHED
+  void _addToRecentlyWatched(String videoId) {
+    // Find video info from current options
+    final videoInfo = _videoOptions.firstWhere(
+      (video) => video['videoId'] == videoId,
+      orElse: () => {
+        'videoId': videoId,
+        'title': 'Video hướng dẫn nấu ăn',
+        'channel': 'YouTube',
+      },
+    );
+
+    // Create recently watched entry
+    final recentlyWatchedEntry = {
+      'videoId': videoId,
+      'title': videoInfo['title'] ?? 'Video hướng dẫn nấu ăn',
+      'channel': videoInfo['channel'] ?? 'YouTube',
+      'watchedAt': DateTime.now(),
+      'thumbnail': videoInfo['thumbnail'] ?? '',
+    };
+
+    setState(() {
+      // Remove if already exists
+      _recentlyWatchedVideos.removeWhere((video) => video['videoId'] == videoId);
+
+      // Add to beginning of list
+      _recentlyWatchedVideos.insert(0, recentlyWatchedEntry);
+
+      // Keep only last 10 videos
+      if (_recentlyWatchedVideos.length > 10) {
+        _recentlyWatchedVideos = _recentlyWatchedVideos.take(10).toList();
+      }
+    });
+
+    // TODO: Save to SharedPreferences or database
+    print('📺 Added to recently watched: ${videoInfo['title']}');
 
     // Kiểm tra nếu là search video - mở Enhanced Video Player với search UI
     if (videoId == 'SEARCH_YOUTUBE' || videoId == 'SEARCH_YOUTUBE_ALT') {
@@ -568,7 +823,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         return AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.search, color: Colors.orange.shade700),
+              Icon(Icons.search, color: DietPlanColors.primary),
               SizedBox(width: 8),
               Text('Tìm kiếm YouTube'),
             ],
@@ -589,7 +844,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   searchQuery,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade700,
+                    color: DietPlanColors.primary,
                   ),
                 ),
               ),
@@ -604,6 +859,329 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         );
       },
     );
+  }
+
+  // 💖 BUILD FAVORITE RECIPES LIST
+  Widget _buildFavoriteRecipesList() {
+    // Sample favorite recipes data
+    final favoriteRecipes = [
+      {
+        'name': 'Phở Bò Hà Nội',
+        'prepTime': '120 phút',
+        'difficulty': 'Khó',
+        'image': 'https://example.com/pho.jpg',
+      },
+      {
+        'name': 'Bún Chả',
+        'prepTime': '45 phút',
+        'difficulty': 'Trung bình',
+        'image': 'https://example.com/buncha.jpg',
+      },
+      {
+        'name': 'Cơm Tấm Sườn',
+        'prepTime': '60 phút',
+        'difficulty': 'Dễ',
+        'image': 'https://example.com/comtam.jpg',
+      },
+    ];
+
+    if (favoriteRecipes.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.favorite_border,
+                size: 64,
+                color: Colors.grey.shade400,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Chưa có công thức yêu thích',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Nhấn vào icon ❤️ để thêm công thức vào danh sách yêu thích',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: EdgeInsets.all(16),
+      itemCount: favoriteRecipes.length,
+      itemBuilder: (context, index) {
+        final recipe = favoriteRecipes[index];
+        return Container(
+          margin: EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: EdgeInsets.all(12),
+            leading: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.restaurant_menu,
+                color: Colors.grey.shade600,
+                size: 24,
+              ),
+            ),
+            title: Text(
+              recipe['name']!,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+            ),
+            subtitle: Row(
+              children: [
+                Icon(Icons.access_time, size: 14, color: Colors.grey.shade600),
+                SizedBox(width: 4),
+                Text(recipe['prepTime']!),
+                SizedBox(width: 12),
+                Icon(Icons.bar_chart, size: 14, color: Colors.grey.shade600),
+                SizedBox(width: 4),
+                Text(recipe['difficulty']!),
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  onPressed: () {
+                    // Remove from favorites
+                  },
+                  icon: Icon(Icons.favorite, color: Colors.pink, size: 20),
+                ),
+                Icon(Icons.chevron_right, color: Colors.grey.shade400),
+              ],
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              // Navigate to recipe detail
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  // 📺 BUILD RECENTLY WATCHED VIDEOS LIST
+  Widget _buildRecentlyWatchedVideosList() {
+    if (_recentlyWatchedVideos.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.history,
+                size: 64,
+                color: Colors.grey.shade400,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Chưa xem video nào',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Xem video hướng dẫn nấu ăn để chúng xuất hiện ở đây',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: EdgeInsets.all(16),
+      itemCount: _recentlyWatchedVideos.length,
+      itemBuilder: (context, index) {
+        final video = _recentlyWatchedVideos[index];
+        final watchedAt = video['watchedAt'] as DateTime;
+        final timeAgo = _getTimeAgo(watchedAt);
+
+        return Container(
+          margin: EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: EdgeInsets.all(12),
+            leading: Container(
+              width: 80,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    Icons.play_circle_filled,
+                    color: DietPlanColors.primary,
+                    size: 32,
+                  ),
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: Text(
+                        '5:30',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            title: Text(
+              video['title']!,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: 4),
+                Text(
+                  video['channel']!,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  timeAgo,
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            trailing: PopupMenuButton(
+              icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'watch_again',
+                  child: Row(
+                    children: [
+                      Icon(Icons.play_arrow, size: 18),
+                      SizedBox(width: 8),
+                      Text('Xem lại'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 18, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Xóa khỏi lịch sử', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: (value) {
+                if (value == 'watch_again') {
+                  Navigator.pop(context);
+                  _playVideo(video['videoId']!);
+                } else if (value == 'remove') {
+                  setState(() {
+                    _recentlyWatchedVideos.removeAt(index);
+                  });
+                }
+              },
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              _playVideo(video['videoId']!);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  // Helper method to get time ago string
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays} ngày trước';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} giờ trước';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} phút trước';
+    } else {
+      return 'Vừa xem';
+    }
   }
 
   @override
@@ -628,6 +1206,58 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         elevation: 0,
         iconTheme: IconThemeData(color: Colors.grey.shade700),
         centerTitle: true,
+        actions: [
+          // 📺 Recently Watched Videos Icon
+          IconButton(
+            onPressed: _showRecentlyWatchedVideos,
+            icon: Stack(
+              children: [
+                Icon(
+                  Icons.history,
+                  color: Colors.grey.shade700,
+                  size: 26,
+                ),
+                if (_recentlyWatchedVideos.isNotEmpty)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: DietPlanColors.primary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      constraints: BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '${_recentlyWatchedVideos.length}',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: 'Video đã xem',
+          ),
+          // 💖 Favorite Icon
+          IconButton(
+            onPressed: _toggleFavorite,
+            icon: Icon(
+              _isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: _isFavorite ? Colors.pink : Colors.grey.shade700,
+              size: 26,
+            ),
+            tooltip: _isFavorite ? 'Bỏ yêu thích' : 'Thêm vào yêu thích',
+          ),
+          SizedBox(width: 8),
+        ],
       ),
       body: CustomScrollView(
         slivers: [
@@ -777,7 +1407,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade100),
+              border: Border.all(color: DietPlanColors.primaryLight),
             ),
             child: Row(
               children: [
@@ -795,7 +1425,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Colors.orange.shade700,
+                    color: DietPlanColors.primary,
                   ),
                 ),
               ],
@@ -813,11 +1443,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade100),
+              border: Border.all(color: DietPlanColors.primaryLight),
             ),
             child: Row(
               children: [
-                Icon(Icons.circle, size: 8, color: Colors.orange.shade400),
+                Icon(Icons.circle, size: 8, color: DietPlanColors.primary),
                 SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -856,14 +1486,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.list_outlined, color: Colors.orange.shade700, size: 24),
+              Icon(Icons.list_outlined, color: DietPlanColors.primary, size: 24),
               SizedBox(width: 8),
               Text(
                 'Các bước thực hiện',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.orange.shade700,
+                  color: DietPlanColors.primary,
                 ),
               ),
             ],
@@ -872,7 +1502,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           Theme(
             data: Theme.of(context).copyWith(
               colorScheme: ColorScheme.light(
-                primary: Colors.orange.shade700,
+                primary: DietPlanColors.primary,
               ),
             ),
             child: Stepper(
@@ -889,7 +1519,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ElevatedButton(
                         onPressed: details.onStepContinue,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange.shade700,
+                          backgroundColor: DietPlanColors.primary,
                           foregroundColor: Colors.white,
                         ),
                         child: Text('Tiếp theo'),
@@ -900,7 +1530,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                         onPressed: details.onStepCancel,
                         child: Text(
                           'Quay lại',
-                          style: TextStyle(color: Colors.orange.shade700),
+                          style: TextStyle(color: DietPlanColors.primary),
                         ),
                       ),
                   ],
@@ -929,7 +1559,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                     'Bước ${index + 1}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700,
+                      color: DietPlanColors.primary,
                     ),
                   ),
                   content: Text(
@@ -1060,28 +1690,28 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           Container(
             padding: EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
+              color: DietPlanColors.primaryLight,
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(12),
                 topRight: Radius.circular(12),
               ),
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.orange.shade200,
+                  color: DietPlanColors.primary.withOpacity(0.3),
                   width: 1,
                 ),
               ),
             ),
             child: Row(
               children: [
-                Icon(Icons.play_circle_filled, color: Colors.orange.shade700, size: 24),
+                Icon(Icons.play_circle_filled, color: DietPlanColors.primary, size: 24),
                 SizedBox(width: 12),
                 Text(
                   'Video hướng dẫn',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade700,
+                    color: DietPlanColors.primary,
                   ),
                 ),
               ],
@@ -1105,10 +1735,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           YoutubePlayer(
             controller: _youtubeController!,
             showVideoProgressIndicator: true,
-            progressIndicatorColor: Colors.orange,
+            progressIndicatorColor: DietPlanColors.primary,
             progressColors: ProgressBarColors(
-              playedColor: Colors.orange,
-              handleColor: Colors.orange.shade700,
+              playedColor: DietPlanColors.primary,
+              handleColor: DietPlanColors.primaryDark,
             ),
           ),
           SizedBox(height: 16),

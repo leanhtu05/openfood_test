@@ -38,6 +38,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   double _servingSize = 1.0;
   bool _isLoading = false;
   bool _isLoadingImage = false;
+  bool _isEditing = false; // 🔧 FIX: Track editing state
   String? _imageUrl;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
@@ -188,10 +189,7 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                         // Food information header
                         Column(
                           children: [
-                            // Hiển thị ảnh món ăn nếu có
-                            if (_imageUrl != null || _foodEntry.imagePath != null)
-                              _buildFoodImage(),
-
+                            // Chỉ hiển thị HeaderFoodInfoCard, không hiển thị _buildFoodImage() để tránh trùng lặp
                             HeaderFoodInfoCard(
                               foodEntry: _foodEntry,
                               servingSize: _servingSize,
@@ -213,6 +211,9 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
                               onEdit: _editFoodDetails,
                               onReplace: _replaceFood,
                               onWeightChanged: _onWeightChanged,
+                              // Truyền thêm thông tin ảnh để HeaderFoodInfoCard có thể hiển thị camera icon
+                              imageUrl: _imageUrl,
+                              onSelectImage: _selectImage,
                             ),
 
 
@@ -504,25 +505,41 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   // Widget để hiển thị ảnh từ đường dẫn local với dạng avatar
   Widget _buildLocalAvatar() {
     if (_foodEntry.imagePath != null && _foodEntry.imagePath!.isNotEmpty) {
-      final file = File(_foodEntry.imagePath!);
+      String filePath = _foodEntry.imagePath!;
+
+      // Xử lý URL file://
+      if (filePath.startsWith('file://')) {
+        filePath = filePath.replaceFirst('file://', '');
+      }
+
+      final file = File(filePath);
+      print('DEBUG: Kiểm tra file ảnh tại: $filePath');
+      print('DEBUG: File tồn tại: ${file.existsSync()}');
+
       try {
-        return ClipOval(
-          child: Image.file(
-            file,
-            width: 64,
-            height: 64,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              print('Lỗi tải ảnh local: $error');
-              return _buildAvatarPlaceholder();
-            },
-          ),
-        );
+        if (file.existsSync()) {
+          return ClipOval(
+            child: Image.file(
+              file,
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                print('Lỗi tải ảnh local: $error');
+                return _buildAvatarPlaceholder();
+              },
+            ),
+          );
+        } else {
+          print('DEBUG: File không tồn tại: $filePath');
+          return _buildAvatarPlaceholder();
+        }
       } catch (e) {
         print('Lỗi khi hiển thị ảnh local: $e');
         return _buildAvatarPlaceholder();
       }
     } else {
+      print('DEBUG: Không có imagePath');
       return _buildAvatarPlaceholder();
     }
   }
@@ -771,47 +788,78 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
   Map<String, double> _calculateNutritionValues() {
     Map<String, double> values = {};
 
+    // Đảm bảo servingSize đồng bộ với totalWeight
+    double effectiveServingSize = _servingSize;
+    double totalWeight = effectiveServingSize * 100;
+
     // Kiểm tra nếu có nutritionInfo
     if (_foodEntry.nutritionInfo != null) {
-      // Lấy giá trị từ nutritionInfo với giá trị mặc định từ các items
-      values['calories'] =
-      _foodEntry.nutritionInfo!['calories'] is num ?
-      (_foodEntry.nutritionInfo!['calories'] as num).toDouble() :
-      _foodEntry.totalCalories;
+      // Lấy servingSize từ nutritionInfo nếu có, nếu không thì dùng _servingSize
+      double nutritionServingSize = _foodEntry.nutritionInfo!['servingSize'] is num
+          ? (_foodEntry.nutritionInfo!['servingSize'] as num).toDouble()
+          : effectiveServingSize;
 
-      values['protein'] =
-      _foodEntry.nutritionInfo!['protein'] is num ?
-      (_foodEntry.nutritionInfo!['protein'] as num).toDouble() :
-      _foodEntry.totalProtein;
+      // Tính tỷ lệ để điều chỉnh giá trị dinh dưỡng theo servingSize hiện tại
+      double ratio = effectiveServingSize / nutritionServingSize;
 
-      values['fat'] =
-      _foodEntry.nutritionInfo!['fat'] is num ?
-      (_foodEntry.nutritionInfo!['fat'] as num).toDouble() :
-      _foodEntry.totalFat;
+      // Lấy giá trị từ nutritionInfo và điều chỉnh theo tỷ lệ
+      values['calories'] = _foodEntry.nutritionInfo!['calories'] is num
+          ? ((_foodEntry.nutritionInfo!['calories'] as num).toDouble() * ratio)
+          : _foodEntry.totalCalories;
 
-      values['carbs'] =
-      _foodEntry.nutritionInfo!['carbs'] is num ?
-      (_foodEntry.nutritionInfo!['carbs'] as num).toDouble() :
-      _foodEntry.totalCarbs;
+      values['protein'] = _foodEntry.nutritionInfo!['protein'] is num
+          ? ((_foodEntry.nutritionInfo!['protein'] as num).toDouble() * ratio)
+          : _foodEntry.totalProtein;
+
+      values['fat'] = _foodEntry.nutritionInfo!['fat'] is num
+          ? ((_foodEntry.nutritionInfo!['fat'] as num).toDouble() * ratio)
+          : _foodEntry.totalFat;
+
+      values['carbs'] = _foodEntry.nutritionInfo!['carbs'] is num
+          ? ((_foodEntry.nutritionInfo!['carbs'] as num).toDouble() * ratio)
+          : _foodEntry.totalCarbs;
+
+      values['fiber'] = _foodEntry.nutritionInfo!['fiber'] is num
+          ? ((_foodEntry.nutritionInfo!['fiber'] as num).toDouble() * ratio)
+          : _foodEntry.totalFiber;
+
+      values['sugar'] = _foodEntry.nutritionInfo!['sugar'] is num
+          ? ((_foodEntry.nutritionInfo!['sugar'] as num).toDouble() * ratio)
+          : _foodEntry.totalSugar;
+
+      values['sodium'] = _foodEntry.nutritionInfo!['sodium'] is num
+          ? ((_foodEntry.nutritionInfo!['sodium'] as num).toDouble() * ratio)
+          : _foodEntry.totalSodium;
+
+      // Đảm bảo totalWeight luôn đồng bộ với servingSize hiện tại
+      values['totalWeight'] = totalWeight;
     } else {
-      // Sử dụng giá trị từ items
+      // Nếu không có nutritionInfo, sử dụng giá trị từ items và điều chỉnh theo servingSize
       values['calories'] = _foodEntry.totalCalories;
       values['protein'] = _foodEntry.totalProtein;
       values['fat'] = _foodEntry.totalFat;
       values['carbs'] = _foodEntry.totalCarbs;
+      values['fiber'] = _foodEntry.totalFiber;
+      values['sugar'] = _foodEntry.totalSugar;
+      values['sodium'] = _foodEntry.totalSodium;
+      values['totalWeight'] = totalWeight;
     }
 
     return values;
   }
 
-  // Đồng bộ với ngày từ provider
+  // 🍽️ CHUYỂN MÓN ĂN SANG NGÀY KHÁC
   void _syncDateWithProvider() {
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     final selectedDate = foodProvider.selectedDate;
 
     final entryDateOnly = "${_foodEntry.dateTime.year}-${_foodEntry.dateTime.month.toString().padLeft(2, '0')}-${_foodEntry.dateTime.day.toString().padLeft(2, '0')}";
 
-    if (selectedDate != entryDateOnly) {
+    print('🍽️ MoveFood: Ngày hiện tại của món ăn: $entryDateOnly');
+    print('🍽️ MoveFood: Ngày được chọn: $selectedDate');
+
+    // 🍽️ CHUYỂN MÓN ĂN: Khi user chọn ngày khác, món ăn sẽ chuyển sang ngày đó
+    if (selectedDate != entryDateOnly && !_isEditing) {
       // Chuyển đổi ngày từ chuỗi sang DateTime
       try {
         final dateParts = selectedDate.split('-');
@@ -829,26 +877,116 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
           _foodEntry.dateTime.second,
         );
 
-              // Cập nhật _foodEntry với ngày mới
-      setState(() {
-        _foodEntry = FoodEntry(
-          id: _foodEntry.id,
-          description: _foodEntry.description,
-          imagePath: _foodEntry.imagePath,
-          imageUrl: _foodEntry.imageUrl,
-          audioPath: _foodEntry.audioPath,
-          dateTime: updatedDateTime,
-          isFavorite: _foodEntry.isFavorite,
-          barcode: _foodEntry.barcode,
-          calories: _foodEntry.calories,
-          nutritionInfo: _foodEntry.nutritionInfo,
-          mealType: _foodEntry.mealType,
-          items: _foodEntry.items,
+        print('🍽️ MoveFood: ✅ CHUYỂN món ăn từ $entryDateOnly → $selectedDate');
+
+        // Hiển thị thông báo cho user biết món ăn đã được chuyển
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📅 Đã chuyển món ăn sang ngày $selectedDate'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.blue,
+            action: SnackBarAction(
+              label: 'Hoàn tác',
+              textColor: Colors.white,
+              onPressed: () {
+                // Hoàn tác việc chuyển ngày
+                _undoDateChange(entryDateOnly);
+              },
+            ),
+          ),
         );
+
+        // Cập nhật _foodEntry với ngày mới
+        setState(() {
+          _foodEntry = FoodEntry(
+            id: _foodEntry.id,
+            description: _foodEntry.description,
+            imagePath: _foodEntry.imagePath,
+            imageUrl: _foodEntry.imageUrl,
+            audioPath: _foodEntry.audioPath,
+            dateTime: updatedDateTime,
+            isFavorite: _foodEntry.isFavorite,
+            barcode: _foodEntry.barcode,
+            calories: _foodEntry.calories,
+            nutritionInfo: _foodEntry.nutritionInfo,
+            mealType: _foodEntry.mealType,
+            items: _foodEntry.items,
+          );
         });
+
+        // Cập nhật trong provider để đồng bộ
+        foodProvider.updateFoodEntry(_foodEntry);
+
       } catch (e) {
-        print('Lỗi khi cập nhật ngày từ FoodProvider: $e');
+        print('❌ MoveFood: Lỗi khi chuyển ngày: $e');
+
+        // Hiển thị thông báo lỗi
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi khi chuyển món ăn sang ngày mới'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
+    } else if (selectedDate == entryDateOnly) {
+      print('🍽️ MoveFood: Món ăn đã ở đúng ngày được chọn');
+    } else if (_isEditing) {
+      print('🍽️ MoveFood: Đang edit, không chuyển ngày tự động');
+    }
+  }
+
+  // 🔄 HOÀN TÁC VIỆC CHUYỂN NGÀY
+  void _undoDateChange(String originalDate) {
+    try {
+      final dateParts = originalDate.split('-');
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+
+      // Tạo DateTime với ngày gốc
+      final originalDateTime = DateTime(
+        year,
+        month,
+        day,
+        _foodEntry.dateTime.hour,
+        _foodEntry.dateTime.minute,
+        _foodEntry.dateTime.second,
+      );
+
+      print('🔄 UndoDateChange: Hoàn tác về ngày gốc: $originalDate');
+
+      // Cập nhật _foodEntry với ngày gốc
+      setState(() {
+        _foodEntry = _foodEntry.copyWith(dateTime: originalDateTime);
+      });
+
+      // Cập nhật provider để đồng bộ
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      foodProvider.updateFoodEntry(_foodEntry);
+
+      // Cập nhật selectedDate trong provider về ngày gốc
+      foodProvider.setSelectedDate(originalDate);
+
+      // Hiển thị thông báo hoàn tác thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🔄 Đã hoàn tác về ngày $originalDate'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+    } catch (e) {
+      print('❌ UndoDateChange: Lỗi khi hoàn tác: $e');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Lỗi khi hoàn tác thay đổi ngày'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -1020,26 +1158,57 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
       // Đóng dialog loading
       Navigator.pop(context);
 
-      // Gọi callback onSave để chỉ cập nhật bữa ăn (không thêm mới)
-      widget.onSave(updatedEntry);
+      // 🍽️ SAVE: Đảm bảo món ăn được lưu vào đúng ngày đã chọn
+      final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+      final selectedDate = foodProvider.selectedDate;
 
-      // Lấy chuỗi ngày từ DateTime để truyền về
-      String dateStr = "${updatedEntry.dateTime.year}-${updatedEntry.dateTime.month.toString().padLeft(2, '0')}-${updatedEntry.dateTime.day.toString().padLeft(2, '0')}";
+      // Parse selectedDate để tạo DateTime với giờ phút giây từ updatedEntry
+      DateTime finalDateTime = updatedEntry.dateTime;
+      try {
+        final dateParts = selectedDate.split('-');
+        final year = int.parse(dateParts[0]);
+        final month = int.parse(dateParts[1]);
+        final day = int.parse(dateParts[2]);
+
+        finalDateTime = DateTime(
+          year,
+          month,
+          day,
+          updatedEntry.dateTime.hour,
+          updatedEntry.dateTime.minute,
+          updatedEntry.dateTime.second,
+        );
+
+        print('🍽️ SaveAndExit: Lưu món ăn vào ngày: $selectedDate');
+        print('🍽️ SaveAndExit: DateTime cuối cùng: ${finalDateTime.toString()}');
+      } catch (e) {
+        print('❌ SaveAndExit: Lỗi parse ngày, giữ nguyên: $e');
+      }
+
+      // Tạo final entry với ngày đã được chọn
+      final finalEntry = updatedEntry.copyWith(dateTime: finalDateTime);
+
+      // Gọi callback onSave để chỉ cập nhật bữa ăn (không thêm mới)
+      widget.onSave(finalEntry);
+
+      // Lấy chuỗi ngày từ selectedDate (đã chọn) thay vì từ DateTime
+      String dateStr = selectedDate;
 
       // Tạo một kết quả để truyền về
       final result = {
         'foodEntriesUpdated': true,
         'selectedDate': dateStr,
-        'updatedEntry': updatedEntry,
-        'updatedMealType': updatedEntry.mealType,
+        'updatedEntry': finalEntry,
+        'updatedMealType': finalEntry.mealType,
       };
 
-      // Hiển thị thông báo thành công
+      // Hiển thị thông báo thành công với thông tin ngày
+      final entryDateStr = "${finalEntry.dateTime.day}/${finalEntry.dateTime.month}/${finalEntry.dateTime.year}";
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đã lưu thay đổi thành công'),
+          content: Text('✅ Đã lưu món ăn vào ngày $entryDateStr'),
           backgroundColor: Colors.green,
-          duration: Duration(seconds: 1),
+          duration: Duration(seconds: 2),
         ),
       );
 
@@ -1079,12 +1248,41 @@ class _FoodNutritionDetailScreenState extends State<FoodNutritionDetailScreen> {
     }
   }
 
-  // Sửa thông tin thực phẩm
+  // ✏️ SỬA THÔNG TIN MÓN ĂN (không ảnh hưởng đến ngày)
   Future<void> _editFoodDetails() async {
-    final updatedEntry = await FoodNutritionActions.editFoodDetails(context, _foodEntry);
-    if (updatedEntry != null && mounted) {
+    // ✏️ Set editing state để tránh auto-move ngày khi đang edit
+    setState(() {
+      _isEditing = true;
+    });
+
+    try {
+      print('✏️ EditFoodDetails: Bắt đầu sửa thông tin món ăn');
+
+      final updatedEntry = await FoodNutritionActions.editFoodDetails(context, _foodEntry);
+      if (updatedEntry != null && mounted) {
+        setState(() {
+          _foodEntry = updatedEntry;
+        });
+
+        print('✏️ EditFoodDetails: Đã cập nhật thông tin món ăn');
+
+        // Đồng bộ lại với provider
+        final foodProvider = Provider.of<FoodProvider>(context, listen: false);
+        foodProvider.updateFoodEntry(updatedEntry);
+
+        // Hiển thị thông báo thành công
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✏️ Đã cập nhật thông tin món ăn'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } finally {
+      // Reset editing state để cho phép auto-move ngày trở lại
       setState(() {
-        _foodEntry = updatedEntry;
+        _isEditing = false;
       });
     }
   }

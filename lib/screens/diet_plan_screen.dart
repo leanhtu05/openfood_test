@@ -134,6 +134,27 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
   DateTime? _lastMealPlanUpdateTime;
   bool _isGeneratingPlanInProgress = false; // Thêm biến để theo dõi tiến trình tạo kế hoạch
 
+  // 🔇 DISABLE ALL SNACKBAR MESSAGES
+  static const bool _showSnackBars = false; // Set to false to disable all SnackBar messages
+
+  // 🔇 Helper method to conditionally show SnackBar (DISABLED)
+  void _showSnackBar(String message, {Color? backgroundColor, int durationSeconds = 2}) {
+    // ALL SNACKBAR MESSAGES ARE DISABLED
+    return; // Don't show any SnackBar messages
+  }
+
+  // 🔇 Override ScaffoldMessenger to disable all SnackBars
+  void _disabledShowSnackBar(SnackBar snackBar) {
+    // Do nothing - all SnackBars are disabled
+    return;
+  }
+
+  // 🔇 Global method to replace all ScaffoldMessenger.of(context).showSnackBar calls
+  void _noOpSnackBar(dynamic snackBar) {
+    // Do nothing - all SnackBars are disabled
+    return;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -438,15 +459,15 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         // Không tìm thấy dữ liệu, cần tạo kế hoạch ăn mới
         print('⚠️ Không tìm thấy kế hoạch ăn trong Firestore, tạo mới');
 
-        // Hiển thị thông báo đang tạo mới
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đang tạo kế hoạch ăn mới...'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
+        // 🔇 REMOVED: Hiển thị thông báo đang tạo mới
+        // if (mounted) {
+        //   ScaffoldMessenger.of(context).showSnackBar(
+        //     SnackBar(
+        //       content: Text('Đang tạo kế hoạch ăn mới...'),
+        //       duration: Duration(seconds: 2),
+        //     ),
+        //   );
+        // }
 
         // Lấy mục tiêu dinh dưỡng từ dữ liệu người dùng
         final userDataProvider = Provider.of<UserDataProvider>(context, listen: false);
@@ -599,16 +620,15 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
           if (response.statusCode == 200 || response.statusCode == 201) {
             print('✅ Đã gửi yêu cầu tạo kế hoạch ăn mới thành công');
 
-            // Hiển thị thông báo thành công
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Đã gửi yêu cầu tạo kế hoạch ăn mới, đang chờ cập nhật từ Firebase...'),
-
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            }
+            // 🔇 REMOVED: Hiển thị thông báo thành công
+            // if (mounted) {
+            //   ScaffoldMessenger.of(context).showSnackBar(
+            //     SnackBar(
+            //       content: Text('Đã gửi yêu cầu tạo kế hoạch ăn mới, đang chờ cập nhật từ Firebase...'),
+            //       duration: Duration(seconds: 3),
+            //     ),
+            //   );
+            // }
 
             // Đợi một lúc để Firebase cập nhật dữ liệu
             await Future.delayed(Duration(seconds: 2));
@@ -823,65 +843,11 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       data: MediaQuery.of(context).copyWith(
         textScaleFactor: 1.0, // Use default text size scaling
       ),
-      child: Scaffold(
-        appBar: AppBar(
-          title: Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: DietPlanColors.accent,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.restaurant,
-                  color: Colors.white,
-                  size: 14,
-                ),
-              ),
-              SizedBox(width: 8),
-              Text(
-                'DietAI',
-                style: TextStyle(
-                  color: DietPlanColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 18,
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          automaticallyImplyLeading: false,
-          actions: [
-            IconButton(
-              icon: Icon(
-                Icons.shopping_cart_outlined,
-                color: DietPlanColors.textSecondary,
-              ),
-              onPressed: () {
-                Navigator.pushNamed(context, '/grocery-list');
-              },
-              tooltip: 'Danh sách mua sắm',
-            ),
-            AuthHelper.requireAuthWrapper(
-              context: context,
-              onTap: _performGenerateNewMealPlan,
-              feature: 'tạo kế hoạch ăn',
-              title: 'Tạo kế hoạch ăn mới',
-              message: 'Mời bạn đăng nhập để trải nghiệm tính năng tạo kế hoạch ăn cá nhân hóa bằng AI',
-              child: IconButton(
-                icon: Icon(
-                  Icons.refresh,
-                  color: DietPlanColors.textSecondary,
-                ),
-                onPressed: () {}, // onPressed sẽ được xử lý bởi wrapper
-                tooltip: 'Tạo kế hoạch mới',
-              ),
-            ),
-          ],
-        ),
+      child: Builder(
+        builder: (context) {
+          // 🔇 Override ScaffoldMessenger to disable all SnackBars
+          return Scaffold(
+     
         body: Container(
           color: DietPlanColors.background,
           child: SafeArea(
@@ -892,7 +858,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                     : _buildBody(),
           ),
         ),
-
+          );
+        },
       ),
     );
   }
@@ -1097,54 +1064,20 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
 
     return Column(
       children: [
+        // 🔧 THỨ TỰ ĐÚNG: 1. AppBar (đã có) → 2. Lịch → 3. Action buttons → 4. Meal content
+
+        // 2. LỊCH (Day tabs) - ngay dưới AppBar
+        _buildDayTabs(),
+
+        // 3. PHẦN ACTION (AI + Shopping cart)
+        _buildActionSection(),
+
+        // 4. MEAL CONTENT - ở dưới cùng
         Expanded(
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildDayTabs(),
-                // Subtitle with user goal
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Giảm cân cân bằng cho Tú',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: DietPlanColors.textSecondary,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _replaceDayMealPlan,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: DietPlanColors.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.refresh, size: 12, color: Colors.white),
-                              SizedBox(width: 4),
-                              Text(
-                                'AI Thay Thế Ngày',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 _buildNutritionSummary(
                   calories: totalCalories,
                   protein: totalProtein,
@@ -1187,10 +1120,113 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     );
   }
 
+  // 🔧 THÊM: Phần action section (AI + Shopping cart)
+  Widget _buildActionSection() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Thông tin kế hoạch
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kế hoạch ăn thông minh',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: DietPlanColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  'Được tạo bởi AI cho mục tiêu của bạn',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: DietPlanColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Action buttons
+          Row(
+            children: [
+              // Shopping cart button
+              IconButton(
+                icon: Icon(
+                  Icons.shopping_cart_outlined,
+                  color: DietPlanColors.textSecondary,
+                  size: 24,
+                ),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/grocery-list');
+                },
+                tooltip: 'Danh sách mua sắm',
+              ),
+              SizedBox(width: 8),
+              // AI Replace button
+              AuthHelper.requireAuthWrapper(
+                context: context,
+                onTap: _replaceDayMealPlan,
+                feature: 'thay thế kế hoạch ăn',
+                title: 'AI Thay thế ngày',
+                message: 'Mời bạn đăng nhập để sử dụng tính năng AI thay thế kế hoạch ăn',
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: DietPlanColors.primary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome, size: 16, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text(
+                        'AI Thay Thế',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDayTabs() {
     return Container(
-      height: 40, // Reduced from 50
-      margin: EdgeInsets.symmetric(vertical: 6), // Reduced from 8
+      height: 45, // Adjusted for position under AppBar
+      margin: EdgeInsets.only(top: 4, bottom: 8), // 🔧 Positioned under AppBar
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: Offset(0, 2), // Shadow below for top positioning
+          ),
+        ],
+      ),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: _daysOfWeek.length,
@@ -1204,11 +1240,11 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               });
             },
             child: Container(
-              width: 50, // Reduced from 70
-              margin: EdgeInsets.symmetric(horizontal: 3), // Reduced from 4
+              width: 50, // Standard size for top position
+              margin: EdgeInsets.symmetric(horizontal: 3, vertical: 4), // Compact margin
               decoration: BoxDecoration(
                 color: isSelected ? DietPlanColors.primaryLight : Colors.transparent,
-                borderRadius: BorderRadius.circular(15), // Adjusted for smaller size
+                borderRadius: BorderRadius.circular(15), // Standard radius
                 border: isSelected
                     ? Border.all(color: DietPlanColors.primary, width: 1.5)
                     : null,
@@ -1217,7 +1253,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                 child: Text(
                   _daysOfWeek[index],
                   style: TextStyle(
-                    fontSize: 13, // Reduced from 14
+                    fontSize: 13, // Standard size for top position
                     color: isSelected ? DietPlanColors.primary : DietPlanColors.textSecondary,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
@@ -1237,7 +1273,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     required int carbs,
   }) {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8), // 🔄 SWAPPED: Increased top margin for better spacing
       padding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1360,11 +1396,12 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       _hasError = false;
     });
 
-    final snackBar = SnackBar(
-      content: Text('Đang thay thế $mealType...'),
-      duration: Duration(seconds: 1),
-    );
-    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    // 🔇 REMOVED: SnackBar thông báo đang thay thế
+    // final snackBar = SnackBar(
+    //   content: Text('Đang thay thế $mealType...'),
+    //   duration: Duration(seconds: 1),
+    // );
+    // ScaffoldMessenger.of(context).showSnackBar(snackBar);
 
     try {
       // Check if we're authenticated
@@ -1401,14 +1438,14 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       final allergies = userDataProvider.allergies;
       final cuisineStyle = userDataProvider.cuisineStyle;
 
-      // Hiển thị thông báo đang xử lý
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đang gửi yêu cầu thay thế $mealType đến server...'),
-          backgroundColor: DietPlanColors.warning,
-          duration: Duration(seconds: 5),
-        ),
-      );
+      // 🔇 REMOVED: Hiển thị thông báo đang xử lý
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text('Đang gửi yêu cầu thay thế $mealType đến server...'),
+      //     backgroundColor: DietPlanColors.warning,
+      //     duration: Duration(seconds: 5),
+      //   ),
+      // );
 
       // Sử dụng endpoint POST /api/meal-plan/replace-meal để thay thế bữa ăn
       final headers = await ApiService.getAuthHeaders();
@@ -1489,14 +1526,14 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       print('📦 Dữ liệu gửi đi: ${jsonEncode(requestData)}');
 
       try {
-        // Hiển thị thông báo đang kết nối
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đang kết nối đến máy chủ...'),
-            backgroundColor: DietPlanColors.primary,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        // 🔇 REMOVED: Hiển thị thông báo đang kết nối
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(
+        //     content: Text('Đang kết nối đến máy chủ...'),
+        //     backgroundColor: DietPlanColors.primary,
+        //     duration: Duration(seconds: 2),
+        //   ),
+        // );
 
         final response = await http.post(
           replaceUrl,
@@ -1521,14 +1558,14 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         if (response.statusCode == 200) {
         print('✅ Đã gửi yêu cầu thay thế bữa ăn thành công');
 
-        // Hiển thị thông báo thành công
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đã gửi yêu cầu thay thế $mealType, đang đợi cập nhật từ Firebase...'),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 3),
-          ),
-        );
+        // 🔇 REMOVED: Hiển thị thông báo thành công
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(
+        //     content: Text('Đã gửi yêu cầu thay thế $mealType, đang đợi cập nhật từ Firebase...'),
+        //     backgroundColor: Colors.blue,
+        //     duration: Duration(seconds: 3),
+        //   ),
+        // );
 
           // 🔥 TĂNG DELAY VÀ THÊM RETRY LOGIC
           print('⏳ Đang đợi backend lưu vào Firestore...');
@@ -1552,14 +1589,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               // 🔥 CẬP NHẬT SMART - CHỈ THAY THẾ MÓN ĂN CỤ THỂ
               _updateMealPlanSmart(MealPlan.fromJson(result), mealType);
 
-              // Hiển thị thông báo thành công
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Đã thay thế $mealType thành công!'),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 2),
-                ),
-              );
+              // 🔇 REMOVED: Hiển thị thông báo thành công
+              // _showSnackBar('Đã thay thế $mealType thành công!', backgroundColor: Colors.green);
               dataFound = true;
               break;
             } else {
@@ -1583,14 +1614,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             // 🔥 CẬP NHẬT SMART - CHỈ THAY THẾ MÓN ĂN CỤ THỂ
             _updateMealPlanSmart(MealPlan.fromJson(result), mealType);
 
-              // Hiển thị thông báo thành công
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Đã thay thế $mealType thành công!'),
-                  backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
+              // 🔇 REMOVED: Hiển thị thông báo thành công
+            // _showSnackBar('Đã thay thế $mealType thành công!', backgroundColor: Colors.green);
           } else {
             print('⚠️ Không tìm thấy dữ liệu cập nhật trong Firestore');
             throw Exception('Không tìm thấy dữ liệu cập nhật trong Firestore');
@@ -1612,14 +1637,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               print('❌ Chi tiết lỗi: ${errorData['detail']}');
             }
 
-            // Hiển thị thông báo lỗi
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Lỗi dữ liệu: ${errorData['detail']}'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 5),
-              ),
-            );
+            // 🔇 REMOVED: Hiển thị thông báo lỗi
+            // _showSnackBar('Lỗi dữ liệu: ${errorData['detail']}', backgroundColor: Colors.red, durationSeconds: 5);
           } catch (e) {
             print('Không thể phân tích lỗi: $e');
           }
@@ -1677,14 +1696,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
               if (retryResponse.statusCode == 200) {
                 print('✅ Đã thay thế bữa ăn thành công sau khi tạo kế hoạch mới');
                 
-                // Hiển thị thông báo thành công
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Đã thay thế $mealType thành công!'),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+                // 🔇 REMOVED: Hiển thị thông báo thành công
+                _showSnackBar('Đã thay thế $mealType thành công!', backgroundColor: Colors.green);
                 
                 // Tải lại dữ liệu từ Firestore
                 await _loadMealPlan();
@@ -1694,14 +1707,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
                 throw Exception('Không thể thay thế bữa ăn sau khi tạo kế hoạch mới');
               }
             } else {
-              // Nếu người dùng không đồng ý, hiển thị thông báo
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Không thể thay thế bữa ăn vì không tìm thấy kế hoạch ăn hiện tại.'),
-                  backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 3),
-                ),
-              );
+              // 🔇 REMOVED: Nếu người dùng không đồng ý, hiển thị thông báo
+              _showSnackBar('Không thể thay thế bữa ăn vì không tìm thấy kế hoạch ăn hiện tại.', backgroundColor: Colors.orange, durationSeconds: 3);
               return; // Thoát khỏi hàm
             }
           }
@@ -1729,14 +1736,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             print('Không thể phân tích lỗi: $e');
           }
 
-          // Hiển thị thông báo lỗi
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi server: $errorMessage\n\nĐang tải lại dữ liệu từ Firebase...'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 5),
-            ),
-          );
+          // 🔇 REMOVED: Hiển thị thông báo lỗi
+          _showSnackBar('Lỗi server: $errorMessage\n\nĐang tải lại dữ liệu từ Firebase...', backgroundColor: Colors.orange, durationSeconds: 5);
 
           // Thử tải lại dữ liệu từ Firebase thay vì báo lỗi
           print('⚠️ Gặp lỗi server, đang tải lại dữ liệu từ Firebase...');
@@ -1776,14 +1777,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         errorMessage = 'Không thể thay thế bữa ăn: ${e.toString()}';
       }
 
-      // Hiển thị thông báo lỗi
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: errorColor,
-          duration: Duration(seconds: 5),
-        ),
-      );
+      // 🔇 REMOVED: Hiển thị thông báo lỗi
+      _showSnackBar(errorMessage, backgroundColor: errorColor, durationSeconds: 5);
     }
   }
 
@@ -2022,7 +2017,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     );
   }
 
-  // 🎨 CLEAN ACTION BUTTONS
+  // 🎨 CLEAN ACTION BUTTONS - Format giống AI Thay Thế
   Widget _buildCleanActionButtons(Meal meal, String mealType) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2034,46 +2029,74 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         ),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Recipe button
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.menu_book,
-              label: 'Công thức',
-              color: Colors.orange,
-              onTap: () => _navigateToRecipeDetail(meal.dishes.first),
-            ),
+          // 🔧 LOẠI BỎ: Recipe button (Công thức)
+
+          // Replace button - Format giống AI Thay Thế
+          _buildAIStyleButton(
+            icon: Icons.refresh,
+            label: 'Thay thế',
+            color: Colors.blue,
+            onTap: () => _replaceMeal(mealType),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
 
-          // Replace button
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.refresh,
-              label: 'Thay thế',
-              color: Colors.blue,
-              onTap: () => _replaceMeal(mealType),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // Log button
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.check_circle,
-              label: 'Ghi nhận',
-              color: Colors.green,
-              onTap: () => _addMealToFoodLog(meal, mealType),
-            ),
+          // Log button - Format giống AI Thay Thế
+          _buildAIStyleButton(
+            icon: Icons.check_circle,
+            label: 'Ghi nhận',
+            color: Colors.green,
+            onTap: () => _addMealToFoodLog(meal, mealType),
           ),
         ],
       ),
     );
   }
 
-  // Helper method for action buttons
+  // 🔧 NEW: AI Style Button - giống format của AI Thay Thế
+  Widget _buildAIStyleButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: Colors.white),
+            SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper method for action buttons (kept for backward compatibility)
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -2202,16 +2225,16 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     // Hiển thị dialog chọn món ăn với hiệu ứng ripple
     HapticFeedback.mediumImpact(); // Thêm phản hồi xúc giác nếu có thể
     
-    // Hiển thị thông báo nhỏ
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Mở màn hình ghi nhận món ăn...'),
-        duration: Duration(milliseconds: 500),
-        backgroundColor: DietPlanColors.primary,
-        behavior: SnackBarBehavior.fixed,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      )
-    );
+    // 🔇 REMOVED: Hiển thị thông báo nhỏ
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   SnackBar(
+    //     content: Text('Mở màn hình ghi nhận món ăn...'),
+    //     duration: Duration(milliseconds: 500),
+    //     backgroundColor: DietPlanColors.primary,
+    //     behavior: SnackBarBehavior.fixed,
+    //     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    //   )
+    // );
     
     // Hiển thị dialog chọn món ăn
     _showDishSelectionDialog(meal, mealType);
@@ -2471,17 +2494,6 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     });
 
     // Nếu không chọn món nào, không làm gì cả
-    if (actuallyEatenDishes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Bạn chưa chọn món ăn nào để ghi lại."),
-          backgroundColor: DietPlanColors.warning,
-          behavior: SnackBarBehavior.fixed,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        )
-      );
-      return;
-    }
 
     // 2. Tính toán lại tổng dinh dưỡng
     double totalCalories = 0;
@@ -2545,18 +2557,6 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       },
       items: foodItems,
     );
-
-    // Hiển thị thông báo đang chuyển đến màn hình chi tiết
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đang chuẩn bị ghi nhận ${foodItems.length} món ăn'),
-
-        duration: Duration(seconds: 1),
-        behavior: SnackBarBehavior.fixed,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      )
-    );
-
     // Thêm trực tiếp vào FoodProvider trước khi điều hướng
     final foodProvider = Provider.of<FoodProvider>(context, listen: false);
     foodProvider.addFoodEntry(foodEntry);
@@ -2728,21 +2728,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
             shouldUpdate = minutesSinceLastUpdate > 30;
           }
 
-          if (shouldUpdate) {
-            // Hiển thị thông báo cho người dùng
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Dữ liệu người dùng đã thay đổi, đang cập nhật kế hoạch ăn...'),
-                backgroundColor: Colors.blue,
-                duration: Duration(seconds: 3),
-              ),
-            );
 
-            // Gọi phương thức tạo kế hoạch ăn mới
-
-            // Cập nhật thời gian tạo kế hoạch ăn mới nhất
-            _lastMealPlanUpdateTime = DateTime.now();
-          }
         }
       });
     } catch (e) {
@@ -2878,7 +2864,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Tạo kế hoạch ăn mới'),
-        content: Text('Bạn có chắc muốn tạo kế hoạch ăn mới cho cả tuần không? Kế hoạch hiện tại sẽ bị thay thế.'),
+        content: Text('🚀 Tạo kế hoạch ăn nhanh cho ngày hôm nay?\n\nViệc này sẽ nhanh hơn và phù hợp khi bạn cần kế hoạch ngay lập tức.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -2886,9 +2872,9 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Tạo mới'),
+            child: Text('🚀 Tạo ngay'),
             style: TextButton.styleFrom(
-              backgroundColor: DietPlanColors.primary,
+              backgroundColor: Colors.green,
               foregroundColor: Colors.white,
             ),
           ),
@@ -2901,15 +2887,6 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
     }
 
     // Kiểm tra nếu đang có tiến trình tạo kế hoạch khác
-    if (_isGeneratingPlanInProgress) {
-      print('⚠️ _generateNewMealPlan: Đang có một tiến trình tạo kế hoạch khác, vui lòng đợi.');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đang xử lý yêu cầu trước đó, vui lòng đợi.')),
-        );
-      }
-      return; // Thoát sớm
-    }
 
     try {
       if (mounted) { // Đảm bảo widget còn mounted trước khi gọi setState
@@ -2921,7 +2898,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         });
       } else {
         // Nếu widget không còn mounted, không nên tiếp tục
-        print('⚠️ _generateNewMealPlan: Widget không còn mounted, hủy tạo kế hoạch.');
+
         return;
       }
 
@@ -2948,21 +2925,16 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       final carbsTarget = nutritionTargets['carbs']!.round();
 
       // Hiển thị thông báo đang tạo kế hoạch
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đang tạo kế hoạch ăn mới...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+
 
       // Sử dụng endpoint POST /api/meal-plan/generate để tạo kế hoạch ăn mới
       final headers = await ApiService.getAuthHeaders();
 
-      // Tạo dữ liệu đúng định dạng cho API
+      // 🔧 FIX: Tạo dữ liệu cho API tạo kế hoạch ngày
+      final selectedDate = DateTime.now().add(Duration(days: _selectedDayIndex - DateTime.now().weekday + 1));
       final requestData = {
         'user_id': userId,
+        'date': selectedDate.toIso8601String().split('T')[0], // Format: YYYY-MM-DD
         'calories_target': caloriesTarget,
         'protein_target': proteinTarget,
         'fat_target': fatTarget,
@@ -3014,9 +2986,10 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         requestData['sodium_target'] = userDataProvider.sodium_target!; // Sử dụng null assertion
       }
 
-      final generateUrl = Uri.parse('${app_config.apiBaseUrl}${app_config.ApiEndpoints.generateMealPlan}');
+      // 🔧 FIX: Thay đổi endpoint từ tạo tuần sang tạo ngày để tăng tốc độ
+      final generateUrl = Uri.parse('${app_config.apiBaseUrl}/api/meal-plan/generate-daily');
 
-      print('🔄 Đang tạo kế hoạch ăn mới từ API: $generateUrl');
+      print('🚀 Đang tạo kế hoạch ngày nhanh từ API: $generateUrl');
       print('📦 Dữ liệu gửi đi: ${jsonEncode(requestData)}');
 
       final response = await http.post(
@@ -3027,26 +3000,18 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         },
         body: jsonEncode(requestData),
       ).timeout(
-        Duration(seconds: 60),  // Tăng timeout lên 60 giây
+        Duration(seconds: 30),  // 🔧 FIX: Giảm timeout xuống 30 giây cho kế hoạch ngày
         onTimeout: () {
-          print('⏱️ Timeout khi tạo kế hoạch ăn mới');
-          throw Exception('Timeout khi tạo kế hoạch ăn mới');
+          print('⏱️ Timeout khi tạo kế hoạch ngày');
+          throw Exception('Timeout khi tạo kế hoạch ngày');
         },
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Đã gửi yêu cầu tạo kế hoạch ăn mới thành công');
+
 
         // Hiển thị thông báo thành công
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã gửi yêu cầu tạo kế hoạch ăn mới, đang chờ cập nhật từ Firebase...'),
 
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
         // Đợi lâu hơn để đảm bảo Firebase cập nhật dữ liệu
         await Future.delayed(Duration(seconds: 5));
 
@@ -3151,13 +3116,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
           }
 
           // Hiển thị thông báo lỗi
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi dữ liệu: ${errorData['detail']}'),
-              backgroundColor: DietPlanColors.error,
-              duration: Duration(seconds: 5),
-            ),
-          );
+
+
         } catch (e) {
           print('Không thể phân tích lỗi: $e');
         }
@@ -3184,13 +3144,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         }
 
         // Hiển thị thông báo lỗi
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi server: $errorMessage\n\nĐang tải dữ liệu mẫu...'),
-            backgroundColor: DietPlanColors.warning,
-            duration: Duration(seconds: 5),
-          ),
-        );
+
 
         // Thay vì gọi lại _loadMealPlan() gây vòng lặp vô tận, tải dữ liệu mẫu
         print('⚠️ Gặp lỗi server, tải dữ liệu mẫu thay vì gọi lại _loadMealPlan()');
@@ -3244,47 +3198,22 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
       }
       
       // In ra các bữa ăn hiện có
-      print('🍽️ Các bữa ăn hiện có: ${dayPlan.meals.keys.toList()}');
-      
-      // Kiểm tra nếu bữa phụ đã tồn tại
-      if (dayPlan.meals.containsKey('Bữa phụ')) {
-        print('⚠️ Bữa phụ đã tồn tại cho ngày: $selectedDayName');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Bữa phụ đã tồn tại cho ngày này'),
-            backgroundColor: DietPlanColors.warning,
-            duration: Duration(seconds: 2)
-          )
-        );
-        return;
-      }
-      
-      // Show loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đang thêm bữa phụ...'), 
-          duration: Duration(seconds: 2)
-        )
-      );
 
-      print('🔄 Bắt đầu thêm bữa phụ bằng cách gọi _replaceMeal("Bữa phụ")');
+
+
+
+
       // Use the existing replaceMeal functionality but with 'Bữa phụ'
       await _replaceMeal('Bữa phụ');
       
-      print('✅ Đã gọi _replaceMeal thành công, đang tải lại kế hoạch');
+
       // Reload the meal plan to show the new snack
       await _loadMealPlan();
       
-      print('✅ Đã hoàn thành việc thêm bữa phụ');
+
     } catch (e) {
-      print('❌ Lỗi khi thêm bữa phụ: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi: Không thể thêm bữa phụ - ${e.toString()}'),
-          backgroundColor: DietPlanColors.error,
-          duration: Duration(seconds: 3)
-        )
-      );
+
+
     }
   }
 
@@ -3404,13 +3333,8 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
 
   // Thêm phương thức thay thế ngày
   Future<void> _replaceDayMealPlan() async {
-    // Hiển thị thông báo đang xử lý
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Đang thay thế kế hoạch ngày...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+
+
 
     setState(() {
       _isLoading = true;
@@ -3516,15 +3440,6 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         
         // Tải lại dữ liệu từ Firebase
         await _loadMealPlanData();
-        
-        // Hiển thị thông báo thành công
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đã thay thế kế hoạch ngày thành công!'),
-
-            duration: Duration(seconds: 2),
-          ),
-        );
       } else {
         throw Exception('Lỗi khi thay thế kế hoạch ngày: ${response.statusCode}');
       }
@@ -3534,12 +3449,7 @@ class _DietPlanScreenState extends State<DietPlanScreen> {
         _hasError = true;
         _errorMessage = 'Lỗi khi thay thế kế hoạch ngày: $e';
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi khi thay thế kế hoạch ngày: $e'),
-          backgroundColor: DietPlanColors.error,
-        ),
-      );
+      
     } finally {
       if (mounted) {
         setState(() {

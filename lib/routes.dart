@@ -23,11 +23,7 @@ import 'screens/settings_screen.dart';
 import 'screens/auth/auth_screen.dart';
 import 'screens/grocery_list_screen.dart';
 import 'screens/recipe_detail_screen.dart';
-import 'screens/youtube_cooking_demo_screen.dart';
-import 'screens/meal_plan_videos_screen.dart';
-import 'screens/video_test_screen.dart';
-import 'screens/youtube_data_test_screen.dart';
-import 'screens/youtube_test_screen.dart';
+// 🗑️ Đã xóa import các demo screens theo yêu cầu
 import 'models/meal_plan.dart';
 
 Map<String, WidgetBuilder> routes = {
@@ -53,11 +49,8 @@ Map<String, WidgetBuilder> routes = {
   '/diet-plan': (context) => const DietPlanScreen(),
   '/grocery-list': (context) => GroceryListScreen(),
   '/settings': (context) => SettingsScreen(),
-  '/youtube-cooking-demo': (context) => const YouTubeCookingDemoScreen(),
-  '/meal-plan-videos': (context) => const MealPlanVideosScreen(),
-  '/video-test': (context) => const VideoTestScreen(),
-  '/youtube-data-test': (context) => const YouTubeDataTestScreen(),
-  '/youtube-test': (context) => YouTubeTestScreen(),
+  // 🗑️ Đã xóa các demo routes theo yêu cầu
+
   '/auth': (context) {
     final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
     final isLoginMode = args?['isLoginMode'] ?? true;

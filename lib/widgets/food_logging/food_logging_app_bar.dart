@@ -29,12 +29,14 @@ class FoodLoggingAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
           Spacer(),
-          TextButton(
+          TextButton.icon(
             onPressed: onSwitchToEmptyFood,
-            child: Text('Thực phẩm trống', style: TextStyle(color: Colors.blue)),
+            icon: Icon(Icons.add_circle_outline, size: 16, color: Colors.green),
+            label: Text('Thêm mới', style: TextStyle(color: Colors.green, fontSize: 12)),
             style: TextButton.styleFrom(
-              backgroundColor: Colors.blue[50],
+              backgroundColor: Colors.green[50],
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             ),
           ),
         ],

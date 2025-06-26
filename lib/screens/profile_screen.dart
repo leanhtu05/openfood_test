@@ -168,33 +168,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
         print('📊 Duy trì: Quanh $currentWeight kg');
       }
 
-      // 🔧 Tạo hành trình cân nặng từ hiện tại đến mục tiêu trong 7 điểm thời gian
+      // 🔧 FIXED: Tạo hành trình cân nặng từ HIỆN TẠI đến mục tiêu trong 7 điểm thời gian
       for (int i = 0; i < 7; i++) {
         double progressWeight;
         if (i == 0) {
-          // Điểm đầu tiên = cân nặng hiện tại
-          progressWeight = startWeight; // 63.1 kg
+          // 🔧 FIXED: Điểm đầu tiên LUÔN là cân nặng hiện tại
+          progressWeight = currentWeight; // 63.1 kg - CURRENT WEIGHT
+          print('📊 Điểm $i (HIỆN TẠI): ${progressWeight.toStringAsFixed(1)} kg');
         } else if (i == 6) {
           // Điểm cuối = mục tiêu hoặc dự đoán
           progressWeight = endWeight; // 50.0 kg (cho giảm cân)
+          print('📊 Điểm $i (MỤC TIÊU): ${progressWeight.toStringAsFixed(1)} kg');
         } else {
           // Các điểm trung gian - tiến độ tuyến tính từ hiện tại đến mục tiêu
           final progress = i / 6.0; // Tiến độ từ 0 đến 1
-          progressWeight = startWeight + (endWeight - startWeight) * progress;
+          progressWeight = currentWeight + (endWeight - currentWeight) * progress;
 
           // Thêm một chút biến động tự nhiên nhỏ
           final variation = (i % 2 == 0 ? 0.1 : -0.1);
           progressWeight += variation;
+          print('📊 Điểm $i (TRUNG GIAN): ${progressWeight.toStringAsFixed(1)} kg');
         }
 
         spotList.add(FlSpot(i.toDouble(), progressWeight));
-        print('📊 Điểm $i: ${progressWeight.toStringAsFixed(1)} kg');
       }
 
-      // Cập nhật dữ liệu với thông tin thật từ UserDataProvider
+      // 🔧 FIXED: Cập nhật dữ liệu với thông tin thật từ UserDataProvider
       setState(() {
-        _weight = weight;
-        _targetWeight = targetWeight; // Lưu cân nặng mục tiêu vào biến local
+        _weight = currentWeight; // Sử dụng cân nặng hiện tại thực tế (63.1 kg)
+        _targetWeight = endWeight; // Sử dụng mục tiêu đã được tính (50.0 kg)
         _age = age;
         _name = userName.isNotEmpty ? userName : "Người dùng";
         _tdee = tdee > 0 ? tdee : 2000; // Fallback nếu TDEE chưa được tính
@@ -203,6 +205,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _weightHistory = spotList;
         _isLoading = false;
       });
+
+      print('✅ FINAL CHART DATA - Current: $_weight kg, Target: $_targetWeight kg');
+      print('✅ Weight History Points: ${spotList.map((spot) => '${spot.y.toStringAsFixed(1)}kg').join(' → ')}');
 
       print('✅ Đã tải dữ liệu người dùng thành công trong ProfileScreen');
       print('👤 Tên: $_name, Tuổi: $_age, Cân nặng: $_weight kg');
@@ -555,15 +560,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     print('🔍 DEBUG _buildSimplifiedWeightChart - UserDataProvider.weightKg: ${userDataProvider.weightKg} kg');
     print('🔍 DEBUG _buildSimplifiedWeightChart - goal: $goal, pace: $pace kg/tuần');
 
-    // 🔧 LOGIC MỚI: Sử dụng dữ liệu từ _weightHistory nếu có, nếu không thì tạo mock data
-    // Biểu đồ luôn bắt đầu từ cân nặng hiện tại
+    // 🔧 FIXED: Đảm bảo biểu đồ luôn bắt đầu từ cân nặng hiện tại
     print('🔍 _weightHistory.length: ${_weightHistory.length}');
+
+    List<FlSpot> chartData;
     if (_weightHistory.isNotEmpty) {
       print('🔍 Sử dụng dữ liệu từ _weightHistory');
-      // Sử dụng dữ liệu thực từ _loadUserData()
+      // 🔧 VERIFY: Đảm bảo điểm đầu tiên là cân nặng hiện tại
+      chartData = List.from(_weightHistory);
+      if (chartData.isNotEmpty && chartData.first.y != currentWeight) {
+        print('🔧 FIXING: Điểm đầu tiên không phải cân nặng hiện tại, đang sửa...');
+        chartData[0] = FlSpot(0, currentWeight);
+      }
     } else {
-      print('🔍 Tạo mock data cho biểu đồ');
-      // Tạo mock data bắt đầu từ cân nặng hiện tại
+      print('🔍 Tạo mock data bắt đầu từ cân nặng hiện tại');
+      // 🔧 FIXED: Mock data bắt đầu từ cân nặng hiện tại
+      chartData = [
+        FlSpot(0, currentWeight), // 63.1 kg - CURRENT WEIGHT
+        FlSpot(1, currentWeight - 2.0), // 61.1 kg
+        FlSpot(2, currentWeight - 4.0), // 59.1 kg
+        FlSpot(3, currentWeight - 6.5), // 56.6 kg (event weight)
+        FlSpot(4, currentWeight - 9.0), // 54.1 kg
+        FlSpot(5, currentWeight - 11.5), // 51.6 kg
+        FlSpot(6, targetWeight), // 50.0 kg - TARGET WEIGHT
+      ];
     }
 
     // Tính toán ngày tháng hiện tại
@@ -595,37 +615,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: CustomPaint(
                   painter: WeightChartPainter(
                     weightHistory: _weightHistory.isNotEmpty ? _weightHistory : () {
-                      // Tạo dữ liệu mẫu dựa trên mục tiêu thực tế
+                      // 🔧 FIXED: Tạo dữ liệu mẫu bắt đầu từ cân nặng hiện tại
                       if (goal == "Giảm cân" && pace > 0) {
                         return [
-                          FlSpot(0, startWeight),
-                          FlSpot(1, startWeight - pace),
-                          FlSpot(2, startWeight - (pace * 2)),
-                          FlSpot(3, startWeight - (pace * 3)),
-                          FlSpot(4, startWeight - (pace * 4)),
-                          FlSpot(5, startWeight - (pace * 5)),
-                          FlSpot(6, currentWeight),
+                          FlSpot(0, currentWeight), // 63.1 kg - CURRENT WEIGHT
+                          FlSpot(1, currentWeight - pace),
+                          FlSpot(2, currentWeight - (pace * 2)),
+                          FlSpot(3, currentWeight - (pace * 3)),
+                          FlSpot(4, currentWeight - (pace * 4)),
+                          FlSpot(5, currentWeight - (pace * 5)),
+                          FlSpot(6, targetWeight), // TARGET WEIGHT
                         ];
                       } else if (goal == "Tăng cân" && pace > 0) {
                         return [
-                          FlSpot(0, startWeight),
-                          FlSpot(1, startWeight + pace),
-                          FlSpot(2, startWeight + (pace * 2)),
-                          FlSpot(3, startWeight + (pace * 3)),
-                          FlSpot(4, startWeight + (pace * 4)),
-                          FlSpot(5, startWeight + (pace * 5)),
-                          FlSpot(6, currentWeight),
+                          FlSpot(0, currentWeight), // CURRENT WEIGHT
+                          FlSpot(1, currentWeight + pace),
+                          FlSpot(2, currentWeight + (pace * 2)),
+                          FlSpot(3, currentWeight + (pace * 3)),
+                          FlSpot(4, currentWeight + (pace * 4)),
+                          FlSpot(5, currentWeight + (pace * 5)),
+                          FlSpot(6, targetWeight), // TARGET WEIGHT
                         ];
                       } else {
                         // Duy trì cân nặng
                         return [
-                          FlSpot(0, startWeight),
-                          FlSpot(1, startWeight - 0.1),
-                          FlSpot(2, startWeight + 0.2),
-                          FlSpot(3, startWeight - 0.1),
-                          FlSpot(4, startWeight + 0.1),
-                          FlSpot(5, startWeight - 0.2),
-                          FlSpot(6, currentWeight),
+                          FlSpot(0, currentWeight), // CURRENT WEIGHT
+                          FlSpot(1, currentWeight - 0.1),
+                          FlSpot(2, currentWeight + 0.2),
+                          FlSpot(3, currentWeight - 0.1),
+                          FlSpot(4, currentWeight + 0.1),
+                          FlSpot(5, currentWeight - 0.2),
+                          FlSpot(6, currentWeight), // MAINTAIN WEIGHT
                         ];
                       }
                     }(),
@@ -638,9 +658,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 top: 0,
                 left: 20,
                 child: _buildWeightLabel(
-                  '${startWeight.toStringAsFixed(1)} kg',
-                  'Bắt đầu',
-                  Colors.red[400]!
+                  '${currentWeight.toStringAsFixed(1)} kg',
+                  'Hiện tại',
+                  Colors.green[400]!
                 ),
               ),
 
@@ -648,19 +668,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 top: 40,
                 right: 80,
                 child: _buildWeightLabel(
-                  '${((startWeight + currentWeight) / 2).toStringAsFixed(1)} kg',
+                  '${((currentWeight + targetWeight) / 2).toStringAsFixed(1)} kg',
                   'Kỳ nghỉ',
                   Colors.orange[400]!
-                ),
-              ),
-
-              Positioned(
-                top: 0,
-                right: 20,
-                child: _buildWeightLabel(
-                  '${currentWeight.toStringAsFixed(1)} kg',
-                  'Hiện tại',
-                  Colors.green[400]!
                 ),
               ),
 
@@ -1282,23 +1292,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     print('🔧 BarChart - Hiện tại: $currentWeight, Sự kiện: $eventWeight, Mục tiêu: $targetWeight');
 
-    // Tạo dữ liệu biểu đồ với 7 điểm
+    // 🔧 FIXED: Tạo dữ liệu biểu đồ bắt đầu từ cân nặng hiện tại
     if (goal == "Giảm cân") {
       if (targetWeight > 0) {
-        // Có mục tiêu cụ thể: Hiện tại → Sự kiện → Mục tiêu
+        // Có mục tiêu cụ thể: Hiện tại (63.1) → Sự kiện → Mục tiêu (50.0)
         mockData = [
-          FlSpot(0, currentWeight), // Hiện tại
+          FlSpot(0, currentWeight), // 63.1 kg - CURRENT WEIGHT
           FlSpot(1, currentWeight - (pace * 0.5)),
           FlSpot(2, currentWeight - (pace * 1)),
           FlSpot(3, eventWeight), // Sự kiện
           FlSpot(4, eventWeight - (pace * 1)),
           FlSpot(5, eventWeight - (pace * 2)),
-          FlSpot(6, targetWeight), // Mục tiêu
+          FlSpot(6, targetWeight), // 50.0 kg - TARGET WEIGHT
         ];
+        print('🔧 BarChart - Giảm cân có mục tiêu: ${currentWeight} → ${targetWeight} kg');
       } else {
         // Không có mục tiêu cụ thể
         mockData = [
-          FlSpot(0, currentWeight), // Hiện tại
+          FlSpot(0, currentWeight), // 63.1 kg - CURRENT WEIGHT
           FlSpot(1, currentWeight - (pace * 0.5)),
           FlSpot(2, currentWeight - (pace * 1)),
           FlSpot(3, eventWeight), // Sự kiện
@@ -1306,6 +1317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           FlSpot(5, eventWeight - (pace * 2)),
           FlSpot(6, eventWeight - (pace * 3)), // Mục tiêu ước tính
         ];
+        print('🔧 BarChart - Giảm cân không có mục tiêu: ${currentWeight} → ${eventWeight - (pace * 3)} kg');
       }
     } else if (goal == "Tăng cân") {
       if (targetWeight > 0) {
@@ -1624,22 +1636,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       if (goal == "Giảm cân") {
                         if (targetWeight > 0) {
-                          // Có mục tiêu cụ thể: Hiện tại → Sự kiện → Mục tiêu
+                          // 🔧 FIXED: Có mục tiêu cụ thể: Hiện tại (63.1) → Sự kiện → Mục tiêu (50.0)
                           double eventWeight = (currentWeight + targetWeight) / 2;
                           return [
-                            FlSpot(0, currentWeight), // Hiện tại
+                            FlSpot(0, currentWeight), // 63.1 kg - CURRENT WEIGHT
                             FlSpot(1, currentWeight - (pace * 0.5)),
                             FlSpot(2, currentWeight - (pace * 1)),
                             FlSpot(3, eventWeight), // Sự kiện
                             FlSpot(4, eventWeight - (pace * 1)),
                             FlSpot(5, eventWeight - (pace * 2)),
-                            FlSpot(6, targetWeight), // Mục tiêu
+                            FlSpot(6, targetWeight), // 50.0 kg - TARGET WEIGHT
                           ];
                         } else {
-                          // Không có mục tiêu cụ thể
+                          // 🔧 FIXED: Không có mục tiêu cụ thể
                           double eventWeight = currentWeight - (pace * 3);
                           return [
-                            FlSpot(0, currentWeight), // Hiện tại
+                            FlSpot(0, currentWeight), // 63.1 kg - CURRENT WEIGHT
                             FlSpot(1, currentWeight - (pace * 0.5)),
                             FlSpot(2, currentWeight - (pace * 1)),
                             FlSpot(3, eventWeight), // Sự kiện

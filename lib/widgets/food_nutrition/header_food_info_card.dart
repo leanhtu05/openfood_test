@@ -24,6 +24,8 @@ class HeaderFoodInfoCard extends StatefulWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onReplace;
   final Function(double)? onWeightChanged;
+  final String? imageUrl;
+  final VoidCallback? onSelectImage;
 
   const HeaderFoodInfoCard({
     Key? key,
@@ -41,6 +43,8 @@ class HeaderFoodInfoCard extends StatefulWidget {
     this.onEdit,
     this.onReplace,
     this.onWeightChanged,
+    this.imageUrl,
+    this.onSelectImage,
   }) : super(key: key);
 
   @override
@@ -659,57 +663,82 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
   }
 
   Widget _buildFoodIcon() {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: Colors.green.shade100,
-        shape: BoxShape.circle,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          children: [
-            // Image from Firebase Storage URL if available
-            if (_currentFoodEntry.imageUrl != null && _currentFoodEntry.imageUrl!.isNotEmpty)
-              Image.network(
-                _currentFoodEntry.imageUrl!,
-                fit: BoxFit.cover,
-                width: 56,
-                height: 56,
-                errorBuilder: (context, error, stackTrace) {
-                  print('Lỗi tải ảnh từ URL: $error');
-                  // Fallback to local image if network image fails
-                  if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty) {
-                    return Image.file(
-                      File(_currentFoodEntry.imagePath!),
-                      fit: BoxFit.cover,
-                      width: 56,
-                      height: 56,
-                      errorBuilder: (context, error, stackTrace) {
-                        return _buildAvatarPlaceholder();
-                      },
-                    );
-                  } else {
+    return GestureDetector(
+      onTap: widget.onSelectImage,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: Colors.green.shade100,
+          shape: BoxShape.circle,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Stack(
+            children: [
+              // Image from widget.imageUrl (from parent) if available
+              if (widget.imageUrl != null && widget.imageUrl!.isNotEmpty)
+                _buildImageFromUrl(widget.imageUrl!)
+              // Image from Firebase Storage URL if available
+              else if (_currentFoodEntry.imageUrl != null && _currentFoodEntry.imageUrl!.isNotEmpty)
+                Image.network(
+                  _currentFoodEntry.imageUrl!,
+                  fit: BoxFit.cover,
+                  width: 56,
+                  height: 56,
+                  errorBuilder: (context, error, stackTrace) {
+                    print('Lỗi tải ảnh từ URL: $error');
+                    // Fallback to local image if network image fails
+                    if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty) {
+                      return Image.file(
+                        File(_currentFoodEntry.imagePath!),
+                        fit: BoxFit.cover,
+                        width: 56,
+                        height: 56,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildAvatarPlaceholder();
+                        },
+                      );
+                    } else {
+                      return _buildAvatarPlaceholder();
+                    }
+                  },
+                )
+              // Local image if no URL
+              else if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty)
+                Image.file(
+                  File(_currentFoodEntry.imagePath!),
+                  fit: BoxFit.cover,
+                  width: 56,
+                  height: 56,
+                  errorBuilder: (context, error, stackTrace) {
                     return _buildAvatarPlaceholder();
-                  }
-                },
-              )
-            // Local image if no URL
-            else if (_currentFoodEntry.imagePath != null && _currentFoodEntry.imagePath!.isNotEmpty)
-              Image.file(
-                File(_currentFoodEntry.imagePath!),
-                fit: BoxFit.cover,
-                width: 56,
-                height: 56,
-                errorBuilder: (context, error, stackTrace) {
-                  return _buildAvatarPlaceholder();
-                },
-              )
-            // Show placeholder if no images
-            else
-              _buildAvatarPlaceholder(),
-          ],
+                  },
+                )
+              // Show placeholder if no images
+              else
+                _buildAvatarPlaceholder(),
+
+              // Camera icon overlay if onSelectImage is provided
+              if (widget.onSelectImage != null)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade600,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.camera_alt,
+                      size: 12,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -745,6 +774,51 @@ class _HeaderFoodInfoCardState extends State<HeaderFoodInfoCard> {
         ],
       ),
     );
+  }
+
+  // Helper method để hiển thị ảnh từ URL
+  Widget _buildImageFromUrl(String imageUrl) {
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      // URL web
+      return ClipOval(
+        child: Image.network(
+          imageUrl,
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder();
+          },
+        ),
+      );
+    } else if (imageUrl.startsWith('file://')) {
+      // URL file local
+      String filePath = imageUrl.replaceFirst('file://', '');
+      return ClipOval(
+        child: Image.file(
+          File(filePath),
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder();
+          },
+        ),
+      );
+    } else {
+      // Đường dẫn file thông thường
+      return ClipOval(
+        child: Image.file(
+          File(imageUrl),
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder();
+          },
+        ),
+      );
+    }
   }
 
   // Hiển thị dialog nhập khẩu phần

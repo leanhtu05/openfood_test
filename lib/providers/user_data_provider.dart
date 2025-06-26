@@ -219,15 +219,27 @@ class UserDataProvider with ChangeNotifier {
       // Khởi tạo debounce timer
       _debounceTimer = null;
 
-      // Reset cờ đánh dấu cho phiên mới
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('data_loaded_from_firestore', false);
-      await prefs.setBool('loading_from_firestore', false);
-      await prefs.setBool('use_firebase_data', false);
-      
-      debugPrint('✅ Đã reset các cờ đồng bộ, ưu tiên dữ liệu local');
+      // 🔧 FIX: Kiểm tra trạng thái đăng nhập để quyết định ưu tiên dữ liệu
+      final isLoggedIn = isUserAuthenticated();
+      debugPrint('🔍 Trạng thái đăng nhập: $isLoggedIn');
 
-      // Step 1: Luôn tải dữ liệu từ local storage trước
+      final prefs = await SharedPreferences.getInstance();
+
+      if (isLoggedIn) {
+        // Nếu đã đăng nhập, ưu tiên dữ liệu Firebase
+        debugPrint('✅ User đã đăng nhập, ưu tiên dữ liệu Firebase');
+        await prefs.setBool('data_loaded_from_firestore', false);
+        await prefs.setBool('loading_from_firestore', false);
+        await prefs.setBool('use_firebase_data', true); // 🔧 FIX: Ưu tiên Firebase
+      } else {
+        // Nếu chưa đăng nhập, ưu tiên dữ liệu local
+        debugPrint('⚠️ User chưa đăng nhập, ưu tiên dữ liệu local');
+        await prefs.setBool('data_loaded_from_firestore', false);
+        await prefs.setBool('loading_from_firestore', false);
+        await prefs.setBool('use_firebase_data', false);
+      }
+
+      // Step 1: Tải dữ liệu từ local storage trước (để có dữ liệu hiển thị ngay)
       debugPrint('🔄 Bước 1: Tải dữ liệu từ local storage');
       await loadUserData();
 
@@ -1328,12 +1340,17 @@ class UserDataProvider with ChangeNotifier {
   Future<void> loadUserData() async {
     try {
     final prefs = await SharedPreferences.getInstance();
-      
-      // Reset cờ để LUÔN ưu tiên dữ liệu local
-      await prefs.setBool('data_loaded_from_firestore', false);
-      await prefs.setBool('use_firebase_data', false);
-      
-      debugPrint('🔄 Tải dữ liệu từ local storage...');
+
+      // 🔧 FIX: Không reset cờ use_firebase_data nếu user đã đăng nhập
+      final isLoggedIn = isUserAuthenticated();
+      if (!isLoggedIn) {
+        // Chỉ reset khi user chưa đăng nhập
+        await prefs.setBool('data_loaded_from_firestore', false);
+        await prefs.setBool('use_firebase_data', false);
+        debugPrint('🔄 Tải dữ liệu từ local storage (user chưa đăng nhập)...');
+      } else {
+        debugPrint('🔄 Tải dữ liệu từ local storage (user đã đăng nhập, sẽ sync Firebase sau)...');
+      }
 
     // Load basic user info
     _name = prefs.getString(_nameKey) ?? '';
@@ -1489,7 +1506,7 @@ class UserDataProvider with ChangeNotifier {
     debugPrint('🔄 Bắt đầu syncOrFetchUserData...');
     debugPrint('📋 Trước khi đồng bộ: diet_preference=$_dietPreference, diet_restrictions=$_dietRestrictions, health_conditions=$_healthConditions');
     
-    // Kiểm tra trạng thái đăng nhập trước khi đồng bộ dữ liệu
+    // 🔧 FIX: Kiểm tra trạng thái đăng nhập trước khi đồng bộ dữ liệu
     if (!isUserAuthenticated()) {
       debugPrint(
           '⚠️ Người dùng chưa đăng nhập: Ưu tiên dữ liệu từ local, bỏ qua đồng bộ dữ liệu');
@@ -1501,6 +1518,11 @@ class UserDataProvider with ChangeNotifier {
       debugPrint('📊 diet_preference: $_dietPreference');
       return;
     }
+
+    // 🔧 FIX: Nếu user đã đăng nhập, ưu tiên tải dữ liệu từ Firebase
+    debugPrint('✅ User đã đăng nhập, ưu tiên tải dữ liệu từ Firebase');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('use_firebase_data', true);
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -2617,13 +2639,16 @@ class UserDataProvider with ChangeNotifier {
 
   // Khi người dùng đăng nhập, gọi phương thức này
   Future<void> onUserLogin(BuildContext context) async {
-    // Đặt cờ để ưu tiên dữ liệu Firebase
+    // 🔧 FIX: Đặt cờ để ưu tiên dữ liệu Firebase và xóa dữ liệu local cũ
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('use_firebase_data', true);
+    await prefs.setBool('data_loaded_from_firestore', false); // Reset để force reload từ Firebase
+
+    debugPrint('🔄 onUserLogin: Bắt đầu quá trình đăng nhập và tải dữ liệu từ Firebase');
 
     if (_isFirebaseAvailable && FirebaseAuth.instance.currentUser != null) {
       debugPrint(
-          '🔄 onUserLogin: Người dùng đã đăng nhập, kiểm tra dữ liệu trên Firestore');
+          '🔄 onUserLogin: Người dùng đã đăng nhập, FORCE tải dữ liệu từ Firestore');
 
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -2633,15 +2658,16 @@ class UserDataProvider with ChangeNotifier {
           final docSnapshot = await docRef.get();
           
           if (docSnapshot.exists) {
-            // Dữ liệu đã tồn tại, tải về
-            debugPrint('✅ onUserLogin: Dữ liệu đã tồn tại trên Firestore, tải về');
-            
+            // 🔧 FIX: Dữ liệu đã tồn tại, FORCE tải về và ghi đè dữ liệu local
+            debugPrint('✅ onUserLogin: Dữ liệu đã tồn tại trên Firestore, FORCE tải về và ghi đè local');
+
             // Xóa dữ liệu local cũ trước để tránh xung đột
             await _prepareForFirebaseData();
             debugPrint('✅ onUserLogin: Đã xóa dữ liệu local cũ');
-            
-            // Tải dữ liệu từ Firestore
-            await loadFromFirestore();
+
+            // FORCE tải dữ liệu từ Firestore
+            await forceReloadFromFirebase();
+            debugPrint('✅ onUserLogin: Đã FORCE reload từ Firebase thành công');
           } else {
             // Dữ liệu chưa tồn tại, đánh dấu cần tạo mới (nhưng chưa tạo ngay)
             debugPrint('⚠️ onUserLogin: Dữ liệu chưa tồn tại trên Firestore, đánh dấu cần tạo mới');
@@ -2925,9 +2951,10 @@ class UserDataProvider with ChangeNotifier {
       _dietPreferences = [];
       _cuisineStyle = null;
 
-      // Thêm dòng này để đảm bảo lần sau khi đăng nhập sẽ ưu tiên dữ liệu từ Firebase
-      await prefs.setBool('use_firebase_data', true);
-      
+      // 🔧 FIX: Đảm bảo lần sau khi đăng nhập sẽ ưu tiên dữ liệu từ Firebase
+      await prefs.setBool('use_firebase_data', false); // Reset về false để _initializeWithPriority() quyết định
+      await prefs.setBool('data_loaded_from_firestore', false); // Reset để force reload từ Firebase
+
       // Đặt cờ để đảm bảo dữ liệu đã được xóa
       await prefs.setBool('data_cleared', true);
       

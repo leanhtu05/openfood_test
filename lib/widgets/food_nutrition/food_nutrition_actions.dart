@@ -101,34 +101,32 @@ class FoodNutritionActions {
     return false;
   }
 
-  /// Chỉnh sửa thông tin thực phẩm
+  /// ✏️ CHỈNH SỬA THÔNG TIN MÓN ĂN (giữ nguyên ngày hiện tại)
   static Future<FoodEntry?> editFoodDetails(BuildContext context, FoodEntry foodEntry) async {
     final newDescription = await FoodNutritionDialogs.showEditFoodDetailsDialog(
-      context, 
+      context,
       foodEntry.description,
     );
-    
+
     if (newDescription != null) {
-      // Cập nhật mô tả thực phẩm
+      print('✏️ EditFoodDetails: Cập nhật tên món ăn từ "${foodEntry.description}" → "$newDescription"');
+
+      // ✏️ GIỮ NGUYÊN NGÀY: Khi edit thông tin, không thay đổi ngày của món ăn
+      // Chỉ cập nhật description, giữ nguyên tất cả thông tin khác bao gồm dateTime
       final updatedEntry = foodEntry.copyWith(
         description: newDescription,
+        // Không cập nhật dateTime - giữ nguyên ngày hiện tại của món ăn
       );
-      
+
       // Cập nhật trong provider
       final foodProvider = Provider.of<FoodProvider>(context, listen: false);
       foodProvider.updateFoodEntry(updatedEntry);
-      
-      // Hiển thị thông báo
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã cập nhật tên món ăn'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      
+
+      print('✏️ EditFoodDetails: Đã cập nhật thông tin, ngày giữ nguyên: ${updatedEntry.dateTime}');
+
       return updatedEntry;
     }
-    
+
     return null;
   }
 

@@ -27,6 +27,7 @@ import 'onboarding/weight_gain_pace_page.dart';
 import 'onboarding/integration_settings_page.dart';
 import 'account_linking_screen.dart';
 import 'video_library_screen.dart';
+import 'notification_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -439,62 +440,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           );
 
-                          // Làm mới UI sau khi quay lại từ màn hình liên kết
-                          setState(() {
-                            // Cập nhật lại danh sách các phương thức liên kết
-                            // Không cần làm gì ở đây, setState sẽ kích hoạt build lại UI
-                          });
+                          // 🔧 FIX: Làm mới UI sau khi quay lại từ màn hình liên kết
+                          if (result == true || result == null) {
+                            // Refresh user state để cập nhật trạng thái liên kết
+                            authService.refreshUser();
+                            setState(() {});
+                          }
                         },
                       ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.sync,
-                      title: "Tích hợp",
-                      trailingWidget: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: 200),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              authService.isPremiumUser()
-                                  ? Icons.check_circle
-                                  : Icons.warning,
-                              color: authService.isPremiumUser()
-                                  ? Colors.green
-                                  : Colors.orange,
-                            ),
-                            SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                authService.isPremiumUser()
-                                    ? "Đã kết nối"
-                                    : "Chưa kết nối",
-                                style: TextStyle(color: Colors.grey.shade600),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              size: 16,
-                              color: Colors.grey.shade400,
-                            ),
-                          ],
-                        ),
-                      ),
-                      onTap: () {
-                        // Navigate to integration settings
-                        if (!authService.isPremiumUser()) {
-                          _showPremiumFeatureDialog(context);
-                        } else {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => IntegrationSettingsPage(updateMode: true),
-                            ),
-                          );
-                        }
-                      },
-                      isLast: !(authService.isAuthenticated && authService.currentUser != null && !authService.currentUser!.isAnonymous),
-                    ),
+                    // 🗑️ Đã xóa phần tích hợp (Integration) theo yêu cầu
                     // Thêm nút đồng bộ thủ công
 
                     // Chỉ hiển thị nút đăng xuất khi người dùng đã đăng nhập thực sự (không phải anonymous)
@@ -658,72 +612,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           userDataProvider.updateAddExerciseCaloriesToGoal(value);
                         }
                       },
+                    ),
+                    _buildSettingItem(
+                      leadingIcon: Icons.notifications,
+                      title: "Cài đặt thông báo",
+                      value: "Nhắc nhở bữa ăn, uống nước",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => NotificationSettingsScreen(),
+                          ),
+                        );
+                      },
                       isLast: true,
                     ),
                   ],
                 ),
               ),
 
-              // Demo Features Section
-              _buildSectionTitle("Tính năng Demo"),
-              Card(
-                elevation: 0,
-                color: Colors.grey.shade50,
-                margin: EdgeInsets.only(bottom: 24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildSettingItem(
-                      leadingIcon: Icons.play_circle_filled,
-                      title: "YouTube Hướng Dẫn Nấu Ăn",
-                      value: "Xem video",
-                      onTap: () {
-                        Navigator.pushNamed(context, '/youtube-cooking-demo');
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.video_library,
-                      title: "Thư viện Video",
-                      value: "Yêu thích & Lịch sử",
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => VideoLibraryScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.playlist_play,
-                      title: "Video Theo Kế Hoạch",
-                      value: "Thay đổi theo meal plan",
-                      onTap: () {
-                        Navigator.pushNamed(context, '/meal-plan-videos');
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.bug_report,
-                      title: "Test Video Hoạt Động",
-                      value: "Kiểm tra video có phát được",
-                      onTap: () {
-                        Navigator.pushNamed(context, '/video-test');
-                      },
-                    ),
-                    _buildSettingItem(
-                      leadingIcon: Icons.data_usage,
-                      title: "Test YouTube Data Thực",
-                      value: "Kiểm tra data thực từ YouTube",
-                      onTap: () {
-                        Navigator.pushNamed(context, '/youtube-data-test');
-                      },
-                      isLast: true,
-                    ),
-                  ],
-                ),
-              ),
+
 
               Center(
                 child: Padding(

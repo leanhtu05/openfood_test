@@ -807,9 +807,15 @@ class AuthService extends ChangeNotifier {
   // Kiểm tra xem người dùng đã liên kết với Google chưa
   bool isLinkedWithGoogle() {
     if (_user == null) return false;
-    
+
     return _user!.providerData
         .any((userInfo) => userInfo.providerId == 'google.com');
+  }
+
+  // 🔧 FIX: Method để refresh user state
+  void refreshUser() {
+    _user = _auth.currentUser;
+    notifyListeners();
   }
   
   // Kiểm tra xem người dùng đã liên kết với Facebook chưa
@@ -989,24 +995,32 @@ class AuthService extends ChangeNotifier {
       _errorMessage = 'Người dùng chưa đăng nhập';
       return false;
     }
-    
+
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       // Liên kết tài khoản
-      await _user!.linkWithCredential(credential);
-      
+      final userCredential = await _user!.linkWithCredential(credential);
+
+      // 🔧 FIX: Cập nhật user reference sau khi liên kết
+      _user = userCredential.user ?? _auth.currentUser;
+
       // Cập nhật user trong Firestore
-      await _userService.createOrUpdateUser(_user!);
-      
+      try {
+        await _userService.createOrUpdateUser(_user!);
+      } catch (firestoreError) {
+        debugPrint('⚠️ Lỗi khi cập nhật Firestore: $firestoreError');
+        // Không fail toàn bộ quá trình nếu Firestore lỗi
+      }
+
       _isLoading = false;
       notifyListeners();
-      
+
       return true;
     } on FirebaseAuthException catch (e) {
       _isLoading = false;
-      
+
       switch (e.code) {
         case 'provider-already-linked':
           _errorMessage = 'Tài khoản đã được liên kết với phương thức này';
@@ -1017,10 +1031,38 @@ class AuthService extends ChangeNotifier {
         default:
           _errorMessage = 'Lỗi: ${e.message}';
       }
-      
+
       notifyListeners();
       return false;
     } catch (e) {
+      // 🔧 FIX: Xử lý đặc biệt cho lỗi Pigeon
+      if (e.toString().contains('PigeonUserDetails') ||
+          e.toString().contains('type cast') ||
+          e.toString().contains('subtype')) {
+        debugPrint('🔧 Phát hiện lỗi Pigeon, kiểm tra trạng thái user...');
+
+        // Kiểm tra xem liên kết có thành công không
+        _user = _auth.currentUser;
+        if (_user != null) {
+          // Kiểm tra xem credential đã được liên kết chưa
+          bool isLinked = false;
+          if (credential.providerId == 'google.com') {
+            isLinked = isLinkedWithGoogle();
+          } else if (credential.providerId == 'phone') {
+            isLinked = isLinkedWithPhone();
+          } else if (credential.providerId == 'password') {
+            isLinked = isLinkedWithEmail();
+          }
+
+          if (isLinked) {
+            debugPrint('✅ Liên kết thành công mặc dù có lỗi Pigeon');
+            _isLoading = false;
+            notifyListeners();
+            return true;
+          }
+        }
+      }
+
       _isLoading = false;
       _errorMessage = 'Lỗi: ${e.toString()}';
       notifyListeners();
@@ -1093,35 +1135,34 @@ class AuthService extends ChangeNotifier {
       _errorMessage = 'Người dùng chưa đăng nhập';
       return false;
     }
-    
+
     if (_verificationId.isEmpty) {
       _errorMessage = 'Không có mã xác thực';
       return false;
     }
-    
+
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       // Tạo credential từ mã OTP
       final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId,
         smsCode: smsCode,
       );
-      
-      // Liên kết với số điện thoại
-      await _user!.linkWithCredential(credential);
-      
-      // Cập nhật user trong Firestore
-      await _userService.createOrUpdateUser(_user!);
-      
-      _isLoading = false;
-      notifyListeners();
-      
-      return true;
+
+      // 🔧 FIX: Sử dụng method linkWithCredential đã được cải thiện
+      final success = await linkWithCredential(credential);
+
+      if (success) {
+        // Reset verification ID sau khi thành công
+        _verificationId = '';
+      }
+
+      return success;
     } on FirebaseAuthException catch (e) {
       _isLoading = false;
-      
+
       if (e.code == 'invalid-verification-code') {
         _errorMessage = 'Mã OTP không hợp lệ';
       } else if (e.code == 'credential-already-in-use') {
@@ -1129,10 +1170,27 @@ class AuthService extends ChangeNotifier {
       } else {
         _errorMessage = 'Lỗi: ${e.message}';
       }
-      
+
       notifyListeners();
       return false;
     } catch (e) {
+      // 🔧 FIX: Xử lý đặc biệt cho lỗi Pigeon
+      if (e.toString().contains('PigeonUserDetails') ||
+          e.toString().contains('type cast') ||
+          e.toString().contains('subtype')) {
+        debugPrint('🔧 Phát hiện lỗi Pigeon trong confirmPhoneNumberLinking');
+
+        // Kiểm tra xem liên kết có thành công không
+        _user = _auth.currentUser;
+        if (_user != null && isLinkedWithPhone()) {
+          debugPrint('✅ Liên kết số điện thoại thành công mặc dù có lỗi Pigeon');
+          _verificationId = '';
+          _isLoading = false;
+          notifyListeners();
+          return true;
+        }
+      }
+
       _isLoading = false;
       _errorMessage = 'Lỗi: ${e.toString()}';
       notifyListeners();

@@ -615,12 +615,36 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
 
   // NAVIGATION AND DATABASE
   Future<void> _openFoodDatabase() async {
-    final result = await Navigator.pushNamed(context, FoodSearchScreen.routeName);
-    
-    if (result is List<FoodItem> && result.isNotEmpty) {
-      await _processMultipleFoodItems(result);
-    } else if (result is FoodItem) {
-      await _processSingleFoodItem(result);
+    try {
+      print('🔍 Đang mở màn hình tìm kiếm thực phẩm...');
+
+      // Thử navigation với route name trước
+      dynamic result;
+      try {
+        result = await Navigator.pushNamed(context, FoodSearchScreen.routeName);
+      } catch (routeError) {
+        print('❌ Lỗi route, thử navigation trực tiếp: $routeError');
+        // Fallback: Navigation trực tiếp
+        result = await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => FoodSearchScreen()),
+        );
+      }
+
+      print('🔍 Kết quả từ FoodSearchScreen: $result');
+
+      if (result is List<FoodItem> && result.isNotEmpty) {
+        print('🔍 Xử lý nhiều món ăn: ${result.length} items');
+        await _processMultipleFoodItems(result);
+      } else if (result is FoodItem) {
+        print('🔍 Xử lý một món ăn: ${result.name}');
+        await _processSingleFoodItem(result);
+      } else {
+        print('🔍 Không có kết quả hoặc người dùng hủy');
+      }
+    } catch (e) {
+      print('❌ Lỗi khi mở FoodSearchScreen: $e');
+      _showErrorMessage('Không thể mở màn hình tìm kiếm. Vui lòng thử lại.');
     }
   }
   
@@ -745,8 +769,209 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }
   
   void _switchToEmptyFood() {
-    _descriptionController.text = "Bữa ăn trống";
-    _showErrorMessage('Chuyển sang chế độ thực phẩm trống');
+    // 🔧 SỬA: Mở màn hình nhập thực phẩm mới thay vì chỉ điền text
+    _openManualFoodEntryDialog();
+  }
+
+  // 🔧 THÊM: Method mở dialog nhập thực phẩm thủ công
+  void _openManualFoodEntryDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final TextEditingController nameController = TextEditingController();
+        final TextEditingController caloriesController = TextEditingController();
+        final TextEditingController proteinController = TextEditingController();
+        final TextEditingController carbsController = TextEditingController();
+        final TextEditingController fatController = TextEditingController();
+        final TextEditingController servingSizeController = TextEditingController(text: '100');
+
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.add_circle_outline, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Thêm thực phẩm mới'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Tên thực phẩm *',
+                    hintText: 'Ví dụ: Cơm trắng, Thịt bò, Cà chua...',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.restaurant, color: Colors.green),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: servingSizeController,
+                        decoration: InputDecoration(
+                          labelText: 'Khối lượng (g)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: caloriesController,
+                        decoration: InputDecoration(
+                          labelText: 'Calories',
+                          hintText: 'Ví dụ: 150',
+                          border: OutlineInputBorder(),
+                          suffixText: 'kcal',
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: proteinController,
+                        decoration: InputDecoration(
+                          labelText: 'Protein (g)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: carbsController,
+                        decoration: InputDecoration(
+                          labelText: 'Carbs (g)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: fatController,
+                        decoration: InputDecoration(
+                          labelText: 'Fat (g)',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Thông tin dinh dưỡng cho ${servingSizeController.text}g',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Vui lòng nhập tên thực phẩm')),
+                  );
+                  return;
+                }
+
+                _createManualFoodEntry(
+                  name: nameController.text.trim(),
+                  calories: double.tryParse(caloriesController.text) ?? 0,
+                  protein: double.tryParse(proteinController.text) ?? 0,
+                  carbs: double.tryParse(carbsController.text) ?? 0,
+                  fat: double.tryParse(fatController.text) ?? 0,
+                  servingSize: double.tryParse(servingSizeController.text) ?? 100,
+                );
+
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Thêm'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 🔧 THÊM: Method tạo thực phẩm thủ công
+  Future<void> _createManualFoodEntry({
+    required String name,
+    required double calories,
+    required double protein,
+    required double carbs,
+    required double fat,
+    required double servingSize,
+  }) async {
+    try {
+      // Tạo FoodItem từ thông tin nhập vào
+      final foodItem = FoodItem(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: name,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fat: fat,
+        fiber: 0.0,
+        sugar: 0.0,
+        sodium: 0.0,
+        servingSize: servingSize / 100, // Chuyển đổi về đơn vị khẩu phần (1 khẩu phần = 100g)
+        servingUnit: 'g',
+        imageUrl: null,
+        additionalNutrients: {},
+      );
+
+      // Xử lý như một món ăn được chọn từ database
+      await _processSingleFoodItem(foodItem);
+
+      // Cập nhật mô tả
+      _descriptionController.text = name;
+
+      // Thông báo thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã thêm "$name" vào nhật ký'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+    } catch (e) {
+      print('Lỗi khi tạo thực phẩm thủ công: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Có lỗi xảy ra khi thêm thực phẩm'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -841,20 +1066,50 @@ class _FoodLoggingScreenState extends State<FoodLoggingScreen> {
   }
   
   Widget _buildMainActionButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
-        IconButton(
-          icon: Icon(Icons.search, size: 36, color: Colors.blue),
-          onPressed: _openFoodDatabase,
+        // 🔧 THÊM: Nút "Thêm món ăn mới" rõ ràng
+        Container(
+          width: double.infinity,
+          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: ElevatedButton.icon(
+            onPressed: _openFoodDatabase,
+            icon: Icon(Icons.add, color: Colors.white),
+            label: Text(
+              'Thêm món ăn mới',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              padding: EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
         ),
-        SizedBox(width: 24),
-        IconButton(
-          icon: Icon(Icons.photo, size: 36, color: Colors.orange),
-          onPressed: _pickFoodPhoto,
+        SizedBox(height: 16),
+        // Các nút action khác
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: Icon(Icons.search, size: 36, color: Colors.blue),
+              onPressed: _openFoodDatabase,
+            ),
+            SizedBox(width: 24),
+            IconButton(
+              icon: Icon(Icons.photo, size: 36, color: Colors.orange),
+              onPressed: _pickFoodPhoto,
+            ),
+            SizedBox(width: 24),
+            _buildCameraButton(),
+          ],
         ),
-        SizedBox(width: 24),
-        _buildCameraButton(),
       ],
     );
   }

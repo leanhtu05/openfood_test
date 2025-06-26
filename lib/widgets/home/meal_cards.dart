@@ -153,6 +153,20 @@ class MealDetailCard extends StatelessWidget {
     }).toList();
   }
 
+  // Kiểm tra xem description có trùng với tên các items không
+  bool _isDescriptionSameAsItems(FoodEntry entry) {
+    if (entry.items.isEmpty) return false;
+
+    // Nếu chỉ có 1 item và tên giống description
+    if (entry.items.length == 1) {
+      return entry.description.toLowerCase().trim() == entry.items.first.name.toLowerCase().trim();
+    }
+
+    // Nếu có nhiều items, kiểm tra xem description có chứa tất cả tên items không
+    final descriptionLower = entry.description.toLowerCase();
+    return entry.items.every((item) => descriptionLower.contains(item.name.toLowerCase()));
+  }
+
   // Widget hiển thị thông tin từng món ăn
   Widget _buildFoodItem(FoodItem item, {FoodEntry? foodEntry}) {
     // Đảm bảo servingSize không nhỏ hơn hoặc bằng 0
@@ -478,17 +492,20 @@ class MealFoodDetailCard extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  entry.description,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black87,
+                                // Chỉ hiển thị description nếu không có items hoặc description khác với tên items
+
+                                  Text(
+                                    entry.description,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black87,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                SizedBox(height: 4),
+
+                                  SizedBox(height: 4),
                                 // Hiển thị các món ăn dưới dạng chips
                                 if (entry.items.isNotEmpty)
                                   _buildFoodItemChips(entry.items)

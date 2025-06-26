@@ -69,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   // Add this offset variable to the _HomeScreenState class
   Offset _fabPosition = Offset(0, 0);
   bool _isDragging = false;
-  bool _showMealSuggestion = true;
+  // 🗑️ REMOVED: bool _showMealSuggestion - đã xóa phần đề xuất mặc định
   
   // Thêm biến này để kiểm soát việc refresh
   DateTime _lastRefresh = DateTime.now();
@@ -262,11 +262,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // Đồng bộ hóa giá trị mục tiêu calo trên tất cả các màn hình
       await _synchronizeCalorieGoals();
       
-      if (mounted) {
-        setState(() {
-          _updateMealSuggestionState();
-        });
-      }
+      // 🗑️ REMOVED: _updateMealSuggestionState() call - đã xóa phần đề xuất mặc định
     } catch (e) {
     } finally {
       _isLoadingData = false;
@@ -305,24 +301,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     
   }
 
-  // Phương thức để cập nhật trạng thái hiển thị gợi ý bữa ăn
-  void _updateMealSuggestionState() {
-    final now = DateTime.now();
-    final selectedDateTime = DateTime.parse(_selectedDate);
-    
-    // Chỉ hiển thị gợi ý bữa ăn cho ngày hiện tại
-    final isSameDay = selectedDateTime.year == now.year && 
-                    selectedDateTime.month == now.month && 
-                    selectedDateTime.day == now.day;
-    
-    // Không hiển thị gợi ý nếu đã đạt đủ lượng calorie mục tiêu
-    final hasReachedCalorieGoal = _consumedCalories >= _caloriesGoal;
-                    
-    _showMealSuggestion = isSameDay && !hasReachedCalorieGoal;
-    
-    if (hasReachedCalorieGoal && isSameDay) {
-    }
-  }
+  // 🗑️ REMOVED: _updateMealSuggestionState() method - đã xóa phần đề xuất mặc định
 
   int get totalExerciseCalories {
     return _exerciseCalories.values.fold(0, (sum, calories) => sum + calories);
@@ -364,127 +343,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildMealTimeSuggestion() {
-    // Hiển thị gợi ý bữa ăn dựa vào thời gian hiện tại
-    final hour = DateTime.now().hour;
-    String mealType;
-    String mealSuggestion;
-    IconData mealIcon;
-    Color bgColor;
-    
-    if (hour >= 5 && hour < 10) {
-      mealType = 'Bữa sáng';
-      mealSuggestion = 'Protein, ngũ cốc nguyên hạt và trái cây tươi';
-      mealIcon = Icons.wb_sunny_outlined;
-      bgColor = Colors.orange.shade100;
-    } else if (hour >= 11 && hour < 14) {
-      mealType = 'Bữa trưa';
-      mealSuggestion = 'Protein nạc, rau xanh và carbs phức hợp';
-      mealIcon = Icons.cloud_outlined;
-      bgColor = Colors.blue.shade100;
-    } else if (hour >= 17 && hour < 21) {
-      mealType = 'Bữa tối';
-      mealSuggestion = 'Protein nạc, rau xanh và ít tinh bột';
-      mealIcon = Icons.nights_stay_outlined;
-      bgColor = Colors.indigo.shade100;
-    } else {
-      mealType = 'Bữa phụ';
-      mealSuggestion = 'Trái cây, hạt, sữa chua ít đường';
-      mealIcon = Icons.access_time_rounded;
-      bgColor = Colors.purple.shade100;
-    }
-    
-    return Visibility(
-      visible: _showMealSuggestion,
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () async {
-              // Get reference to provider
-              final foodProvider = Provider.of<FoodProvider>(context, listen: false);
-              
-              // Navigate to food logging with the current meal type
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FoodLoggingScreen(
-                    initialDate: _selectedDate,
-                    initialMealType: mealType, // Thêm loại bữa ăn hiện tại
-                  ),
-                ),
-              );
-              
-              // Handle result and reload data
-              if (result != null) {
-                await _loadDataForSelectedDate();
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(mealIcon, size: 24, color: AppColors.food),
-                  ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Đề xuất $mealType',
-                          style: AppTextStyles.heading3.copyWith(fontSize: 16),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          mealSuggestion,
-                          style: AppTextStyles.bodySmall,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: Icon(Icons.close, size: 16),
-                      onPressed: () {
-                        setState(() {
-                          _showMealSuggestion = false;
-                        });
-                      },
-                      constraints: BoxConstraints(
-                        minWidth: 32,
-                        minHeight: 32,
-                      ),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // 🗑️ REMOVED: _buildMealTimeSuggestion() method - đã xóa phần đề xuất mặc định
 
   @override
   Widget build(BuildContext context) {
@@ -874,7 +733,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   List<Widget> _buildHomeContentWidgets() {
     return [
       _buildDaySelector(),
-      _buildMealTimeSuggestion(),
+      // 🗑️ REMOVED: _buildMealTimeSuggestion() - đã xóa phần đề xuất mặc định
       Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Consumer<UserDataProvider>(

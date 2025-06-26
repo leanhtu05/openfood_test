@@ -179,32 +179,6 @@ class _ExerciseLogScreenState extends State<ExerciseLogScreen> {
             ),
           ],
         ),
-        actions: [
-          Container(
-            margin: EdgeInsets.only(right: 10),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                // Thêm bài tập mới
-              },
-              icon: Icon(Icons.add, color: AppColors.secondary, size: 12),
-              label: Text(
-                'Thêm mới',
-                style: TextStyle(
-                  color: AppColors.secondary,
-                  fontSize: 12,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade50,
-                elevation: 0,
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: Column(
         children: [
